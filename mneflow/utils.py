@@ -214,7 +214,11 @@ def produce_labels(y):
     return  inv, total_counts, class_proportions, orig_classes
 
     
-def produce_tfrecords(inputs,opt):
+def produce_tfrecords(inputs,savepath='', out_name='test', 
+           task='classification',
+           input_type='array', picks={'meg':'mag'}, 
+           array_keys={'X':'fb_data', 'y':'y_fb'}, scale_interval=36,
+           savebatch=4, scale=True, save_orig=True,val_size=0.1):
     """Produces TFRecord files from input, applies basic preprocessing (optional)
 
     Parameters
@@ -240,7 +244,7 @@ def produce_tfrecords(inputs,opt):
             events = inp.events[:,2]
         elif isinstance(inp,str):
             fname = inp#''.join([opt.path,inp])#"filename mess, 1 raw, 2.epochs, 3.array"""
-            if opt['input_type'] == 'array':
+            if input_type == 'array':
                 if fname[-3:] == 'mat':
                     datafile = sio.loadmat(fname)
                     
@@ -249,14 +253,14 @@ def produce_tfrecords(inputs,opt):
                 else:
                     print('Only accept .mat or .npz for array input_type')
                     
-                data = datafile[opt['array_keys']['X']]
-                events = datafile[opt['array_keys']['y']]
+                data = datafile[array_keys['X']]
+                events = datafile[array_keys['y']]
                 #raw_y = datafile[opt['array_keys']['y']]            
             
-            elif opt['input_type']== 'epochs':
+            elif input_type== 'epochs':
                 epochs = mne.epochs.read_epochs(fname)
                 events = epochs.events[:,2]
-                epochs.pick_types(**opt['picks'])
+                epochs.pick_types(**picks)
                 data = epochs.get_data()
                 #events = events[:,2]
                 del epochs
@@ -264,18 +268,17 @@ def produce_tfrecords(inputs,opt):
                 
         #for all Xs and ys regardless of input type
         
-        if opt['scale']:
-            #TODO: edit scale_type
-            data = scale_to_baseline(data,opt['scale_interval'])
+        if scale:
+            data = scale_to_baseline(data,scale_interval)
             
         #if opt['augment']:
             #print('Not Implemented')
             #data, events = sliding_augmentation(data,events,seg_len=500,stride=7,scale=False,demean=False)
         
-        if opt['task']=='classification':
+        if task=='classification':
             labels, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
             meta['n_classes'] = len(meta['class_proportions'])
-        elif opt['task']=='regression':
+        elif task=='regression':
             print('Not Implemented')
             #assert y.shape[0]==data.shape[0]
         i +=1
@@ -288,18 +291,18 @@ def produce_tfrecords(inputs,opt):
             y = np.concatenate([y,labels])         
         print(X.shape)
         
-        if i%opt['savebatch']==0 or jj*opt['savebatch']+i==len(inputs):
+        if i%savebatch==0 or jj*savebatch+i==len(inputs):
             print('Saving TFRecord# {}'.format(jj))
             X = X.astype(np.float32)
             n_trials, meta['n_ch'],meta['n_t'] = X.shape          
-            X_train, y_train, X_val, y_val = split_sets(X,y,val=opt['val_size'])
+            X_train, y_train, X_val, y_val = split_sets(X,y,val=val_size)
             
-            meta['train_paths'].append(''.join([opt['savepath'],opt['out_name'],'_train_',str(jj),'.tfrecord']))
+            meta['train_paths'].append(''.join([savepath,out_name,'_train_',str(jj),'.tfrecord']))
             write_tfrecords(X_train,y_train,meta['train_paths'][-1])
-            meta['val_paths'].append(''.join([opt['savepath'],opt['out_name'],'_val_',str(jj),'.tfrecord']))
+            meta['val_paths'].append(''.join([savepath,out_name,'_val_',str(jj),'.tfrecord']))
             write_tfrecords(X_val,y_val,meta['val_paths'][-1])
-            if opt['save_orig']:
-                meta['orig_paths'].append(''.join([opt['savepath'],opt['out_name'],'_orig_',str(jj),'.tfrecord']))
+            if save_orig:
+                meta['orig_paths'].append(''.join([savepath,out_name,'_orig_',str(jj),'.tfrecord']))
                 write_tfrecords(X,y,meta['orig_paths'][-1])
             jj+=1
             i =0

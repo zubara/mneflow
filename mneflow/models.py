@@ -212,14 +212,14 @@ class LFCNN(Model):
     def plot_out_weihts(self,fs=None):
         from matplotlib import pyplot as plt
         if fs:
-            times = np.arange(self.h_params['n_t']//2)/(2./fs)
+            times = np.arange(self.h_params['n_t'])[::2]/float(fs)
         else:
-            times = np.arange(self.h_params['n_t'])
+            times = np.arange(self.h_params['n_t'])[::2]
         f,ax = plt.subplots(1,self.h_params['n_classes'])
         for i in range(self.h_params['n_classes']):
             F = self.out_weights[...,i]
             pat,t= np.where(F==np.max(F))
-            ax[i].pcolor(times,np.arange(32),F,cmap='bone_r',vmin=0.0,vmax=.25)
+            ax[i].pcolor(times,np.arange(self.params['n_ls']),F,cmap='bone_r')#,vmin=0.0,vmax=.25
             ax[i].plot(times[t]+.008,pat+.5,markeredgecolor='red',markerfacecolor='none',marker='s',markersize=10,markeredgewidth=2)
         plt.show()
     
