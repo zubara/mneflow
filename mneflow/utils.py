@@ -16,6 +16,7 @@ import scipy.io as sio
 
 
 def leave_one_subj_out(h_params,params,data_paths,savepath):
+    
     #TODO: update to use meta/TFRdataset
     results = []
     from models import Model
@@ -61,7 +62,8 @@ def plot_cm(y_true,y_pred,classes=None, normalize=False,):
 
     
 def logger(savepath,h_params, params, results):
-    """Log perfromance"""
+    #TODO: update logger for use meta
+    """Log model perfromance"""
     log = dict()
     log.update(h_params)
     log.update(params)
@@ -76,18 +78,18 @@ def logger(savepath,h_params, params, results):
               'test_upd_batch', 'stride']
     with open(savepath+'-'.join([h_params['architecture'],'training_log.csv']), 'a') as csv_file:
         writer = csv.DictWriter(csv_file,fieldnames=header)
-        #writer.writeheader()
         writer.writerow(log)
 
-def sliding_augmentation(x, labels,seg_len=500,stride=1,scale=False,demean=False):
+def sliding_augmentation(x, labels,segment_len=500,stride=1,scale=False,demean=False):
+    """Return and image of x split in overlapping time segments"""
     n_epochs, n_ch, n_t = x.shape
-    nrows = n_t - seg_len + 1            
+    nrows = n_t - segment_len + 1            
     a,b,c = x.strides
-    x4D = np.lib.stride_tricks.as_strided(x,shape=(n_epochs,n_ch,nrows,seg_len),strides=(a,b,c,c))
+    x4D = np.lib.stride_tricks.as_strided(x,shape=(n_epochs,n_ch,nrows,segment_len),strides=(a,b,c,c))
     x4D = x4D[:,:,::stride,:]
     labels = np.tile(labels,x4D.shape[2])
     x4D = np.moveaxis(x4D,[2],[0])
-    x4D = x4D.reshape([n_epochs*x4D.shape[0],n_ch,seg_len],order='C')
+    x4D = x4D.reshape([n_epochs*x4D.shape[0],n_ch,segment_len],order='C')
     assert labels.shape[0] == x4D.shape[0]
     if demean:
         x4D -=x4D.mean(1,keepdims=True)
@@ -130,6 +132,20 @@ def scale_to_baseline(X,baseline=None):
     return X
        
 def write_tfrecords(X_,y_,output_file):
+    """Serialize and write datasets in TFRecords fromat
+    
+    Parameters
+    ----------
+    X_ : ndarray, shape (n_epochs, n_channels, n_timepoints)
+        (Preprocessed) data matrix.
+    y_ : ndarray, shape (n_epochs,)
+        Class labels.
+    output_file : str
+        Name of the TFRecords file.
+    Returns
+    -------
+    TFRecord : TFrecords file.
+    """
     writer = tf.python_io.TFRecordWriter(output_file)
     for X,y in zip(X_,y_):
          # Feature contains a map of string to feature proto objects
@@ -146,12 +162,25 @@ def write_tfrecords(X_,y_,output_file):
     
     
 def split_sets(X,y,val=.1):
+    """Applies shuffle and splits the shuffled data
+    
+    Parameters
+    ----------
+    X : ndarray, shape (n_epochs, n_channels, n_timepoints)
+        (Preprocessed) data matrix.
+    y : ndarray, shape (n_epochs,)
+        Class labels.
+    val : float from 0 to 1
+        Name of the TFRecords file.
+    Returns
+    -------
+    X_train : ndarray
+    y_train : ndarray
+    X_val : ndarray
+    y_val : ndarray
+    """
     shuffle= np.random.permutation(X.shape[0])
-    print(y.shape)
-    
     val_size = int(round(val*X.shape[0]))
-    print(val_size)
-    
     X_val = X[shuffle[:val_size],...]
     y_val = y[shuffle[:val_size],...]
     X_train = X[shuffle[val_size:],...]
@@ -159,6 +188,24 @@ def split_sets(X,y,val=.1):
     return X_train, y_train, X_val, y_val
 
 def produce_labels(y):
+    """Produces labels array from e.g. event (unordered) trigger codes
+    
+    Parameters
+    ----------
+    y : ndarray, shape (n_epochs,)
+        array of trigger codes.
+    
+    Returns
+    -------
+    inv : ndarray, shape (n_epochs) 
+        ordered class labels.
+    total_counts : int
+    class_proportions : dict
+        {new_class: proportion of new_class1 in the dataset}.
+    orig_classes : dict
+        {new_class:old_class}.
+    """
+    
     classes, inds, inv, counts = np.unique(y, return_index=True, return_inverse=True, return_counts=True)
     total_counts = np.sum(counts)
     counts = counts/float(total_counts)
@@ -168,13 +215,17 @@ def produce_labels(y):
 
     
 def produce_tfrecords(inputs,opt):
-    """
-    Produces TFRecord files from input, applies basic preprocessing
-    
-    inputs : list of mne.epochs.Epochs or strings
-    
-    path
-    
+    """Produces TFRecord files from input, applies basic preprocessing (optional)
+
+    Parameters
+    ----------
+    inputs : list 
+        list of mne.epochs.Epochs or lsit of strings with filenames.
+    opt : dict
+        prerpocessing options.
+        
+    Returns
+    -------    
     """
     meta  = dict(train_paths=[],val_paths=[],orig_paths=[])
     jj = 0
