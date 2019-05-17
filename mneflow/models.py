@@ -18,23 +18,20 @@ class Model(object):
         self.h_params = h_params
         self.params = params
         self.model_path = model_path
-        with tf.device("/cpu:0"):
-            self.sess = tf.Session()        
-        self.keep_prob = params['dropout']
+        #with tf.device("/cpu:0"):
+        self.sess = tf.Session()        
+        self.rate = params['dropout']
         self.train_dataset  = tf.data.TFRecordDataset(h_params['train_paths'])
         self.val_dataset  = tf.data.TFRecordDataset(h_params['val_paths'])
         # Parse the record into tensors.
         self.train_dataset = self.train_dataset.map(self._parse_function)
         self.val_dataset = self.val_dataset.map(self._parse_function)
-        print(self.val_dataset)
         if filt:
             self.classes = filt #class labels to leave in the dataset as list, otherwise use all classes
             self.train_dataset = self.train_dataset.filter(self.select_classes)
             self.val_dataset = self.val_dataset.filter(self.select_classes)
-            print(self.val_dataset)
         self.train_dataset = self.train_dataset.map(self.unpack)#.repeat()
         self.val_dataset = self.val_dataset.map(self.unpack)#.repeat()
-        print(self.val_dataset)
         # Generate batches
         self.train_dataset = self.train_dataset.batch(params['n_batch'])#.repeat()
         self.val_dataset = self.val_dataset.batch(val_size).repeat()
@@ -58,7 +55,7 @@ class Model(object):
             keys_to_features = {'X':tf.FixedLenFeature((self.h_params['n_ch'],self.h_params['n_t']), tf.float32),
                                   'y': tf.FixedLenFeature((), tf.int64, default_value=0)}
             parsed_features = tf.parse_single_example(example_proto, keys_to_features)
-            return parsed_features#['X'], parsed_features['y']
+            return parsed_features
     
     def select_classes(self,sample):
         if self.classes:
@@ -120,18 +117,22 @@ class Model(object):
             
             if i %self.params['eval_step']==0:
                 self.v_acc, v_loss = self.sess.run([self.accuracy,self.cost],feed_dict={self.handle: self.validation_handle})
-                print('epoch %d, train_loss %g, train acc %g val loss %g, val acc %g' % (i, loss,acc, v_loss, self.v_acc))
+                
                 
                 if min_val_loss >= v_loss:
                     min_val_loss = v_loss
+                    v_acc = self.v_acc
                     self.saver.save(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))
+                    print('epoch %d, train_loss %g, train acc %g val loss %g, val acc %g' % (i, loss,acc, v_loss, self.v_acc))
                 else:
                     patience_cnt +=1
-                    print('*')
-                if patience_cnt > self.params['patience']:
+                    print('* Patience count {}'.format(patience_cnt))
+                if patience_cnt >= self.params['patience']:
                     print("early stopping...")
                     #restore the best model
                     self.saver.restore(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))                
+                    #self.v_acc, v_loss = self.sess.run([self.accuracy,self.cost],feed_dict={self.handle: self.validation_handle})
+                    print('stopped at: epoch %d, val loss %g, val acc %g' % (i,  min_val_loss, v_acc))
                     break
         
     def load(self):
@@ -208,7 +209,7 @@ class LFCNN(Model):
                 
         self.fin_fc = Dense(size=self.h_params['n_classes'], 
                        nonlin=self.params['nonlin_out'],
-                       dropout=self.keep_prob)
+                       dropout=self.rate)
         y_pred = self.fin_fc(self.conv(self.X))
         return y_pred
     
@@ -303,7 +304,7 @@ class LFCNN(Model):
             order = []
             weight_sum = np.sum(np.abs(self.out_weights).sum(-1),-1)
             pat= np.argsort(weight_sum)
-            print(weight_sum[pat])
+            #print(weight_sum[pat])
             order = np.array(pat[:nfilt])
 
         elif isinstance(sorting,list):
@@ -356,7 +357,7 @@ class VARCNN(Model):
                          conv_type='var')          
         self.fin_fc = Dense(size=self.h_params['n_classes'], 
                        nonlin=self.params['nonlin_out'],
-                       dropout=self.keep_prob)
+                       dropout=self.rate)
         y_pred = self.fin_fc(self.conv(self.X))
         return y_pred
             
@@ -368,7 +369,7 @@ class VGG19(Model):
         if X1.shape[1]==306:
             X1 = tf.concat([X1[:,0:306:3,:],X1[:,1:306:3,:],X1[:,2:306:3,:]],axis=3)
             inch = 3
-            print(X1.shape)
+            #print(X1.shape)
         vgg_dict = dict(n_ls=self.params['n_ls'], nonlin_out=self.params['nonlin_hid'], 
                         inch=inch,padding = 'SAME', filter_length=(3,3), domain='2d', 
                        stride=1, pooling=1, conv_type='2d')
@@ -395,9 +396,9 @@ class VGG19(Model):
         out5 = vgg5(out4)
         
 #            
-        fc_1 = Dense(size=4096, nonlin=self.params['nonlin_hid'],dropout=self.keep_prob)
-        fc_2 = Dense(size=4096, nonlin=self.params['nonlin_hid'],dropout=self.keep_prob)
-        fc_out = Dense(size=self.h_params['n_classes'], nonlin=self.params['nonlin_out'],dropout=self.keep_prob)
+        fc_1 = Dense(size=4096, nonlin=self.params['nonlin_hid'],dropout=self.rate)
+        fc_2 = Dense(size=4096, nonlin=self.params['nonlin_hid'],dropout=self.rate)
+        fc_out = Dense(size=self.h_params['n_classes'], nonlin=self.params['nonlin_out'],dropout=self.rate)
         y_pred = fc_out(fc_2(fc_1(out5)))
         return y_pred
             
@@ -416,7 +417,7 @@ class EEGNet(Model):
         dwc1o = dwc1(bn1)
         bn2 = tf.layers.batch_normalization(dwc1o)
         out2 = tf.nn.elu(bn2)
-        out22 = Dropout(self.keep_prob)(out2)
+        out22 = Dropout(self.rate)(out2)
         #out22 = spatial_dropout(out2,self.keep_prob)
         sc1 = ConvDSV(n_ls=8, nonlin_out=tf.identity, inch=8,
                      filter_length=8, domain='time', stride=1, pooling=1, 
@@ -425,7 +426,7 @@ class EEGNet(Model):
         bn3 = tf.layers.batch_normalization(sc1o)
         out3 = tf.nn.elu(bn3)
         out4 = tf.nn.avg_pool(out3,[1,1,4,1],[1,1,4,1], 'SAME')
-        out44 = Dropout(self.keep_prob)(out4)
+        out44 = Dropout(self.rate)(out4)
         #out44 = spatial_dropout(out4,self.keep_prob)
         sc2 = ConvDSV(n_ls=16, nonlin_out=tf.identity, inch=8,
                       filter_length=8, domain='time', stride=1, pooling=1,
@@ -434,10 +435,10 @@ class EEGNet(Model):
         bn4 = tf.layers.batch_normalization(sc2o)
         out5 = tf.nn.elu(bn4)
         out6 = tf.nn.avg_pool(out5,[1,1,4,1],[1,1,4,1], 'SAME') #fix typo here out5
-        out66 = Dropout(self.keep_prob)(out6)
+        out66 = Dropout(self.rate)(out6)
         #out66 = spatial_dropout(out6,self.keep_prob)
         out7 = tf.reshape(out66,[-1,16*4])#16*4
-        fc_out = Dense(size=self.h_params['n_classes'], nonlin=tf.identity,dropout=self.keep_prob)
+        fc_out = Dense(size=self.h_params['n_classes'], nonlin=tf.identity,dropout=self.rate)
         y_pred = fc_out(out7)
         return y_pred
             

@@ -16,7 +16,7 @@ import scipy.io as sio
 import pickle
 
 def load_meta(fname):
-    with open(fname+'meta.pkl','wb') as f:
+    with open(fname+'meta.pkl','rb') as f:
         meta = pickle.load(f)
     return meta
     
