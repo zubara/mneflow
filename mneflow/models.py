@@ -119,7 +119,7 @@ class Model(object):
                 self.v_acc, v_loss = self.sess.run([self.accuracy,self.cost],feed_dict={self.handle: self.validation_handle})
                 
                 
-                if min_val_loss >= v_loss:
+                if min_val_loss >= v_loss + self.params['min_delta']:
                     min_val_loss = v_loss
                     v_acc = self.v_acc
                     self.saver.save(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))
