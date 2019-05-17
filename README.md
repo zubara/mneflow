@@ -8,6 +8,7 @@ Is coming, in a meanwhile check out \href{https://github.com/zubara/mneflow/blob
 When using the implemented models please cite: 
 
 ###  for LF-CNN or VAR-CNN 
+```
 @article{Zubarev2019AdaptiveSignals.,
     title = {{Adaptive neural network classifier for decoding MEG signals.}},
     year = {2019},
@@ -22,9 +23,10 @@ When using the implemented models please cite:
     pmid = {31059799},
     keywords = {Brain–computer interface, Convolutional neural network, Magnetoencephalography}
 }
-
+```
 
 ### for EEGNet 
+```
 @article{Lawhern2018,
   author={Vernon J Lawhern and Amelia J Solon and Nicholas R Waytowich and Stephen M Gordon and Chou P Hung and Brent J Lance},
   title={EEGNet: a compact convolutional neural network for EEG-based brain–computer interfaces},
@@ -35,3 +37,4 @@ When using the implemented models please cite:
   url={http://stacks.iop.org/1741-2552/15/i=5/a=056013},
   year={2018}
 }
+```
