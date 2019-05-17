@@ -8,6 +8,8 @@ Full documentation is coming, in a meanwhile check out the [example](https://git
 When using the implemented models please cite: 
 
 ###  for LF-CNN or VAR-CNN 
+Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier for decoding MEG signals. Neuroimage. 2019 May 4;197:425-434. doi: 10.1016/j.neuroimage.2019.04.068.[link](https://www.sciencedirect.com/science/article/pii/S1053811919303544?via%3Dihub)
+
 ```
 @article{Zubarev2019AdaptiveSignals.,
     title = {{Adaptive neural network classifier for decoding MEG signals.}},
