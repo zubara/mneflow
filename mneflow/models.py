@@ -5,9 +5,10 @@ Created on Wed May 30 16:39:39 2018
 
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
-from layers import ConvDSV, ConvLayer, Dense, vgg_block
+from .layers import ConvDSV, ConvLayer, Dense, vgg_block
 import tensorflow as tf
 import numpy as np
+from sklearn.covariance import ledoit_wolf
 #temporary measure
 Dropout = tf.keras.layers.Dropout
 
@@ -73,6 +74,7 @@ class Model(object):
     def _build_graph(self):
         """Build computational graph. Overriden by subclasses"""
         print('Specify a model. Set to linear classifier!')
+        self.h_params['architecture'] = 'template_linear'
         fc_1 = Dense(size=self.h_params['n_classes'], nonlin=tf.identity, dropout=1.)
         y_pred = fc_1(self.X)
         return y_pred
@@ -122,18 +124,18 @@ class Model(object):
                 
                 if min_val_loss >= v_loss:
                     min_val_loss = v_loss
-                    self.saver.save(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['sid']]))
+                    self.saver.save(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))
                 else:
                     patience_cnt +=1
                     print('*')
                 if patience_cnt > self.params['patience']:
                     print("early stopping...")
                     #restore the best model
-                    self.saver.restore(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['sid']]))                
+                    self.saver.restore(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))                
                     break
         
     def load(self):
-        self.saver.restore(self.sess,''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['sid']]))
+        self.saver.restore(self.sess,''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))
         self.v_acc = self.sess.run([self.accuracy],feed_dict={self.handle: self.validation_handle})
             
                 
@@ -196,6 +198,7 @@ class Model(object):
 
 class LFCNN(Model):
     def _build_graph(self):
+        self.h_params['architecture'] = 'lf-cnn'
         self.conv = ConvLayer(n_ls=self.params['n_ls'], 
                          filter_length=self.params['filter_length'],
                          pool=self.params['pooling'],
@@ -209,47 +212,42 @@ class LFCNN(Model):
         y_pred = self.fin_fc(self.conv(self.X))
         return y_pred
     
-    def plot_out_weihts(self,fs=None):
+    def plot_out_weihts(self,):
         from matplotlib import pyplot as plt
-        if fs:
-            times = np.arange(self.h_params['n_t'])[::2]/float(fs)
-        else:
-            times = np.arange(self.h_params['n_t'])[::2]
+        times = np.arange(self.h_params['n_t'])[::self.params['pooling']]/float(self.h_params['fs'])
+        t_step = np.diff(times)[0]
         f,ax = plt.subplots(1,self.h_params['n_classes'])
         for i in range(self.h_params['n_classes']):
             F = self.out_weights[...,i]
             pat,t= np.where(F==np.max(F))
             ax[i].pcolor(times,np.arange(self.params['n_ls']),F,cmap='bone_r')#,vmin=0.0,vmax=.25
-            ax[i].plot(times[t]+.008,pat+.5,markeredgecolor='red',markerfacecolor='none',marker='s',markersize=10,markeredgewidth=2)
+            ax[i].plot(times[t]+.5*t_step,pat+.5,markeredgecolor='red',markerfacecolor='none',marker='s',markersize=10,markeredgewidth=2)
         plt.show()
     
     def compute_patterns(self, megdata=None,output='patterns'):
-        from sklearn.covariance import ledoit_wolf
-        if self.h_params['architecture'] == 'lf-cnn':
-            spatial = self.conv.W.eval(session=self.sess)
-            self.filters = np.squeeze(self.conv.filters.eval(session=self.sess))
-            self.patterns = spatial
+        spatial = self.conv.W.eval(session=self.sess)
+        self.filters = np.squeeze(self.conv.filters.eval(session=self.sess))
+        self.patterns = spatial
 
-            if 'patterns' in output:
-                if isinstance(self.val_dataset,tf.data.Dataset):
-                    data = self.sess.run(self.X,feed_dict={self.handle:self.validation_handle})
-                elif megdata:
-                    data = megdata.train.meg_data
-                
-                data = data.transpose([0,2,1])
-                data= data.reshape([-1,data.shape[-1]])
-                self.dcov,_ = ledoit_wolf(data)
-                self.patterns = np.dot(self.dcov,self.patterns)
-            if 'full' in output:
-                #lat_cov,_ = ledoit_wolf(np.dot(data,spatial))
-                lat_cov,_ = ledoit_wolf(np.dot(data,spatial))
-                self.lat_prec = np.linalg.inv(lat_cov)
-                self.patterns = np.dot(self.patterns,self.lat_prec)
-            self.out_weights = self.fin_fc.w.eval({self.handle:self.validation_handle},session=self.sess)
-            self.out_biases = self.fin_fc.b.eval(session=self.sess)
-            self.out_weights = np.reshape(self.out_weights,[self.params['n_ls'],-1,self.h_params['n_classes']])
-        else:
-            print('Parameter interpretation only available for LF-CNN!')
+        if 'patterns' in output:
+            if isinstance(self.val_dataset,tf.data.Dataset):
+                data = self.sess.run(self.X,feed_dict={self.handle:self.validation_handle})
+            elif megdata:
+                data = megdata.train.meg_data
+            
+            data = data.transpose([0,2,1])
+            data= data.reshape([-1,data.shape[-1]])
+            self.dcov,_ = ledoit_wolf(data)
+            self.patterns = np.dot(self.dcov,self.patterns)
+        if 'full' in output:
+            #lat_cov,_ = ledoit_wolf(np.dot(data,spatial))
+            lat_cov,_ = ledoit_wolf(np.dot(data,spatial))
+            self.lat_prec = np.linalg.inv(lat_cov)
+            self.patterns = np.dot(self.patterns,self.lat_prec)
+        self.out_weights = self.fin_fc.w.eval({self.handle:self.validation_handle},session=self.sess)
+        self.out_biases = self.fin_fc.b.eval(session=self.sess)
+        self.out_weights = np.reshape(self.out_weights,[self.params['n_ls'],-1,self.h_params['n_classes']])
+    
     
     def plot_patterns(self,sensor_layout='Vectorview-grad',sorting='l2',spectra=True,fs=None,scale=False):
         from mne import channels, evoked, create_info
@@ -322,10 +320,6 @@ class LFCNN(Model):
         order = np.array(order)
         
         if spectra:
-            if not fs:
-                print('Specify sampling frequency (fs)!')
-                return
-            else:
                 z = 2            
         else: 
             z = 1
@@ -338,7 +332,7 @@ class LFCNN(Model):
             if spectra:
                 for jj,flt in enumerate(self.out_filters[:,i*ncols:(i+1)*ncols].T):
                     w, h = freqz(flt,1)
-                    ax[z*i+1, jj].plot(w/np.pi*fs/2, np.abs(h)) 
+                    ax[z*i+1, jj].plot(w/np.pi*self.h_params['fs']/2, np.abs(h)) 
                     #ax[z*i+1, jj].set_ylim(0,1.5)
             self.fake_evoked.plot_topomap(times=np.arange(i*ncols,  (i+1)*ncols, 1.), 
                                      axes=ax[z*i], colorbar=False, #vmin=0, 
@@ -346,13 +340,14 @@ class LFCNN(Model):
                                      scalings=1,
                                      time_format='')
                            
-                    
+        #f.show()
         #f.tight_layout()
         return f
 
 
 class VARCNN(Model):
     def _build_graph(self):
+        self.h_params['architecture'] = 'var-cnn'
         self.conv = ConvLayer(n_ls=self.params['n_ls'], 
                          filter_length=self.params['filter_length'],
                          pool=self.params['pooling'], 
@@ -367,6 +362,7 @@ class VARCNN(Model):
             
 class VGG19(Model):
     def _build_graph(self):
+        self.h_params['architecture'] = 'vgg19'
         X1 = tf.expand_dims(self.X,-1)
         inch = 1
         if X1.shape[1]==306:
@@ -407,6 +403,7 @@ class VGG19(Model):
             
 class EEGNet(Model):
     def _build_graph(self):
+        self.h_params['architecture'] = 'eegnet'
         X1 = tf.expand_dims(self.X,-1)                    
         vc1 = ConvDSV(n_ls=8, nonlin_out=tf.identity, inch=1,
                       filter_length=32, domain='time', stride=1, 

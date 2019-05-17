@@ -13,7 +13,20 @@ import numpy as np
 import csv
 import tensorflow as tf
 import scipy.io as sio
+import pickle
 
+def load_meta(fname):
+    with open(fname+'meta.pkl','wb') as f:
+        meta = pickle.load(f)
+    return meta
+    
+    
+    
+        
+
+        
+        
+        
 
 def leave_one_subj_out(h_params,params,data_paths,savepath):
     
@@ -71,7 +84,7 @@ def logger(savepath,h_params, params, results):
     for a in log:
         if hasattr(log[a], '__call__'):
             log[a] = log[a].__name__
-    header = ['architecture','sid','val_acc','test_init', 'test_upd', #'train_time',
+    header = ['architecture','data_id','val_acc','test_init', 'test_upd', #'train_time',
               'n_epochs','eval_step','n_batch','n_classes','n_ch','n_t',
               'l1_lambda','n_ls','learn_rate','dropout','patience','min_delta',
               'nonlin_in','nonlin_hid','nonlin_out','filter_length','pooling',
@@ -106,10 +119,11 @@ def sliding_augmentation(x, labels,segment_len=500,stride=1,scale=False,demean=F
 #    X = X[:,:,intrvl:]
 #    return X
     
-def scale_to_baseline(X,baseline=None):
+def scale_to_baseline(X,baseline=None,crop_baseline=False):
     """Perform scaling based on pre-stimulus baseline"""
     if baseline == None:
         interval = np.arange(X.shape[-1])        
+        crop_baseline = False
     elif isinstance(baseline,int):
         interval = np.arange(baseline)
     elif isinstance(baseline,tuple):
@@ -129,6 +143,8 @@ def scale_to_baseline(X,baseline=None):
         X0 = X0.reshape([X.shape[0],-1])
         X -= X0.mean(-1)[:,None,None]
         X /= X0.std(-1)[:,None,None]
+    if crop_baseline:
+            X = X[...,interval[-1]:]
     return X
        
 def write_tfrecords(X_,y_,output_file):
@@ -218,7 +234,8 @@ def produce_tfrecords(inputs,savepath='', out_name='test',
            task='classification',
            input_type='array', picks={'meg':'mag'}, 
            array_keys={'X':'fb_data', 'y':'y_fb'}, scale_interval=36,
-           savebatch=4, scale=True, save_orig=True,val_size=0.1):
+           savebatch=4, scale=True, save_orig=True,val_size=0.1,
+           crop_baseline=False, decimate=False, bp_filter=False, fs=None):
     """Produces TFRecord files from input, applies basic preprocessing (optional)
 
     Parameters
@@ -231,20 +248,26 @@ def produce_tfrecords(inputs,savepath='', out_name='test',
     Returns
     -------    
     """
-    meta  = dict(train_paths=[],val_paths=[],orig_paths=[])
+    meta  = dict(train_paths=[],val_paths=[],orig_paths=[],data_id=out_name)
     jj = 0
     i = 0
     if not isinstance(inputs,list):
         inputs = [inputs]
     #Import data and labels
     for inp in inputs:
-        if isinstance(inp,mne.epochs.Epochs):
+        if isinstance(inp,mne.epochs.BaseEpochs):
             print('processing epochs')
+            inp.load_data()
+            if picks:
+                inp.pick_types(**picks)
             data = inp.get_data()
             events = inp.events[:,2]
+            fs = inp.info['sfreq']
         elif isinstance(inp,str):
             fname = inp#''.join([opt.path,inp])#"filename mess, 1 raw, 2.epochs, 3.array"""
             if input_type == 'array':
+                if not fs:
+                    print('Specify sampling frequency')
                 if fname[-3:] == 'mat':
                     datafile = sio.loadmat(fname)
                     
@@ -258,29 +281,41 @@ def produce_tfrecords(inputs,savepath='', out_name='test',
                 #raw_y = datafile[opt['array_keys']['y']]            
             
             elif input_type== 'epochs':
-                epochs = mne.epochs.read_epochs(fname)
+                epochs = mne.epochs.read_epochs(fname,preload=True)
                 events = epochs.events[:,2]
-                epochs.pick_types(**picks)
+                fs = inp.info['sfreq']
+                if picks:
+                    epochs = epochs.pick_types(**picks)
                 data = epochs.get_data()
                 #events = events[:,2]
                 del epochs
         #IMPORT ENDS HERE!                
-                
+        meta['fs'] = fs        
         #for all Xs and ys regardless of input type
-        
+        if bp_filter:
+            data = mne.filter.filter_data(data, fs, l_freq=bp_filter[0], 
+                                h_freq=bp_filter[1],  method='iir',verbose=False)                
         if scale:
-            data = scale_to_baseline(data,scale_interval)
+            data = scale_to_baseline(data,scale_interval,crop_baseline)
             
+        if decimate:
+            data = data[...,::decimate]
+            meta['fs'] /=decimate
+        
+
         #if opt['augment']:
             #print('Not Implemented')
             #data, events = sliding_augmentation(data,events,seg_len=500,stride=7,scale=False,demean=False)
-        
+        if len(np.unique(events))==1:
+            print('Events in a single input cannot contain only one class!')
+            break
         if task=='classification':
             labels, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
             meta['n_classes'] = len(meta['class_proportions'])
         elif task=='regression':
             print('Not Implemented')
             #assert y.shape[0]==data.shape[0]
+        
         i +=1
         if i == 1:
             X = data
@@ -307,4 +342,6 @@ def produce_tfrecords(inputs,savepath='', out_name='test',
             jj+=1
             i =0
             del X, y
+        with open(savepath+'meta.pkl','wb') as f:
+            pickle.dump(meta,f)
     return meta
