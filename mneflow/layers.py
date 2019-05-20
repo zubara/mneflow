@@ -74,16 +74,16 @@ class ConvLayer():
                                                             name='de-mix') + self.b_in)
                     if 'var' in self.conv_type:
                         conv_ = self.nonlin_out(conv1d(x_reduced, self.filters, 
-                                                       stride=self.stride) + self.b)
+                                                       stride=1) + self.b)
                         conv_ = tf.expand_dims(conv_, -1)
                     elif 'lf' in self.conv_type:
                         x_reduced = tf.expand_dims(x_reduced, -2)
                         conv_ = self.nonlin_out(tf.nn.depthwise_conv2d(x_reduced, 
-                                                self.filters, strides=[1,self.stride,1,1],
+                                                self.filters, strides=[1,1,1,1],
                                                 padding='SAME') + self.b)
                         conv_ = tf.transpose(conv_,perm=[0,1,3,2])
                     conv_ = max_pool(conv_,ksize=[1,self.pool,1,1],
-                                     strides=[1,self.filter_length//3,1,1])#
+                                     strides=[1,self.stride,1,1])#
                     return tf.transpose(conv_[...,0],perm=[0,2,1], name='out')
                 except(AttributeError):
                     self.W = weight_variable((x.get_shape()[1].value, self.size),
