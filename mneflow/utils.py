@@ -16,20 +16,19 @@ import scipy.io as sio
 import pickle
 
 def load_meta(fname):
+    
+    """Loads a metadata file
+    Parameters
+    ----------
+    
+    fname : path to TFRecord folder
+    """
     with open(fname+'meta.pkl','rb') as f:
         meta = pickle.load(f)
     return meta
     
-    
-    
-        
-
-        
-        
-        
-
 def leave_one_subj_out(h_params,params,data_paths,savepath):
-    
+    """Performs a leave-one-subject out cross-validation"""
     #TODO: update to use meta/TFRdataset
     results = []
     from models import Model
@@ -46,6 +45,7 @@ def leave_one_subj_out(h_params,params,data_paths,savepath):
     
 
 def plot_cm(y_true,y_pred,classes=None, normalize=False,):
+    """ Plots a confusion matrix"""
     #TODO: remove sklearn dependency maybe
     from matplotlib import pyplot as plt
     from sklearn.metrics import confusion_matrix
@@ -75,8 +75,8 @@ def plot_cm(y_true,y_pred,classes=None, normalize=False,):
 
     
 def logger(savepath,h_params, params, results):
-    #TODO: update logger for use meta
     """Log model perfromance"""
+    #TODO: update logger for use meta
     log = dict()
     log.update(h_params)
     log.update(params)
@@ -94,7 +94,7 @@ def logger(savepath,h_params, params, results):
         writer.writerow(log)
 
 def sliding_augmentation(x, labels,segment_len=500,stride=1,scale=False,demean=False):
-    """Return and image of x split in overlapping time segments"""
+    """Return an image of x split in overlapping time segments"""
     n_epochs, n_ch, n_t = x.shape
     nrows = n_t - segment_len + 1            
     a,b,c = x.strides
@@ -109,16 +109,7 @@ def sliding_augmentation(x, labels,segment_len=500,stride=1,scale=False,demean=F
     if scale:
         x4D /=x4D.reshape([x4D.shape[0],-1]).std(-1)[:,None,None]
     return x4D, labels
-    
-#def scale_type(X,intrvl=36):
-#    """Perform scaling based on pre-stimulus baseline"""
-#    X0 = X[:,:,:intrvl]
-#    X0 = X0.reshape([X.shape[0],-1])
-#    X -= X0.mean(-1)[:,None,None]
-#    X /= X0.std(-1)[:,None,None]
-#    X = X[:,:,intrvl:]
-#    return X
-    
+       
 def scale_to_baseline(X,baseline=None,crop_baseline=False):
     """Perform scaling based on pre-stimulus baseline"""
     if baseline == None:
@@ -190,10 +181,7 @@ def split_sets(X,y,val=.1):
         Name of the TFRecords file.
     Returns
     -------
-    X_train : ndarray
-    y_train : ndarray
-    X_val : ndarray
-    y_val : ndarray
+    X_train, y_train, X_val, y_val : ndarray
     """
     shuffle= np.random.permutation(X.shape[0])
     val_size = int(round(val*X.shape[0]))
@@ -230,25 +218,120 @@ def produce_labels(y):
     return  inv, total_counts, class_proportions, orig_classes
 
     
-def produce_tfrecords(inputs,savepath='', out_name='test', 
-           task='classification',
-           input_type='array', picks={'meg':'mag'}, 
-           array_keys={'X':'fb_data', 'y':'y_fb'}, scale_interval=36,
-           savebatch=4, scale=True, save_orig=True,val_size=0.1,
-           crop_baseline=False, decimate=False, bp_filter=False, fs=None):
-    """Produces TFRecord files from input, applies basic preprocessing (optional)
-
+def produce_tfrecords(inputs, input_type, savepath, out_name, 
+                      savebatch=1,  save_origs=False, val_size=0.2, fs=None,
+                      scale=False, scale_interval=None, crop_baseline=True, 
+                      decimate=False, bp_filter=False, picks=None,
+                      task='classification', array_keys={'X':'X', 'y':'y'}):
+    """Produces TFRecord files from input, applies (optional) preprocessing
+    
+    Calling this function will covnert the input data into TFRecords format
+    that is used to effiently store and run Tensorflow models on the data. 
+    
+    
     Parameters
     ----------
-    inputs : list 
-        list of mne.epochs.Epochs or lsit of strings with filenames.
-    opt : dict
-        prerpocessing options.
+    inputs : list, mne.epochs.Epochs, str
+        list of mne.epochs.Epochs or strings with filenames. If input is a 
+        single string or Epochs object it is firts converted into a list. 
+    
+    input_type : str {'epochs','array'}.
+    
+    savepath : str
+        a path where the output TFRecord and corresponding metadata 
+        files will be stored.
+        
+    out_name :str
+            filename prefix for the output files
+    
+    savebatch : int
+        number of input files per to be stored in the output TFRecord file. 
+        Deafults to 1.
+    
+    save_origs : bool, optinal
+        If True, also saves the whole dataset in original order, e.g. for leave-
+        one-subject-out cross-validation. Defaults to False.
+        
+    val_size : float [0,1), optional
+        Proportion of the data to use as a validation set. Only used if
+        shuffle_split = True. Defaults to 0.2
+        
+    fs : float, int, optional
+        Sampling frequency, required only if input_type is 'array'
+    
+    scale : bool, optinal 
+        whether to perform scaling to baseline. Defaults to False
+            
+    scale_interval : NoneType, tuple of ints or floats,  optinal
+        baseline definition. If None (default) scaling is perfromed based on 
+        all timepoints of the epoch. If int, than baseline is defined as 
+        data[epoch_start : scale_interval], if tuple, than baseline is
+        data[tuple[0] : tuple[1]]. Only used if scale = True
+        #float for ecpohs?
+        
+    crop_baseline : bool, optinal
+        whether to crop baseline after scaling (defaults to True).
+        
+    decimate : bool, int, optional
+        whether to decimate the input data (defaults to False).
+            
+    bp_filter : bool, tuple, optinal
+        band pass filter
+        
+        
+    picks : dict, optional
+        Picks in mne.pick_types format. See mne.pick_types for for info. 
+        Can only be used if input_type = 'epochs'
+    
+    task : 'classification', optional
+        So far the only available task
+        
+    array_keys : dict, optional
+        Dictionary mapping {'X':'my_data_samples','y':'my_labels'}, 
+        where 'my_data_samples' and 'my_labels' are names of the corresponding
+        variables if your input_type='array'. Defaults to {'X':'X', 'y':'y'}
+    
         
     Returns
-    -------    
+    -------
+    meta : dict 
+        metadata associated with the processed dataset. Contains all the
+        information about the dataset required for further processing with 
+        mneflow. 
+        Whenever the function is called the copy of metadata is also saved to 
+        savepath/meta.pkl so it can be restored at any time
+        
+        
+        
+    Notes
+    -----
+    Pre-processing functions are implemented mostly for for convenience when
+    working with input_type='array'.  When working with mne.epochs the use of 
+    the corresponding mne functions is preferrable.
+    
+    Examples
+    --------
+    1.Using mne.epochs 
+    import_opts = dict(savepath='path_to_output/', out_name='mne_epochs_example', 
+                      input_type='epochs', picks={'meg':'grad'},scale=True, 
+                      crop_baseline=True, scale_interval=78,savebatch=1)
+
+    meta = mneflow.produce_tfrecords(my_epochs,**import_opts)   
+    
+    2.Using *.mat files
+    input_paths = ['matlab_output_1.mat,'matlab_output_2.mat,'matlab_output_3.mat]
+    import_opts = dict(savepath='path_to_output/', out_name='matlab_example', 
+                      input_type='array', scale=True, 
+                      crop_baseline=True, scale_interval=(0,36),savebatch=8,
+                      fs=500., bp_filter=(0.1,45.), decimate=4,val_size=.15,
+                      array_keys={'X':'meg_data', 'y':'condition_labels'},
+                      savebatch=2)
+    
+    meta = mneflow.produce_tfrecords(input_paths,**import_opts)
+    
     """
-    meta  = dict(train_paths=[],val_paths=[],orig_paths=[],data_id=out_name)
+    meta  = dict(train_paths=[],val_paths=[],orig_paths=[],data_id=out_name,
+                 val_size=0)
     jj = 0
     i = 0
     if not isinstance(inputs,list):
@@ -331,12 +414,12 @@ def produce_tfrecords(inputs,savepath='', out_name='test',
             X = X.astype(np.float32)
             n_trials, meta['n_ch'],meta['n_t'] = X.shape          
             X_train, y_train, X_val, y_val = split_sets(X,y,val=val_size)
-            
+            meta['val_size'] += len(y_val)
             meta['train_paths'].append(''.join([savepath,out_name,'_train_',str(jj),'.tfrecord']))
             write_tfrecords(X_train,y_train,meta['train_paths'][-1])
             meta['val_paths'].append(''.join([savepath,out_name,'_val_',str(jj),'.tfrecord']))
             write_tfrecords(X_val,y_val,meta['val_paths'][-1])
-            if save_orig:
+            if save_origs:
                 meta['orig_paths'].append(''.join([savepath,out_name,'_orig_',str(jj),'.tfrecord']))
                 write_tfrecords(X,y,meta['orig_paths'][-1])
             jj+=1
