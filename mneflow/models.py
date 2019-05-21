@@ -46,7 +46,8 @@ class Model(object):
         self.val_dataset = self.val_dataset.map(self.unpack)#.repeat()
         # Generate batches
         self.train_dataset = self.train_dataset.batch(self.params['n_batch'])#.repeat()
-        self.val_dataset = self.val_dataset.batch(self.h_params['val_size']).repeat()
+        val_size = self.get_n_samples(self.h_params['val_paths'])
+        self.val_dataset = self.val_dataset.batch(val_size).repeat()
         #create iterators
         self.handle = tf.placeholder(tf.string, shape=[])
         self.iterator = tf.data.Iterator.from_string_handle(self.handle, self.train_dataset.output_types, self.train_dataset.output_shapes)
@@ -58,7 +59,15 @@ class Model(object):
         self.sess.run(self.val_iter.initializer)
         self.X, self.y_ = self.iterator.get_next()
         
-        
+    def get_n_samples(self,path):
+#        if not isinstance(path,list):
+#            path = [path]
+        ns = 0
+        for fn in path:
+          for record in tf.python_io.tf_record_iterator(fn):
+             ns += 1
+        return ns
+        #print('val_size:',val_size)
     def init_model(self):
         """Initialize computational graph"""
         self.y_pred = self._build_graph()
@@ -179,11 +188,11 @@ class Model(object):
         self.v_acc = self.sess.run([self.accuracy],feed_dict={self.handle: self.validation_handle})
             
                 
-    def evaluate_performance(self, data_path, batch_size=120):
+    def evaluate_performance(self, data_path, batch_size=None):
         """Compute intial test accuracy"""
         test_dataset  = tf.data.TFRecordDataset(data_path).map(self._parse_function)  
-        if batch_size:
-            test_dataset = test_dataset.batch(batch_size)
+        batch_size = self.get_n_samples([data_path])
+        test_dataset = test_dataset.batch(batch_size)
         #else:
             #test_dataset = test_dataset.batch(batch_size)
             
@@ -198,9 +207,9 @@ class Model(object):
                 print('Finished: acc: %g +\- %g' % (np.mean(acc), np.std(acc)))
                 break
                     
-        return acc
+        return np.mean(acc)
              
-    def evaluate_realtime(self,data_path, batch_size=120, step_size=1):
+    def evaluate_realtime(self,data_path, batch_size=None, step_size=1):
         """Compute test accuracy batch by batch with incremental updates"""
         prt_batch_pred = []
         prt_logits = []
@@ -262,7 +271,7 @@ class LFCNN(Model):
                         }
     References:
     -----------
-        [1] Zubarev I, et al., Adaptive neural network classifier for decoding 
+        [1] I. Zubarev, et al., Adaptive neural network classifier for decoding 
         MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
     def __init__(self,h_params, params, model_path, lf_params):
@@ -442,7 +451,7 @@ class VARCNN(Model):
                         }
     References:
     -----------
-        [1] Zubarev I, et al., Adaptive neural network classifier for decoding 
+        [1]  I. Zubarev, et al., Adaptive neural network classifier for decoding 
         MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
     

@@ -14,6 +14,7 @@ import csv
 import tensorflow as tf
 import scipy.io as sio
 import pickle
+from operator import itemgetter
 
 def load_meta(fname):
     
@@ -27,20 +28,40 @@ def load_meta(fname):
         meta = pickle.load(f)
     return meta
     
-def leave_one_subj_out(h_params,params,data_paths,savepath):
+def leave_one_subj_out(meta, params, specs, model_path, model):
     """Performs a leave-one-subject out cross-validation"""
     #TODO: update to use meta/TFRdataset
     results = []
-    from models import Model
-    for i, (t,v) in enumerate(zip(*data_paths)):
-        dp = data_paths.copy()
-        holdout = [dp[0].pop(i)]
-        model = Model(h_params,params,data_paths,savepath)
-        model.train_tfr()
-        test_accs = model.evaluate_performance(holdout, batch_size=None)
-        prt_test_acc, prt_logits = model.evaluate_realtime(holdout, batch_size=120, step_size=params['test_upd_batch'])
-        results.append({'val_acc':model.v_acc[0], 'test_init':np.mean(test_accs), 'test_upd':np.mean(prt_test_acc), 'sid':h_params['sid']})
-        logger(savepath,h_params,params,results[-1])
+    
+    assert len(meta['train_paths'])==len(meta['val_paths'])
+    assert len(meta['train_paths'])==len(meta['orig_paths'])
+    #n_subj = len(meta['train_paths'])
+    
+    for i, path in enumerate(meta['orig_paths']):
+        meta_loso = meta.copy()
+        train_fold = [i for i,_ in enumerate(meta['train_paths'])]
+        train_fold.remove(i)
+        
+        #assert len(meta['train_paths'])==len(meta['orig_paths'])
+    
+        meta_loso['train_paths'] = itemgetter(*train_fold)(meta['train_paths'])
+        meta_loso['val_paths']  = itemgetter(*train_fold)(meta['val_paths'])
+        assert len(meta['train_paths'])==len(meta['val_paths'])
+        assert len(meta_loso['train_paths'])!=len(meta_loso['orig_paths'])
+        
+        print('holdout subj:', path[-10:-9])#holdout = path
+        #print('meta:',len(meta['train_paths']),len(meta['orig_paths']))
+        #print('meta_loso:',len(meta_loso['train_paths']),len(meta_loso['orig_paths']))
+        
+        m = model(meta_loso,params,model_path,specs)
+        m.build()
+        m.train()
+        test_acc = m.evaluate_performance(path, batch_size=None)
+        print(i,':', 'test_acc:', test_acc)
+        #prt_test_acc, prt_logits = model.evaluate_realtime(path, step_size=params['test_upd_batch'])
+        results.append({'val_acc':m.v_acc, 'test_init':test_acc})#, 'test_upd':np.mean(prt_test_acc), 'sid':h_params['sid']})
+        #logger(savepath,h_params,params,results[-1])
+        
     return results  
     
 
