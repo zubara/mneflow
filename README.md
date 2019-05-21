@@ -2,7 +2,7 @@
 Tensorflow models for EEG-MEG with MNE python
 
 # Documentation
-Full documentation is coming, in a meanwhile check out the [example](https://nbviewer.jupyter.org/github/zubara/mneflow/blob/master/examples/mneflow_example.ipynb) notebook
+Full documentation is coming, in a meanwhile check out the [example](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example.ipynb) notebook
 
 # References 
 When using the implemented models please cite: 
