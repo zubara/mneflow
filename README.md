@@ -1,5 +1,5 @@
 # MNEflow
-Tensorflow models for EEG-MEG with MNE python
+Neural networks for EEG-MEG decoding with MNE-python and Tensorflow.
 
 # Documentation
 Full documentation is coming, in a meanwhile check out the [example](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example.ipynb) notebook
