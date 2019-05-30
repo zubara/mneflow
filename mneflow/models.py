@@ -143,46 +143,8 @@ class Model(object):
         correct_prediction = tf.equal(tf.argmax(self.y_pred, 1), self.y_)
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32),name='accuracy')
         return train_step, accuracy, cost, p_classes
-    
-    def train(self):       
-        """Trains the model"""
-        ii=0
-        min_val_loss =  np.inf
-        patience_cnt = 0
-        self.sess.run(tf.global_variables_initializer())
-        for i in range(self.params['n_epochs']):
-            self.sess.run([self.train_iter.initializer,self.val_iter.initializer])
-            self.train_dataset.shuffle(buffer_size=10000)
-            while True:
                 
-                try:
-                    
-                    _, t_loss,acc = self.sess.run([self.train_step,self.cost,self.accuracy],feed_dict={self.handle: self.training_handle, self.rate:self.params['dropout']})
-                    ii+=1
-                except tf.errors.OutOfRangeError:
-                    break            
-            
-            if i %self.params['eval_step']==0:
-                self.v_acc, v_loss = self.sess.run([self.accuracy,self.cost],feed_dict={self.handle: self.validation_handle, self.rate:1})
-                
-                if min_val_loss >= v_loss + self.params['min_delta']:
-                    min_val_loss = v_loss
-                    v_acc = self.v_acc
-                    self.saver.save(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))
-                    print('epoch %d, train_loss %g, train acc %g val loss %g, val acc %g' % (i, t_loss,acc, v_loss, self.v_acc))
-                else:
-                    patience_cnt +=1
-                    print('* Patience count {}'.format(patience_cnt))
-                    print('epoch %d, train_loss %g, train acc %g val loss %g, val acc %g' % (i, t_loss,acc, v_loss, self.v_acc))
-                if patience_cnt >= self.params['patience']:
-                    print("early stopping...")
-                    #restore the best model
-                    self.saver.restore(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))                
-                    #self.v_acc, v_loss = self.sess.run([self.accuracy,self.cost],feed_dict={self.handle: self.validation_handle})
-                    print('stopped at: epoch %d, val loss %g, val acc %g' % (i,  min_val_loss, v_acc))
-                    break
-                
-    def train2(self):
+    def train(self):
         self.sess.run(tf.global_variables_initializer())
         self.sess.run([self.train_iter.initializer,self.val_iter.initializer])
         min_val_loss =  np.inf
@@ -209,6 +171,47 @@ class Model(object):
                     print('stopped at: epoch %d, val loss %g, val acc %g' % (i,  min_val_loss, v_acc))
                     break
                 print('iter %d, train_loss %g, train acc %g val loss %g, val acc %g' % (i, t_loss,acc, v_loss, self.v_acc))
+    
+    #    def train_epochs(self):       
+#        """Trains the model"""
+#        ii=0
+#        min_val_loss =  np.inf
+#        patience_cnt = 0
+#        self.sess.run(tf.global_variables_initializer())
+#        for i in range(self.params['n_epochs']):
+#            self.sess.run([self.train_iter.initializer,self.val_iter.initializer])
+#            self.train_dataset.shuffle(buffer_size=10000)
+#            while True:
+#                
+#                try:
+#                    
+#                    _, t_loss,acc = self.sess.run([self.train_step,self.cost,self.accuracy],feed_dict={self.handle: self.training_handle, self.rate:self.params['dropout']})
+#                    ii+=1
+#                except tf.errors.OutOfRangeError:
+#                    break            
+#            
+#            if i %self.params['eval_step']==0:
+#                self.v_acc, v_loss = self.sess.run([self.accuracy,self.cost],feed_dict={self.handle: self.validation_handle, self.rate:1})
+#                
+#                if min_val_loss >= v_loss + self.params['min_delta']:
+#                    min_val_loss = v_loss
+#                    v_acc = self.v_acc
+#                    self.saver.save(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))
+#                    print('epoch %d, train_loss %g, train acc %g val loss %g, val acc %g' % (i, t_loss,acc, v_loss, self.v_acc))
+#                else:
+#                    patience_cnt +=1
+#                    print('* Patience count {}'.format(patience_cnt))
+#                    print('epoch %d, train_loss %g, train acc %g val loss %g, val acc %g' % (i, t_loss,acc, v_loss, self.v_acc))
+#                if patience_cnt >= self.params['patience']:
+#                    print("early stopping...")
+#                    #restore the best model
+#                    self.saver.restore(self.sess, ''.join([self.model_path,self.h_params['architecture'],'-',self.h_params['data_id']]))                
+#                    #self.v_acc, v_loss = self.sess.run([self.accuracy,self.cost],feed_dict={self.handle: self.validation_handle})
+#                    print('stopped at: epoch %d, val loss %g, val acc %g' % (i,  min_val_loss, v_acc))
+#                    break
+    
+    
+    
     def load(self):
         """Loads a pretrained model. 
         
@@ -342,13 +345,14 @@ class LFCNN(Model):
         plt.show()
     
     def compute_patterns(self, megdata=None,output='patterns'):
-        spatial = self.conv.W.eval(session=self.sess)
-        self.filters = np.squeeze(self.conv.filters.eval(session=self.sess))
+        vis_dict = {self.handle:self.validation_handle, self.rate:1}
+        spatial = self.sess.run(self.conv.W,feed_dict=vis_dict)
+        self.filters = np.squeeze(self.sess.run(self.conv.filters,feed_dict=vis_dict))
         self.patterns = spatial
 
         if 'patterns' in output:
             if isinstance(self.val_dataset,tf.data.Dataset):
-                data = self.sess.run(self.X,feed_dict={self.handle:self.validation_handle})
+                data = self.sess.run(self.X,feed_dict={self.handle:self.validation_handle,self.rate:1.})
             elif megdata:
                 data = megdata.train.meg_data
             
@@ -361,8 +365,7 @@ class LFCNN(Model):
             lat_cov,_ = ledoit_wolf(np.dot(data,spatial))
             self.lat_prec = np.linalg.inv(lat_cov)
             self.patterns = np.dot(self.patterns,self.lat_prec)
-        self.out_weights = self.fin_fc.w.eval({self.handle:self.validation_handle},session=self.sess)
-        self.out_biases = self.fin_fc.b.eval(session=self.sess)
+        self.out_weights, self.out_biases = self.sess.run([self.fin_fc.w, self.fin_fc.b],feed_dict=vis_dict)
         self.out_weights = np.reshape(self.out_weights,[self.specs['n_ls'],-1,self.h_params['n_classes']])
     
     
@@ -444,6 +447,7 @@ class LFCNN(Model):
         ncols = min(nfilt,len(order))
         #print('rows:',nrows, ' cols:', ncols)
         f, ax = plt.subplots(z*nrows, ncols,sharey=True)
+        f.set_size_inches([16,9])
         ax = np.atleast_2d(ax)
         for i in range(nrows):
             if spectra:
@@ -459,7 +463,7 @@ class LFCNN(Model):
                            
         #f.show()
         #f.tight_layout()
-        return f
+        return 
 
 
 class VARCNN(Model):

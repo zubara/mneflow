@@ -55,7 +55,7 @@ def leave_one_subj_out(meta, params, specs, model, pick_classes=None):
         
         m = model(meta_loso,params,specs)
         m.build(pick_classes=pick_classes)
-        m.train2()
+        m.train()
         test_acc = m.evaluate_performance(path, batch_size=None)
         print(i,':', 'test_acc:', test_acc)
         #prt_test_acc, prt_logits = model.evaluate_realtime(path, step_size=params['test_upd_batch'])
@@ -431,7 +431,7 @@ def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
                 events, keep_ind = combine_labels(events,combine_events)
                 data = data[keep_ind,...]
                 events = events[keep_ind]
-            print('classes:',np.unique(events))
+            #print('classes:',np.unique(events))
             labels, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
             meta['n_classes'] = len(meta['class_proportions'])
             print('n_classes:',meta['n_classes'],':',np.unique(labels))
@@ -451,7 +451,7 @@ def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
         #
         
         if i%savebatch==0 or jj*savebatch+i==len(inputs):
-            print(X.shape)
+            print('data shape: ', X.shape)
             print('Saving TFRecord# {}'.format(jj))
             X = X.astype(np.float32)
             n_trials, meta['n_ch'],meta['n_t'] = X.shape          
