@@ -8,7 +8,7 @@ mne version = 0.15.2/ python2.7
 
 "pool: 102+101+3+4 (right), and 1+2+103+104(left)"
 
-import mne
+import os
 import numpy as np
 import csv
 import tensorflow as tf
@@ -28,7 +28,7 @@ def load_meta(fname):
         meta = pickle.load(f)
     return meta
     
-def leave_one_subj_out(meta, params, specs, model_path, model):
+def leave_one_subj_out(meta, params, specs, model, pick_classes=None):
     """Performs a leave-one-subject out cross-validation"""
     #TODO: update to use meta/TFRdataset
     results = []
@@ -53,9 +53,9 @@ def leave_one_subj_out(meta, params, specs, model_path, model):
         #print('meta:',len(meta['train_paths']),len(meta['orig_paths']))
         #print('meta_loso:',len(meta_loso['train_paths']),len(meta_loso['orig_paths']))
         
-        m = model(meta_loso,params,model_path,specs)
-        m.build()
-        m.train()
+        m = model(meta_loso,params,specs)
+        m.build(pick_classes=pick_classes)
+        m.train2()
         test_acc = m.evaluate_performance(path, batch_size=None)
         print(i,':', 'test_acc:', test_acc)
         #prt_test_acc, prt_logits = model.evaluate_realtime(path, step_size=params['test_upd_batch'])
@@ -155,7 +155,7 @@ def scale_to_baseline(X,baseline=None,crop_baseline=False):
         X0 = X0.reshape([X.shape[0],-1])
         X -= X0.mean(-1)[:,None,None]
         X /= X0.std(-1)[:,None,None]
-    if crop_baseline:
+    if baseline and crop_baseline:
             X = X[...,interval[-1]:]
     return X
        
@@ -239,11 +239,13 @@ def produce_labels(y):
     return  inv, total_counts, class_proportions, orig_classes
 
     
-def produce_tfrecords(inputs, input_type, savepath, out_name, 
+def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
                       savebatch=1,  save_origs=False, val_size=0.2, fs=None,
                       scale=False, scale_interval=None, crop_baseline=True, 
-                      decimate=False, bp_filter=False, picks=None,
+                      decimate=False, bp_filter=False, picks=None, combine_events=None,
                       task='classification', array_keys={'X':'X', 'y':'y'}):
+    
+
     """Produces TFRecord files from input, applies (optional) preprocessing
     
     Calling this function will covnert the input data into TFRecords format
@@ -351,6 +353,12 @@ def produce_tfrecords(inputs, input_type, savepath, out_name,
     meta = mneflow.produce_tfrecords(input_paths,**import_opts)
     
     """
+    if not os.path.exists(savepath):          
+        os.mkdir(savepath)
+        
+    #if input_type == 'epochs':
+    import mne
+        
     meta  = dict(train_paths=[],val_paths=[],orig_paths=[],data_id=out_name,
                  val_size=0)
     jj = 0
@@ -359,15 +367,7 @@ def produce_tfrecords(inputs, input_type, savepath, out_name,
         inputs = [inputs]
     #Import data and labels
     for inp in inputs:
-        if isinstance(inp,mne.epochs.BaseEpochs):
-            print('processing epochs')
-            inp.load_data()
-            if picks:
-                inp.pick_types(**picks)
-            data = inp.get_data()
-            events = inp.events[:,2]
-            fs = inp.info['sfreq']
-        elif isinstance(inp,str):
+        if isinstance(inp,str):
             fname = inp#''.join([opt.path,inp])#"filename mess, 1 raw, 2.epochs, 3.array"""
             if input_type == 'array':
                 if not fs:
@@ -382,6 +382,11 @@ def produce_tfrecords(inputs, input_type, savepath, out_name,
                     
                 data = datafile[array_keys['X']]
                 events = datafile[array_keys['y']]
+                if isinstance(picks,np.ndarray):
+                    data = data[:,picks,:]
+                elif picks:
+                    print('picks can only be np.array of indices for input_type=array')
+                    return
                 #raw_y = datafile[opt['array_keys']['y']]            
             
             elif input_type== 'epochs':
@@ -393,6 +398,14 @@ def produce_tfrecords(inputs, input_type, savepath, out_name,
                 data = epochs.get_data()
                 #events = events[:,2]
                 del epochs
+        elif isinstance(inp,mne.epochs.BaseEpochs):
+            print('processing epochs')
+            inp.load_data()
+            if picks:
+                inp.pick_types(**picks)
+            data = inp.get_data()
+            events = inp.events[:,2]
+            fs = inp.info['sfreq']
         #IMPORT ENDS HERE!                
         meta['fs'] = fs        
         #for all Xs and ys regardless of input type
@@ -414,8 +427,15 @@ def produce_tfrecords(inputs, input_type, savepath, out_name,
             print('Events in a single input cannot contain only one class!')
             break
         if task=='classification':
+            if combine_events:
+                events, keep_ind = combine_labels(events,combine_events)
+                data = data[keep_ind,...]
+                events = events[keep_ind]
+            print('classes:',np.unique(events))
             labels, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
             meta['n_classes'] = len(meta['class_proportions'])
+            print('n_classes:',meta['n_classes'],':',np.unique(labels))
+            #data,labels = reduce_dataset(data,labels)
         elif task=='regression':
             print('Not Implemented')
             #assert y.shape[0]==data.shape[0]
@@ -424,13 +444,14 @@ def produce_tfrecords(inputs, input_type, savepath, out_name,
         if i == 1:
             X = data
             y = labels
-            print('labels', labels.shape)
+            #print('labels', labels.shape)
         elif i > 1:
             X = np.concatenate([X,data])
             y = np.concatenate([y,labels])         
-        print(X.shape)
+        #
         
         if i%savebatch==0 or jj*savebatch+i==len(inputs):
+            print(X.shape)
             print('Saving TFRecord# {}'.format(jj))
             X = X.astype(np.float32)
             n_trials, meta['n_ch'],meta['n_t'] = X.shape          
@@ -449,3 +470,21 @@ def produce_tfrecords(inputs, input_type, savepath, out_name,
         with open(savepath+'meta.pkl','wb') as f:
             pickle.dump(meta,f)
     return meta
+
+def combine_labels(labels,new_mapping):
+    """Combines labels
+    
+    Parameters
+    ----------
+    labels : ndarray
+            label vector
+    combine_dict : dict
+            mapping {'new_label':[old_label1,old_label2]}
+    """
+    new_labels=404*np.ones(len(labels),int)
+    for old_label, new_label in new_mapping.items():
+        ind = np.where(labels==old_label)[0]
+        new_labels[ind]=new_label
+    keep_ind = np.where(new_labels!=404)[0]
+    return new_labels, keep_ind
+    

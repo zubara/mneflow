@@ -26,7 +26,7 @@ def vgg_block(n_layers, layer, kwargs):
 
 class Dense():
     """Fully-connected layer"""
-    def __init__(self, scope="dense", size=None, dropout=.5,
+    def __init__(self, scope="fc", size=None, dropout=.5,
                  nonlin=tf.identity):
         assert size, "Must specify layer size (num nodes)"
         self.scope = scope
@@ -47,7 +47,7 @@ class Dense():
                         self.flatsize = prod(x.shape[1:]).value
                     else:
                         self.flatsize = x.shape[1].value
-                    self.w = weight_variable((self.flatsize, self.size),name='desnse_')
+                    self.w = weight_variable((self.flatsize, self.size),name='sparse_')
                     self.b = bias_variable([self.size])
                     self.w = tf.nn.dropout(self.w, self.dropout)
                     print(self.scope,'_init')
@@ -79,15 +79,15 @@ class ConvLayer():
                     elif 'lf' in self.conv_type:
                         x_reduced = tf.expand_dims(x_reduced, -2)
                         conv_ = self.nonlin_out(tf.nn.depthwise_conv2d(x_reduced, 
-                                                self.filters, strides=[1,1,1,1],
-                                                padding='SAME') + self.b)
+                                                self.filters,padding='SAME', 
+                                                strides=[1,1,1,1]) + self.b)
                         conv_ = tf.transpose(conv_,perm=[0,1,3,2])
                     conv_ = max_pool(conv_,ksize=[1,self.pool,1,1],
                                      strides=[1,self.stride,1,1])#
                     return tf.transpose(conv_[...,0],perm=[0,2,1], name='out')
                 except(AttributeError):
                     self.W = weight_variable((x.get_shape()[1].value, self.size),
-                                             name='dense_')
+                                             name='sparse_')
                     #self.W = tf.nn.dropout(self.W, self.dropout)
                     self.b_in = bias_variable([self.size])
                     if self.conv_type == 'var':
@@ -97,8 +97,7 @@ class ConvLayer():
                         self.filters = weight_variable([self.filter_length,1,self.size,1],
                                                        name='dense_')
                     self.b = bias_variable([self.size])
-                    print(self.scope,'_init')
-                    
+                    print(self.scope,'_init')                    
                     
 def spatial_dropout(x, keep_prob, seed=1234):
     # x is a convnet activation with shape BxWxHxF where F is the 
