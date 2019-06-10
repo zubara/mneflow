@@ -15,6 +15,7 @@ import tensorflow as tf
 import scipy.io as sio
 import pickle
 from operator import itemgetter
+import mne        
 
 def load_meta(fname):
     
@@ -30,19 +31,16 @@ def load_meta(fname):
     
 def leave_one_subj_out(meta, params, specs, model, pick_classes=None):
     """Performs a leave-one-subject out cross-validation"""
-    #TODO: update to use meta/TFRdataset
     results = []
     
     assert len(meta['train_paths'])==len(meta['val_paths'])
     assert len(meta['train_paths'])==len(meta['orig_paths'])
-    #n_subj = len(meta['train_paths'])
     
     for i, path in enumerate(meta['orig_paths']):
         meta_loso = meta.copy()
         train_fold = [i for i,_ in enumerate(meta['train_paths'])]
         train_fold.remove(i)
         
-        #assert len(meta['train_paths'])==len(meta['orig_paths'])
     
         meta_loso['train_paths'] = itemgetter(*train_fold)(meta['train_paths'])
         meta_loso['val_paths']  = itemgetter(*train_fold)(meta['val_paths'])
@@ -50,8 +48,7 @@ def leave_one_subj_out(meta, params, specs, model, pick_classes=None):
         assert len(meta_loso['train_paths'])!=len(meta_loso['orig_paths'])
         
         print('holdout subj:', path[-10:-9])#holdout = path
-        #print('meta:',len(meta['train_paths']),len(meta['orig_paths']))
-        #print('meta_loso:',len(meta_loso['train_paths']),len(meta_loso['orig_paths']))
+        
         
         m = model(meta_loso,params,specs)
         m.build(pick_classes=pick_classes)
@@ -67,7 +64,7 @@ def leave_one_subj_out(meta, params, specs, model, pick_classes=None):
 
 def plot_cm(y_true,y_pred,classes=None, normalize=False,):
     """ Plots a confusion matrix"""
-    #TODO: remove sklearn dependency maybe
+    
     from matplotlib import pyplot as plt
     from sklearn.metrics import confusion_matrix
     import itertools
@@ -106,7 +103,7 @@ def logger(savepath,h_params, params, results):
         if hasattr(log[a], '__call__'):
             log[a] = log[a].__name__
     header = ['architecture','data_id','val_acc','test_init', 'test_upd', #'train_time',
-              'n_epochs','eval_step','n_batch','n_classes','n_ch','n_t',
+              'n_epochs','eval_step','n_batch','y_shape','n_ch','n_t',
               'l1_lambda','n_ls','learn_rate','dropout','patience','min_delta',
               'nonlin_in','nonlin_hid','nonlin_out','filter_length','pooling',
               'test_upd_batch', 'stride']
@@ -114,25 +111,11 @@ def logger(savepath,h_params, params, results):
         writer = csv.DictWriter(csv_file,fieldnames=header)
         writer.writerow(log)
 
-def sliding_augmentation(x, labels,segment_len=500,stride=1,scale=False,demean=False):
-    """Return an image of x split in overlapping time segments"""
-    n_epochs, n_ch, n_t = x.shape
-    nrows = n_t - segment_len + 1            
-    a,b,c = x.strides
-    x4D = np.lib.stride_tricks.as_strided(x,shape=(n_epochs,n_ch,nrows,segment_len),strides=(a,b,c,c))
-    x4D = x4D[:,:,::stride,:]
-    labels = np.tile(labels,x4D.shape[2])
-    x4D = np.moveaxis(x4D,[2],[0])
-    x4D = x4D.reshape([n_epochs*x4D.shape[0],n_ch,segment_len],order='C')
-    assert labels.shape[0] == x4D.shape[0]
-    if demean:
-        x4D -=x4D.mean(1,keepdims=True)
-    if scale:
-        x4D /=x4D.reshape([x4D.shape[0],-1]).std(-1)[:,None,None]
-    return x4D, labels
+
        
 def scale_to_baseline(X,baseline=None,crop_baseline=False):
-    """Perform scaling based on pre-stimulus baseline"""
+    """Perform scaling based on the specified baseline"""
+    
     if baseline == None:
         interval = np.arange(X.shape[-1])        
         crop_baseline = False
@@ -147,19 +130,19 @@ def scale_to_baseline(X,baseline=None,crop_baseline=False):
         X0m = X0[:,magind,:].reshape([X0.shape[0],-1])
         X0g = X0[:,gradind,:].reshape([X0.shape[0],-1])
         
-        X[:,magind,:] -= X0m.mean(-1)[...,None,None]
+        X[:,magind,:] -= X[:,magind,:].mean(-1)[...,None]
         X[:,magind,:] /= X0m.std(-1)[:,None,None]
-        X[:,gradind,:] -= X0g.mean(-1)[:,None,None]
+        X[:,gradind,:] -= X[:,gradind,:].mean(-1)[:,None]
         X[:,gradind,:] /= X0g.std(-1)[:,None,None]
     else:      
         X0 = X0.reshape([X.shape[0],-1])
-        X -= X0.mean(-1)[:,None,None]
+        X -= X.mean(-1)[...,None]
         X /= X0.std(-1)[:,None,None]
     if baseline and crop_baseline:
             X = X[...,interval[-1]:]
-    return X
+    return X         
        
-def write_tfrecords(X_,y_,output_file):
+def write_tfrecords(X_,y_,output_file,task='classification'):
     """Serialize and write datasets in TFRecords fromat
     
     Parameters
@@ -176,17 +159,22 @@ def write_tfrecords(X_,y_,output_file):
     """
     writer = tf.python_io.TFRecordWriter(output_file)
     for X,y in zip(X_,y_):
-         # Feature contains a map of string to feature proto objects
-         feature = {}
-         feature['X'] = tf.train.Feature(float_list=tf.train.FloatList(value=X.flatten()))
-         feature['y'] = tf.train.Feature(int64_list=tf.train.Int64List(value=y.flatten()))
-         # Construct the Example proto object
-         example = tf.train.Example(features=tf.train.Features(feature=feature))
-         # Serialize the example to a string
-         serialized = example.SerializeToString()
-         # write the serialized object to the disk
-         writer.write(serialized)
-    writer.close()
+        X = X.astype(np.float32)
+        # Feature contains a map of string to feature proto objects
+        feature = {}
+        feature['X'] = tf.train.Feature(float_list=tf.train.FloatList(value=X.flatten()))
+        if task == 'classification':
+            feature['y'] = tf.train.Feature(int64_list=tf.train.Int64List(value=y.flatten()))
+        elif task == 'ae':
+            y = y.astype(np.float32)
+            feature['y'] = tf.train.Feature(float_list=tf.train.FloatList(value=y.flatten()))
+        # Construct the Example proto object
+        example = tf.train.Example(features=tf.train.Features(feature=feature))
+        # Serialize the example to a string
+        serialized = example.SerializeToString()
+        # write the serialized object to the disk
+        writer.write(serialized)
+    writer.close() 
     
     
 def split_sets(X,y,val=.1):
@@ -238,7 +226,6 @@ def produce_labels(y):
     orig_classes = {new:old for new,old in zip(inv[inds],classes)}
     return  inv, total_counts, class_proportions, orig_classes
 
-    
 def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
                       savebatch=1,  save_origs=False, val_size=0.2, fs=None,
                       scale=False, scale_interval=None, crop_baseline=True, 
@@ -314,6 +301,9 @@ def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
         where 'my_data_samples' and 'my_labels' are names of the corresponding
         variables if your input_type='array'. Defaults to {'X':'X', 'y':'y'}
     
+    overwrite : bool, optional
+        Whether to overwrite the metafile if one already exists
+    
         
     Returns
     -------
@@ -338,7 +328,6 @@ def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
     import_opts = dict(savepath='path_to_output/', out_name='mne_epochs_example', 
                       input_type='epochs', picks={'meg':'grad'},scale=True, 
                       crop_baseline=True, scale_interval=78,savebatch=1)
-
     meta = mneflow.produce_tfrecords(my_epochs,**import_opts)   
     
     2.Using *.mat files
@@ -353,124 +342,122 @@ def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
     meta = mneflow.produce_tfrecords(input_paths,**import_opts)
     
     """
+    
     if not os.path.exists(savepath):          
         os.mkdir(savepath)
-        
-    #if input_type == 'epochs':
-    import mne
-        
-    meta  = dict(train_paths=[],val_paths=[],orig_paths=[],data_id=out_name,
-                 val_size=0)
-    jj = 0
-    i = 0
-    if not isinstance(inputs,list):
-        inputs = [inputs]
-    #Import data and labels
-    for inp in inputs:
-        if isinstance(inp,str):
-            fname = inp#''.join([opt.path,inp])#"filename mess, 1 raw, 2.epochs, 3.array"""
-            if input_type == 'array':
-                if not fs:
-                    print('Specify sampling frequency')
-                if fname[-3:] == 'mat':
-                    datafile = sio.loadmat(fname)
-                    
-                elif fname[-3:] == 'npz':
-                    datafile = np.load(fname)
-                else:
-                    print('Only accept .mat or .npz for array input_type')
-                    
-                data = datafile[array_keys['X']]
-                events = datafile[array_keys['y']]
-                if isinstance(picks,np.ndarray):
-                    data = data[:,picks,:]
-                elif picks:
-                    print('picks can only be np.array of indices for input_type=array')
-                    return
-                #raw_y = datafile[opt['array_keys']['y']]            
             
-            elif input_type== 'epochs':
-                epochs = mne.epochs.read_epochs(fname,preload=True)
-                events = epochs.events[:,2]
-                fs = inp.info['sfreq']
+    if os.path.exists(savepath+'meta.pkl') and not overwrite:
+        meta = load_meta(savepath)
+    else:
+    
+        meta  = dict(train_paths=[],val_paths=[],orig_paths=[],data_id=out_name,
+                     val_size=0,task=task)
+        jj = 0
+        i = 0
+        if not isinstance(inputs,list):
+            inputs = [inputs]
+        #Import data and labels
+        for inp in inputs:
+            if isinstance(inp,str):
+                fname = inp
+                if input_type == 'array':
+                    if not fs:
+                        print('Specify sampling frequency')
+                    if fname[-3:] == 'mat':
+                        datafile = sio.loadmat(fname)
+                        
+                    elif fname[-3:] == 'npz':
+                        datafile = np.load(fname)
+                    else:
+                        print('Only accept .mat or .npz for array input_type')
+                        
+                    data = datafile[array_keys['X']]
+                    events = datafile[array_keys['y']]
+                    if isinstance(picks,np.ndarray):
+                        data = data[:,picks,:]
+                    elif picks:
+                        print('picks can only be np.array of indices for input_type=array')
+                        return
+                    
+                
+                elif input_type== 'epochs':
+                    epochs = mne.epochs.read_epochs(fname,preload=True)
+                    events = epochs.events[:,2]
+                    fs = inp.info['sfreq']
+                    if picks:
+                        epochs = epochs.pick_types(**picks)
+                    data = epochs.get_data()
+                    #events = events[:,2]
+                    del epochs
+            elif isinstance(inp,mne.epochs.BaseEpochs):
+                print('processing epochs')
+                inp.load_data()
                 if picks:
-                    epochs = epochs.pick_types(**picks)
-                data = epochs.get_data()
-                #events = events[:,2]
-                del epochs
-        elif isinstance(inp,mne.epochs.BaseEpochs):
-            print('processing epochs')
-            inp.load_data()
-            if picks:
-                inp.pick_types(**picks)
-            data = inp.get_data()
-            events = inp.events[:,2]
-            fs = inp.info['sfreq']
-        #IMPORT ENDS HERE!                
-        meta['fs'] = fs        
-        #for all Xs and ys regardless of input type
-        if bp_filter:
-            data = mne.filter.filter_data(data, fs, l_freq=bp_filter[0], 
-                                h_freq=bp_filter[1],  method='iir',verbose=False)                
-        if scale:
-            data = scale_to_baseline(data,scale_interval,crop_baseline)
+                    inp.pick_types(**picks)
+                data = inp.get_data()
+                events = inp.events[:,2]
+                fs = inp.info['sfreq']
+            #IMPORT ENDS HERE!                
+            meta['fs'] = fs        
+            #for all Xs and ys regardless of input type
+            if bp_filter:
+                data = mne.filter.filter_data(data, fs, l_freq=bp_filter[0], 
+                                    h_freq=bp_filter[1],  method='iir',verbose=False)                
+            if scale:
+                data = scale_to_baseline(data,scale_interval,crop_baseline)
+                
+            if decimate:
+                data = data[...,::decimate]
+                meta['fs'] /=decimate
+        
+            if len(np.unique(events))==1:
+                print('Events in a single input cannot contain only one class!')
+                break
+            if task=='classification':
+                if combine_events:
+                    events, keep_ind = combine_labels(events,combine_events)
+                    data = data[keep_ind,...]
+                    events = events[keep_ind]
+                #print('classes:',np.unique(events))
+                labels, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
+                meta['n_classes'] = len(meta['class_proportions'])
+                print('n_classes:',meta['n_classes'],':',np.unique(labels))
+                #data,labels = reduce_dataset(data,labels)
+            elif task=='regression':
+                print('Not Implemented')
+                #assert y.shape[0]==data.shape[0]
             
-        if decimate:
-            data = data[...,::decimate]
-            meta['fs'] /=decimate
-        
-
-        #if opt['augment']:
-            #print('Not Implemented')
-            #data, events = sliding_augmentation(data,events,seg_len=500,stride=7,scale=False,demean=False)
-        if len(np.unique(events))==1:
-            print('Events in a single input cannot contain only one class!')
-            break
-        if task=='classification':
-            if combine_events:
-                events, keep_ind = combine_labels(events,combine_events)
-                data = data[keep_ind,...]
-                events = events[keep_ind]
-            #print('classes:',np.unique(events))
-            labels, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
-            meta['n_classes'] = len(meta['class_proportions'])
-            print('n_classes:',meta['n_classes'],':',np.unique(labels))
-            #data,labels = reduce_dataset(data,labels)
-        elif task=='regression':
-            print('Not Implemented')
-            #assert y.shape[0]==data.shape[0]
-        
-        i +=1
-        if i == 1:
-            X = data
-            y = labels
-            #print('labels', labels.shape)
-        elif i > 1:
-            X = np.concatenate([X,data])
-            y = np.concatenate([y,labels])         
-        #
-        
-        if i%savebatch==0 or jj*savebatch+i==len(inputs):
-            print('data shape: ', X.shape)
-            print('Saving TFRecord# {}'.format(jj))
-            X = X.astype(np.float32)
-            n_trials, meta['n_ch'],meta['n_t'] = X.shape          
-            X_train, y_train, X_val, y_val = split_sets(X,y,val=val_size)
-            meta['val_size'] += len(y_val)
-            meta['train_paths'].append(''.join([savepath,out_name,'_train_',str(jj),'.tfrecord']))
-            write_tfrecords(X_train,y_train,meta['train_paths'][-1])
-            meta['val_paths'].append(''.join([savepath,out_name,'_val_',str(jj),'.tfrecord']))
-            write_tfrecords(X_val,y_val,meta['val_paths'][-1])
-            if save_origs:
-                meta['orig_paths'].append(''.join([savepath,out_name,'_orig_',str(jj),'.tfrecord']))
-                write_tfrecords(X,y,meta['orig_paths'][-1])
-            jj+=1
-            i =0
-            del X, y
-        with open(savepath+'meta.pkl','wb') as f:
-            pickle.dump(meta,f)
+            i +=1
+            if i == 1:
+                X = data
+                y = labels
+                #print('labels', labels.shape)
+            elif i > 1:
+                X = np.concatenate([X,data])
+                y = np.concatenate([y,labels])         
+            #
+            
+            if i%savebatch==0 or jj*savebatch+i==len(inputs):
+                print('data shape: ', X.shape)
+                print('Saving TFRecord# {}'.format(jj))
+                X = X.astype(np.float32)
+                n_trials, meta['n_ch'],meta['n_t'] = X.shape          
+                X_train, y_train, X_val, y_val = split_sets(X,y,val=val_size)
+                meta['val_size'] += len(y_val)
+                meta['train_paths'].append(''.join([savepath,out_name,'_train_',str(jj),'.tfrecord']))
+                write_tfrecords(X_train,y_train,meta['train_paths'][-1])
+                meta['val_paths'].append(''.join([savepath,out_name,'_val_',str(jj),'.tfrecord']))
+                write_tfrecords(X_val,y_val,meta['val_paths'][-1])
+                if save_origs:
+                    meta['orig_paths'].append(''.join([savepath,out_name,'_orig_',str(jj),'.tfrecord']))
+                    write_tfrecords(X,y,meta['orig_paths'][-1])
+                jj+=1
+                i =0
+                del X, y
+            with open(savepath+'meta.pkl','wb') as f:
+                pickle.dump(meta,f)
     return meta
-
+    
 def combine_labels(labels,new_mapping):
     """Combines labels
     
@@ -487,4 +474,6 @@ def combine_labels(labels,new_mapping):
         new_labels[ind]=new_label
     keep_ind = np.where(new_labels!=404)[0]
     return new_labels, keep_ind
+
+
     
