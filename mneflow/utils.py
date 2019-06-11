@@ -130,9 +130,9 @@ def scale_to_baseline(X,baseline=None,crop_baseline=False):
         X0m = X0[:,magind,:].reshape([X0.shape[0],-1])
         X0g = X0[:,gradind,:].reshape([X0.shape[0],-1])
         
-        X[:,magind,:] -= X[:,magind,:].mean(-1)[...,None]
+        X[:,magind,:] -= X[:,magind,:].mean(-1,keepdims=True)#[...,None]
         X[:,magind,:] /= X0m.std(-1)[:,None,None]
-        X[:,gradind,:] -= X[:,gradind,:].mean(-1)[:,None]
+        X[:,gradind,:] -= X[:,gradind,:].mean(-1,keepdims=True)
         X[:,gradind,:] /= X0g.std(-1)[:,None,None]
     else:      
         X0 = X0.reshape([X.shape[0],-1])
@@ -200,7 +200,7 @@ def split_sets(X,y,val=.1):
     y_train = y[shuffle[val_size:],...]
     return X_train, y_train, X_val, y_val
 
-def produce_labels(y):
+def produce_labels(y,return_stats=True):
     """Produces labels array from e.g. event (unordered) trigger codes
     
     Parameters
@@ -224,7 +224,10 @@ def produce_labels(y):
     counts = counts/float(total_counts)
     class_proportions = {cls:cnt  for cls, cnt in zip(inds, counts)}
     orig_classes = {new:old for new,old in zip(inv[inds],classes)}
-    return  inv, total_counts, class_proportions, orig_classes
+    if return_stats:
+        return  inv, total_counts, class_proportions, orig_classes
+    else:
+        return  inv
 
 def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
                       savebatch=1,  save_origs=False, val_size=0.2, fs=None,
@@ -383,7 +386,7 @@ def produce_tfrecords(inputs, input_type, savepath, out_name, overwrite=False,
                 elif input_type== 'epochs':
                     epochs = mne.epochs.read_epochs(fname,preload=True)
                     events = epochs.events[:,2]
-                    fs = inp.info['sfreq']
+                    fs = epochs.info['sfreq']
                     if picks:
                         epochs = epochs.pick_types(**picks)
                     data = epochs.get_data()
