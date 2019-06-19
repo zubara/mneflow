@@ -130,15 +130,11 @@ class Model(object):
 
     def evaluate_performance(self, data_path, batch_size=None):
         """Compute performance metric on a TFR dataset specified by path"""
-
-        test_dataset, test_iter, test_handle = self.build_dataset(data_path, n_batch=batch_size)
-        acc = []
-        while True:
-            try:
-                acc.append(self.sess.run(self.accuracy, feed_dict={self.handle: test_handle, self.rate: 1.}))
-            except tf.errors.OutOfRangeError:
-                print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
-                break
+        test_dataset = self.dataset.build_dataset(data_path, n_batch=batch_size)
+        test_iter, test_handle = self.start_iterator(test_dataset)
+        acc = self.sess.run(self.accuracy, feed_dict={self.handle: test_handle, self.rate: 1.})
+        print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
+        #break
 
         return np.mean(acc)
 

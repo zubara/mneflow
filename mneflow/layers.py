@@ -115,7 +115,6 @@ class VARConv():
                                           strides=[1, self.stride, 1, 1],
                                           padding=self.padding)
 
-                    print(self.scope, ' out shape:', conv.shape)
                     return conv
                 except(AttributeError):
                     self.filters = weight_variable([self.filter_length, 1, x.shape[-1].value, self.size],

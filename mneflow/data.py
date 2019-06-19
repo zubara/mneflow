@@ -99,8 +99,12 @@ class Dataset(object):
     def get_n_samples(self, path):
         """Count number of samples in TFRecord files specified by path"""
         ns = 0
-        for fn in path:
-            for record in tf.python_io.tf_record_iterator(fn):
+        if isinstance(path, (list, tuple)):
+            for fn in path:
+                for record in tf.python_io.tf_record_iterator(fn):
+                    ns += 1
+        elif isinstance(path, str):
+            for record in tf.python_io.tf_record_iterator(path):
                 ns += 1
         return ns
 
