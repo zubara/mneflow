@@ -12,11 +12,13 @@ import tensorflow as tf
 import scipy.io as sio
 import pickle
 from operator import itemgetter
-import mne
+from mneflow.data import Dataset
+from mneflow.optimize import Optimizer
+from mne import epochs as mnepochs, filter as mnefilt
 import csv
 
-
 def load_meta(fname):
+
     """Loads a metadata file
     Parameters
     ----------
@@ -28,30 +30,30 @@ def load_meta(fname):
     return meta
 
 
-def leave_one_subj_out(meta, params, specs, model, class_subset=None):
+def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
     """Performs a leave-one-subject out cross-validation"""
     results = []
+    optimizer = Optimizer(optimizer_params)
     for i, path in enumerate(meta['orig_paths']):
         meta_loso = meta.copy()
         train_fold = [i for i, _ in enumerate(meta['train_paths'])]
         train_fold.remove(i)
         meta_loso['train_paths'] = itemgetter(*train_fold)(meta['train_paths'])
         meta_loso['val_paths'] = itemgetter(*train_fold)(meta['val_paths'])
-        assert len(meta['train_paths']) == len(meta['val_paths'])
-        assert len(meta_loso['train_paths']) != len(meta_loso['orig_paths'])
         print('holdout subj:', path[-10:-9])
-        # TODO: Init model!!!
-        # m = model(meta_loso, params, specs)
-        m.build(class_subset=class_subset)
-        m.train()
-        test_acc = m.evaluate_performance(path, batch_size=None)
+        dataset = Dataset(meta_loso, train_batch=200, class_subset=None,
+                          pick_channels=None, decim=None)
+        m = model(dataset, optimizer, graph_specs)
+        m.build()
+        m.train(n_iter=25000, eval_step=250, min_delta=0, early_stopping=3)
+        test_acc = m.evaluate_performance(path)
         print(i, ':', 'test_acc:', test_acc)
-        #prt_test_acc, prt_logits = model.evaluate_realtime(path, step_size=params['test_upd_batch'])
-        results.append({'val_acc': m.v_acc, 'test_init': test_acc})#, 'test_upd':np.mean(prt_test_acc), 'sid':h_params['sid']})
-        #logger(savepath,h_params,params,results[-1])
-
+        results.append({'val_acc': m.v_acc, 'test_init': test_acc})
+        # logger(m, results)
     return results
-#  def logger(savepath, h_params, params, results):
+
+
+# def logger(savepath, h_params, params, results):
 #    """Log model perfromance"""
 #    #TODO: update logger for use meta
 #    log = dict()
@@ -319,7 +321,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
             inputs = [inputs]
         #  Import data and labels
         for inp in inputs:
-            if isinstance(inp, mne.epochs.BaseEpochs):
+            if isinstance(inp, mnepochs.BaseEpochs):
                 print('processing epochs')
                 inp.load_data()
                 data = inp.get_data()
@@ -331,8 +333,8 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                 fname = inp
                 print(fname[-3:])
                 if fname[-3:] == 'fif':
-                    epochs = mne.epochs.read_epochs(fname, preload=True,
-                                                    verbose='CRITICAL')
+                    epochs = mnepochs.read_epochs(fname, preload=True,
+                                                  verbose='CRITICAL')
                     events = epochs.events[:, 2]
                     fs = epochs.info['sfreq']
                     data = epochs.get_data()
@@ -355,9 +357,9 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                 data = data[:, picks, :]
             # Preprocessing
             if bp_filter:
-                data = mne.filter.filter_data(data, fs, l_freq=bp_filter[0],
-                                              h_freq=bp_filter[1],
-                                              method='iir', verbose=False)
+                data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
+                                           h_freq=bp_filter[1],
+                                           method='iir', verbose=False)
             if scale:
                 data = scale_to_baseline(data, scale_interval, crop_baseline)
 
