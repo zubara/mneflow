@@ -32,7 +32,10 @@ class Model(object):
         """
         self.specs = specs
         self.model_path = specs['model_path']
-        self.n_classes = Dataset.h_params['n_classes']
+        if Dataset.h_params['task'] == 'classification':
+            self.n_classes = Dataset.h_params['n_classes']
+        else:
+            self.y_shape = Dataset.h_params['y_shape']
         self.fs = Dataset.h_params['fs']
         self.sess = tf.Session()
         self.handle = tf.placeholder(tf.string, shape=[])
@@ -47,8 +50,7 @@ class Model(object):
 
     def start_iterator(self, Dataset):
 
-        """
-        Builds initializable iterator for the dataset and the string handle."""
+        """Builds initializable iterator and string handle."""
 
         ds_iterator = Dataset.make_initializable_iterator()
         handle = self.sess.run(ds_iterator.string_handle())
@@ -70,10 +72,15 @@ class Model(object):
 
     def _build_graph(self):
 
-        """Build computational graph.
+        """Build computational graph using defined placeholder self.X as input
 
-        This method can be overriden in a sub-class for customized architecture
-        """
+        Can be overriden in a sub-class for customized architecture.
+
+        Returns:
+        --------
+        y_pred : tf.Tensor
+                output of the forward pass of the computational graph.
+                prediction of the target variable"""
 
         print('Specify a model. Set to linear classifier!')
         fc_1 = Dense(size=self.n_classes, nonlin=tf.identity,
@@ -82,6 +89,26 @@ class Model(object):
         return y_pred
 
     def train(self, n_iter, eval_step=250, min_delta=1e-6, early_stopping=3):
+        """ Trains a model
+
+        Parameters:
+        -----------
+
+        n_iter : int
+                maximum number of training iterations
+
+        eval_step : int
+                How often to evaluate model performance during training
+
+        early_stopping : int
+                Patience parameter for early stopping. Specifies the number of
+                'eval_step's during which validation cost is allowed to rise
+                before training stops.
+
+        min_delta : float
+                Convergence threshold for validation cost during training.
+                Defaults to 0
+        """
         self.sess.run(tf.global_variables_initializer())
         min_val_loss = np.inf
 
@@ -130,12 +157,12 @@ class Model(object):
 
     def evaluate_performance(self, data_path, batch_size=None):
         """Compute performance metric on a TFR dataset specified by path"""
-        test_dataset = self.dataset.build_dataset(data_path, n_batch=batch_size)
+        test_dataset = self.dataset.build_dataset(data_path,
+                                                  n_batch=batch_size)
         test_iter, test_handle = self.start_iterator(test_dataset)
-        acc = self.sess.run(self.accuracy, feed_dict={self.handle: test_handle, self.rate: 1.})
+        acc = self.sess.run(self.accuracy, feed_dict={self.handle: test_handle,
+                                                      self.rate: 1.})
         print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
-        #break
-
         return np.mean(acc)
 
     def evaluate_realtime(self, data_path, batch_size=None, step_size=1):
@@ -258,7 +285,8 @@ class VGG19(Model):
 #
         fc_1 = Dense(size=4096, nonlin=tf.nn.relu, dropout=self.rate)
         fc_2 = Dense(size=4096, nonlin=tf.nn.relu, dropout=self.rate)
-        fc_out = Dense(size=self.n_classes, nonlin=tf.identity, dropout=self.rate)
+        fc_out = Dense(size=self.n_classes, nonlin=tf.identity,
+                       dropout=self.rate)
         y_pred = fc_out(fc_2(fc_1(out5)))
         return y_pred
 
@@ -269,7 +297,7 @@ class EEGNet(Model):
     Parameters
     ----------
     eegnet_params : dict
-                    {
+
                     n_ls : int
                         number of (temporal) convolution kernrels in the first layer.
                         Defaults to 8
