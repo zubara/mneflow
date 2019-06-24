@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jun 18 15:00:22 2019
-
-@author: zubarei1
+This module specifies Optimizer object
 """
 import tensorflow as tf
 
