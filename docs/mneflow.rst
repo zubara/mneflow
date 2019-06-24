@@ -1,43 +1,55 @@
 MNEflow API
 ===========
 
-Submodules
-----------
+mneflow.models.Model class
+**************************
 
-.. automodule:: mneflow
+.. autoclass:: mneflow.models.Model
     :members:
     :undoc-members:
     :show-inheritance:
 
-mneflow.models
---------------
+Implemented models
+------------------
 
-.. automodule:: mneflow.models
-.. autoclass:: Model
-    :members:
-.. autoclass:: LFCNN
-    :members:
-.. autoclass:: VARCNN
-    :members:
-.. autoclass:: EEGNet
-    :members:
+LFCNN
+*****
 
+.. autoclass:: mneflow.models.LFCNN
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+VARCNN
+******
+
+.. autoclass:: mneflow.models.VARCNN
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+EEGNet
+******
+
+.. autoclass:: mneflow.models.EEGNet
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
 mneflow.Dataset
 ---------------
 
-.. automodule:: mneflow.data
+.. autoclass:: mneflow.data.Dataset
     :members:
     :undoc-members:
     :show-inheritance:
 
-
 mneflow.Optimizer
 -----------------
 
-.. automodule:: mneflow.optimize
-.. autoclass:: Optimizer
+.. autoclass:: mneflow.optimize.Optimizer
     :members:
+    :undoc-members:
     :show-inheritance:
 
 mneflow.utils
