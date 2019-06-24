@@ -86,17 +86,19 @@
 <li class="toctree-l1"><a class="reference internal" href="intro.html#examples">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#references">References</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">MNEflow API</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#implemented-models">Implemented models</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#model-class">Model class</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#lfcnn">LFCNN</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#varcnn">VARCNN</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#eegnet">EEGNet</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mneflow-models-model-class">mneflow.models.Model class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#implemented-models">Implemented models</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#mneflow-dataset">mneflow.Dataset</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#mneflow-optimizer">mneflow.Optimizer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.utils">mneflow.utils</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.layers">mneflow.layers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#lfcnn">LFCNN</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#varcnn">VARCNN</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#eegnet">EEGNet</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#mneflow-dataset">mneflow.Dataset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#mneflow-optimizer">mneflow.Optimizer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#module-mneflow.utils">mneflow.utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#module-mneflow.layers">mneflow.layers</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">History</a></li>
@@ -166,13 +168,11 @@
             
   <div class="section" id="mneflow-api">
 <h1>MNEflow API<a class="headerlink" href="#mneflow-api" title="Permalink to this headline">¶</a></h1>
-<div class="section" id="implemented-models">
-<h2>Implemented models<a class="headerlink" href="#implemented-models" title="Permalink to this headline">¶</a></h2>
-<div class="section" id="model-class">
-<h3>Model class<a class="headerlink" href="#model-class" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="mneflow-models-model-class">
+<h2>mneflow.models.Model class<a class="headerlink" href="#mneflow-models-model-class" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="mneflow.models.Model">
-<em class="property">class </em><code class="descclassname">mneflow.models.</code><code class="descname">Model</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">Model</code><span class="sig-paren">(</span><em class="sig-param">Dataset</em>, <em class="sig-param">Optimizer</em>, <em class="sig-param">specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Parent class for all MNEflow models</p>
 <p>Provides fast and memory-efficient data handling and simplified API.
@@ -180,7 +180,7 @@ Custom models can be built by overriding _build_graph and
 set_optimizer methods.</p>
 <dl class="method">
 <dt id="mneflow.models.Model.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">Dataset</em>, <em class="sig-param">Optimizer</em>, <em class="sig-param">specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
@@ -196,13 +196,13 @@ subclass definitions for details.</p></li>
 
 <dl class="method">
 <dt id="mneflow.models.Model.build">
-<code class="descname">build</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.build" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">build</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.build" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compile a model</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="mneflow.models.Model.build_graph">
-<code class="descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.build_graph" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.build_graph" title="Permalink to this definition">¶</a></dt>
 <dd><p>Build computational graph using defined placeholder self.X as input</p>
 <p>Can be overriden in a sub-class for customized architecture.</p>
 <dl class="field-list simple">
@@ -218,7 +218,7 @@ prediction of the target variable</p>
 
 <dl class="method">
 <dt id="mneflow.models.Model.evaluate_performance">
-<code class="descname">evaluate_performance</code><span class="sig-paren">(</span><em>data_path</em>, <em>batch_size=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.evaluate_performance" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">evaluate_performance</code><span class="sig-paren">(</span><em class="sig-param">data_path</em>, <em class="sig-param">batch_size=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.evaluate_performance" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute performance metric on a TFR dataset specified by path</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -232,7 +232,7 @@ prediction of the target variable</p>
 
 <dl class="method">
 <dt id="mneflow.models.Model.load">
-<code class="descname">load</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.load" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">load</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.load" title="Permalink to this definition">¶</a></dt>
 <dd><p>Loads a pretrained model</p>
 <p>To load a specific model the model object should be initialized using
 the corresponding metadata and computational graph</p>
@@ -240,7 +240,7 @@ the corresponding metadata and computational graph</p>
 
 <dl class="method">
 <dt id="mneflow.models.Model.plot_cm">
-<code class="descname">plot_cm</code><span class="sig-paren">(</span><em>dataset='validation'</em>, <em>class_names=None</em>, <em>normalize=False</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.plot_cm" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">plot_cm</code><span class="sig-paren">(</span><em class="sig-param">dataset='validation'</em>, <em class="sig-param">class_names=None</em>, <em class="sig-param">normalize=False</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.plot_cm" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot a confusion matrix</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -256,7 +256,7 @@ are used</p></li>
 
 <dl class="method">
 <dt id="mneflow.models.Model.train">
-<code class="descname">train</code><span class="sig-paren">(</span><em>n_iter</em>, <em>eval_step=250</em>, <em>min_delta=1e-06</em>, <em>early_stopping=3</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.train" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">train</code><span class="sig-paren">(</span><em class="sig-param">n_iter</em>, <em class="sig-param">eval_step=250</em>, <em class="sig-param">min_delta=1e-06</em>, <em class="sig-param">early_stopping=3</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model.train" title="Permalink to this definition">¶</a></dt>
 <dd><p>Trains a model</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -275,12 +275,15 @@ Defaults to 0.</p></li>
 
 </dd></dl>
 
+<div class="section" id="implemented-models">
+<h3>Implemented models<a class="headerlink" href="#implemented-models" title="Permalink to this headline">¶</a></h3>
+</div>
 </div>
 <div class="section" id="lfcnn">
-<h3>LFCNN<a class="headerlink" href="#lfcnn" title="Permalink to this headline">¶</a></h3>
+<h2>LFCNN<a class="headerlink" href="#lfcnn" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="mneflow.models.LFCNN">
-<em class="property">class </em><code class="descclassname">mneflow.models.</code><code class="descname">LFCNN</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">LFCNN</code><span class="sig-paren">(</span><em class="sig-param">Dataset</em>, <em class="sig-param">Optimizer</em>, <em class="sig-param">specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#mneflow.models.Model" title="mneflow.models.Model"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.Model</span></code></a></p>
 <p>LF-CNN. Includes basic paramter interpretation options.</p>
 <p>For details see [1].</p>
@@ -301,7 +304,7 @@ convolution layer. Defaults to 7</p></li>
 decoding MEG signals. Neuroimage. (2019) May 4;197:425-434</p>
 <dl class="method">
 <dt id="mneflow.models.LFCNN.build_graph">
-<code class="descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.build_graph" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.build_graph" title="Permalink to this definition">¶</a></dt>
 <dd><p>Build computational graph using defined placeholder self.X as input</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns</dt>
@@ -316,20 +319,20 @@ prediction of the target variable</p>
 
 <dl class="method">
 <dt id="mneflow.models.LFCNN.compute_patterns">
-<code class="descname">compute_patterns</code><span class="sig-paren">(</span><em>megdata=None</em>, <em>output='patterns'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.compute_patterns" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">compute_patterns</code><span class="sig-paren">(</span><em class="sig-param">megdata=None</em>, <em class="sig-param">output='patterns'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.compute_patterns" title="Permalink to this definition">¶</a></dt>
 <dd><p>Computes spatial patterns from filter weights.</p>
 <p>Required for visualization.</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="mneflow.models.LFCNN.plot_out_weihts">
-<code class="descname">plot_out_weihts</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_out_weihts" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">plot_out_weihts</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_out_weihts" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots the weights of the output layer</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="mneflow.models.LFCNN.plot_patterns">
-<code class="descname">plot_patterns</code><span class="sig-paren">(</span><em>sensor_layout='Vectorview-grad'</em>, <em>sorting='l2'</em>, <em>spectra=True</em>, <em>fs=None</em>, <em>scale=False</em>, <em>names=False</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_patterns" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">plot_patterns</code><span class="sig-paren">(</span><em class="sig-param">sensor_layout='Vectorview-grad'</em>, <em class="sig-param">sorting='l2'</em>, <em class="sig-param">spectra=True</em>, <em class="sig-param">fs=None</em>, <em class="sig-param">scale=False</em>, <em class="sig-param">names=False</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_patterns" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot informative spatial activations patterns for each class of stimuli</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -356,10 +359,10 @@ temporal filters. Defaults to False</p></li>
 
 </div>
 <div class="section" id="varcnn">
-<h3>VARCNN<a class="headerlink" href="#varcnn" title="Permalink to this headline">¶</a></h3>
+<h2>VARCNN<a class="headerlink" href="#varcnn" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="mneflow.models.VARCNN">
-<em class="property">class </em><code class="descclassname">mneflow.models.</code><code class="descname">VARCNN</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.VARCNN" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">VARCNN</code><span class="sig-paren">(</span><em class="sig-param">Dataset</em>, <em class="sig-param">Optimizer</em>, <em class="sig-param">specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.VARCNN" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#mneflow.models.Model" title="mneflow.models.Model"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.Model</span></code></a></p>
 <p>VAR-CNN</p>
 <p>For details see [1].</p>
@@ -380,7 +383,7 @@ convolution layer. Defaults to 7</p></li>
 decoding MEG signals. Neuroimage. (2019) May 4;197:425-434</p>
 <dl class="method">
 <dt id="mneflow.models.VARCNN.build_graph">
-<code class="descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.VARCNN.build_graph" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.VARCNN.build_graph" title="Permalink to this definition">¶</a></dt>
 <dd><p>Build computational graph using defined placeholder self.X as input</p>
 <p>Can be overriden in a sub-class for customized architecture.</p>
 <dl class="field-list simple">
@@ -398,10 +401,10 @@ prediction of the target variable</p>
 
 </div>
 <div class="section" id="eegnet">
-<h3>EEGNet<a class="headerlink" href="#eegnet" title="Permalink to this headline">¶</a></h3>
+<h2>EEGNet<a class="headerlink" href="#eegnet" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="mneflow.models.EEGNet">
-<em class="property">class </em><code class="descclassname">mneflow.models.</code><code class="descname">EEGNet</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.EEGNet" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">EEGNet</code><span class="sig-paren">(</span><em class="sig-param">Dataset</em>, <em class="sig-param">Optimizer</em>, <em class="sig-param">specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.EEGNet" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#mneflow.models.Model" title="mneflow.models.Model"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.Model</span></code></a></p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -424,7 +427,7 @@ p. 056013</p>
 <a class="reference external" href="https://github.com/vlawhern/arl-eegmodels">https://github.com/vlawhern/arl-eegmodels</a></p>
 <dl class="method">
 <dt id="mneflow.models.EEGNet.build_graph">
-<code class="descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.EEGNet.build_graph" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.EEGNet.build_graph" title="Permalink to this definition">¶</a></dt>
 <dd><p>Build computational graph using defined placeholder self.X as input</p>
 <p>Can be overriden in a sub-class for customized architecture.</p>
 <dl class="field-list simple">
@@ -440,18 +443,16 @@ prediction of the target variable</p>
 
 </dd></dl>
 
-</div>
-</div>
 <div class="section" id="mneflow-dataset">
-<h2>mneflow.Dataset<a class="headerlink" href="#mneflow-dataset" title="Permalink to this headline">¶</a></h2>
+<h3>mneflow.Dataset<a class="headerlink" href="#mneflow-dataset" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="mneflow.data.Dataset">
-<em class="property">class </em><code class="descclassname">mneflow.data.</code><code class="descname">Dataset</code><span class="sig-paren">(</span><em>h_params</em>, <em>train_batch=200</em>, <em>class_subset=None</em>, <em>combine_classes=False</em>, <em>pick_channels=None</em>, <em>decim=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.data.</code><code class="sig-name descname">Dataset</code><span class="sig-paren">(</span><em class="sig-param">h_params</em>, <em class="sig-param">train_batch=200</em>, <em class="sig-param">class_subset=None</em>, <em class="sig-param">combine_classes=False</em>, <em class="sig-param">pick_channels=None</em>, <em class="sig-param">decim=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>TFRecords dataset from TFRecords files using the metadata.</p>
 <dl class="method">
 <dt id="mneflow.data.Dataset.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>h_params</em>, <em>train_batch=200</em>, <em>class_subset=None</em>, <em>combine_classes=False</em>, <em>pick_channels=None</em>, <em>decim=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">h_params</em>, <em class="sig-param">train_batch=200</em>, <em class="sig-param">class_subset=None</em>, <em class="sig-param">combine_classes=False</em>, <em class="sig-param">pick_channels=None</em>, <em class="sig-param">decim=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize tf.data.TFRdatasets</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -478,15 +479,15 @@ If None, all classes are used.  Defaults to None.</p></li>
 
 </div>
 <div class="section" id="mneflow-optimizer">
-<h2>mneflow.Optimizer<a class="headerlink" href="#mneflow-optimizer" title="Permalink to this headline">¶</a></h2>
+<h3>mneflow.Optimizer<a class="headerlink" href="#mneflow-optimizer" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="mneflow.optimize.Optimizer">
-<em class="property">class </em><code class="descclassname">mneflow.optimize.</code><code class="descname">Optimizer</code><span class="sig-paren">(</span><em>learn_rate=0.0003</em>, <em>l1_lambda=0</em>, <em>l2_lambda=0</em>, <em>task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.optimize.</code><code class="sig-name descname">Optimizer</code><span class="sig-paren">(</span><em class="sig-param">learn_rate=0.0003</em>, <em class="sig-param">l1_lambda=0</em>, <em class="sig-param">l2_lambda=0</em>, <em class="sig-param">task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Optimizer object.</p>
 <dl class="method">
 <dt id="mneflow.optimize.Optimizer.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>learn_rate=0.0003</em>, <em>l1_lambda=0</em>, <em>l2_lambda=0</em>, <em>task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">learn_rate=0.0003</em>, <em class="sig-param">l1_lambda=0</em>, <em class="sig-param">l2_lambda=0</em>, <em class="sig-param">task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
@@ -500,7 +501,7 @@ If None, all classes are used.  Defaults to None.</p></li>
 
 <dl class="method">
 <dt id="mneflow.optimize.Optimizer.set_optimizer">
-<code class="descname">set_optimizer</code><span class="sig-paren">(</span><em>y_pred</em>, <em>y_true</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer.set_optimizer" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">set_optimizer</code><span class="sig-paren">(</span><em class="sig-param">y_pred</em>, <em class="sig-param">y_true</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer.set_optimizer" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initializes the optimizer part of the computational graph</p>
 <p>This method can be overriden a for custom optimizer</p>
 <dl class="field-list simple">
@@ -532,11 +533,11 @@ computational graph</p></li>
 
 </div>
 <div class="section" id="module-mneflow.utils">
-<span id="mneflow-utils"></span><h2>mneflow.utils<a class="headerlink" href="#module-mneflow.utils" title="Permalink to this headline">¶</a></h2>
+<span id="mneflow-utils"></span><h3>mneflow.utils<a class="headerlink" href="#module-mneflow.utils" title="Permalink to this headline">¶</a></h3>
 <p>Specifies utility functions.</p>
 <dl class="function">
 <dt id="mneflow.utils.leave_one_subj_out">
-<code class="descclassname">mneflow.utils.</code><code class="descname">leave_one_subj_out</code><span class="sig-paren">(</span><em>meta</em>, <em>optimizer_params</em>, <em>graph_specs</em>, <em>model</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.leave_one_subj_out" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">leave_one_subj_out</code><span class="sig-paren">(</span><em class="sig-param">meta</em>, <em class="sig-param">optimizer_params</em>, <em class="sig-param">graph_specs</em>, <em class="sig-param">model</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.leave_one_subj_out" title="Permalink to this definition">¶</a></dt>
 <dd><p>Performs a leave-one-out cross-validation such that on each fold one
 input .tfrecord file is used as a validation set.</p>
 <dl class="field-list simple">
@@ -561,7 +562,7 @@ on each fold of the cross-validation</p>
 
 <dl class="function">
 <dt id="mneflow.utils.load_meta">
-<code class="descclassname">mneflow.utils.</code><code class="descname">load_meta</code><span class="sig-paren">(</span><em>fname</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.load_meta" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">load_meta</code><span class="sig-paren">(</span><em class="sig-param">fname</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.load_meta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Loads a metadata file
 :param fname: path to TFRecord folder
 :type fname: str</p>
@@ -577,7 +578,7 @@ on each fold of the cross-validation</p>
 
 <dl class="function">
 <dt id="mneflow.utils.produce_labels">
-<code class="descclassname">mneflow.utils.</code><code class="descname">produce_labels</code><span class="sig-paren">(</span><em>y</em>, <em>return_stats=True</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.produce_labels" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">produce_labels</code><span class="sig-paren">(</span><em class="sig-param">y</em>, <em class="sig-param">return_stats=True</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.produce_labels" title="Permalink to this definition">¶</a></dt>
 <dd><p>Produces labels array from e.g. event (unordered) trigger codes</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -597,7 +598,7 @@ on each fold of the cross-validation</p>
 
 <dl class="function">
 <dt id="mneflow.utils.produce_tfrecords">
-<code class="descclassname">mneflow.utils.</code><code class="descname">produce_tfrecords</code><span class="sig-paren">(</span><em>inputs</em>, <em>savepath</em>, <em>out_name</em>, <em>overwrite=False</em>, <em>savebatch=1</em>, <em>save_origs=False</em>, <em>val_size=0.2</em>, <em>fs=None</em>, <em>scale=False</em>, <em>scale_interval=None</em>, <em>crop_baseline=True</em>, <em>decimate=False</em>, <em>bp_filter=False</em>, <em>picks=None</em>, <em>combine_events=None</em>, <em>task='classification'</em>, <em>array_keys={'X': 'X'</em>, <em>'y': 'y'}</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.produce_tfrecords" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">produce_tfrecords</code><span class="sig-paren">(</span><em class="sig-param">inputs</em>, <em class="sig-param">savepath</em>, <em class="sig-param">out_name</em>, <em class="sig-param">overwrite=False</em>, <em class="sig-param">savebatch=1</em>, <em class="sig-param">save_origs=False</em>, <em class="sig-param">val_size=0.2</em>, <em class="sig-param">fs=None</em>, <em class="sig-param">scale=False</em>, <em class="sig-param">scale_interval=None</em>, <em class="sig-param">crop_baseline=True</em>, <em class="sig-param">decimate=False</em>, <em class="sig-param">bp_filter=False</em>, <em class="sig-param">picks=None</em>, <em class="sig-param">combine_events=None</em>, <em class="sig-param">task='classification'</em>, <em class="sig-param">array_keys={'X': 'X'</em>, <em class="sig-param">'y': 'y'}</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.produce_tfrecords" title="Permalink to this definition">¶</a></dt>
 <dd><p>Produces TFRecord files from input, applies (optional) preprocessing</p>
 <p>Calling this function will covnert the input data into TFRecords format
 that is used to effiently store and run Tensorflow models on the data.</p>
@@ -657,7 +658,7 @@ the corresponding mne functions is preferrable.</p>
 
 <dl class="function">
 <dt id="mneflow.utils.scale_to_baseline">
-<code class="descclassname">mneflow.utils.</code><code class="descname">scale_to_baseline</code><span class="sig-paren">(</span><em>X</em>, <em>baseline=None</em>, <em>crop_baseline=False</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.scale_to_baseline" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">scale_to_baseline</code><span class="sig-paren">(</span><em class="sig-param">X</em>, <em class="sig-param">baseline=None</em>, <em class="sig-param">crop_baseline=False</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.scale_to_baseline" title="Permalink to this definition">¶</a></dt>
 <dd><p>Perform global scaling based on a specified baseline.</p>
 <p>Subtracts the mean and divides by the standard deviation of the amplitude
 of all channels during the baseline interval. If input contains 306
@@ -682,17 +683,17 @@ epoch is used for scaling.</p></li>
 
 </div>
 <div class="section" id="module-mneflow.layers">
-<span id="mneflow-layers"></span><h2>mneflow.layers<a class="headerlink" href="#module-mneflow.layers" title="Permalink to this headline">¶</a></h2>
+<span id="mneflow-layers"></span><h3>mneflow.layers<a class="headerlink" href="#module-mneflow.layers" title="Permalink to this headline">¶</a></h3>
 <p>Created on Fri Dec 29 13:40:09 2017</p>
 <p>&#64;author: Ivan Zubarev, <a class="reference external" href="mailto:ivan&#46;zubarev&#37;&#52;&#48;aalto&#46;fi">ivan<span>&#46;</span>zubarev<span>&#64;</span>aalto<span>&#46;</span>fi</a></p>
 <dl class="class">
 <dt id="mneflow.layers.ConvDSV">
-<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">ConvDSV</code><span class="sig-paren">(</span><em>scope='conv'</em>, <em>n_ls=None</em>, <em>nonlin=None</em>, <em>inch=None</em>, <em>domain=None</em>, <em>padding='SAME'</em>, <em>filter_length=5</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>dropout=0.5</em>, <em>conv_type='depthwise'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.ConvDSV" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">ConvDSV</code><span class="sig-paren">(</span><em class="sig-param">scope='conv'</em>, <em class="sig-param">n_ls=None</em>, <em class="sig-param">nonlin=None</em>, <em class="sig-param">inch=None</em>, <em class="sig-param">domain=None</em>, <em class="sig-param">padding='SAME'</em>, <em class="sig-param">filter_length=5</em>, <em class="sig-param">stride=1</em>, <em class="sig-param">pooling=2</em>, <em class="sig-param">dropout=0.5</em>, <em class="sig-param">conv_type='depthwise'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.ConvDSV" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Standard/Depthwise/Spearable Convolutional Layer constructor</p>
 <dl class="method">
 <dt id="mneflow.layers.ConvDSV.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='conv'</em>, <em>n_ls=None</em>, <em>nonlin=None</em>, <em>inch=None</em>, <em>domain=None</em>, <em>padding='SAME'</em>, <em>filter_length=5</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>dropout=0.5</em>, <em>conv_type='depthwise'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.ConvDSV.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">scope='conv'</em>, <em class="sig-param">n_ls=None</em>, <em class="sig-param">nonlin=None</em>, <em class="sig-param">inch=None</em>, <em class="sig-param">domain=None</em>, <em class="sig-param">padding='SAME'</em>, <em class="sig-param">filter_length=5</em>, <em class="sig-param">stride=1</em>, <em class="sig-param">pooling=2</em>, <em class="sig-param">dropout=0.5</em>, <em class="sig-param">conv_type='depthwise'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.ConvDSV.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
@@ -700,12 +701,12 @@ epoch is used for scaling.</p></li>
 
 <dl class="class">
 <dt id="mneflow.layers.DeMixing">
-<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">DeMixing</code><span class="sig-paren">(</span><em>scope='de-mix'</em>, <em>n_ls=32</em>, <em>nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.DeMixing" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">DeMixing</code><span class="sig-paren">(</span><em class="sig-param">scope='de-mix'</em>, <em class="sig-param">n_ls=32</em>, <em class="sig-param">nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.DeMixing" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Spatial demixing Layer</p>
 <dl class="method">
 <dt id="mneflow.layers.DeMixing.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='de-mix'</em>, <em>n_ls=32</em>, <em>nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.DeMixing.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">scope='de-mix'</em>, <em class="sig-param">n_ls=32</em>, <em class="sig-param">nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.DeMixing.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
@@ -713,12 +714,12 @@ epoch is used for scaling.</p></li>
 
 <dl class="class">
 <dt id="mneflow.layers.Dense">
-<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">Dense</code><span class="sig-paren">(</span><em>scope='fc'</em>, <em>size=None</em>, <em>dropout=0.5</em>, <em>nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.Dense" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">Dense</code><span class="sig-paren">(</span><em class="sig-param">scope='fc'</em>, <em class="sig-param">size=None</em>, <em class="sig-param">dropout=0.5</em>, <em class="sig-param">nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.Dense" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Fully-connected layer</p>
 <dl class="method">
 <dt id="mneflow.layers.Dense.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='fc'</em>, <em>size=None</em>, <em>dropout=0.5</em>, <em>nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.Dense.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">scope='fc'</em>, <em class="sig-param">size=None</em>, <em class="sig-param">dropout=0.5</em>, <em class="sig-param">nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.Dense.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
@@ -726,12 +727,12 @@ epoch is used for scaling.</p></li>
 
 <dl class="class">
 <dt id="mneflow.layers.LFTConv">
-<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">LFTConv</code><span class="sig-paren">(</span><em>scope='lf-conv'</em>, <em>n_ls=32</em>, <em>nonlin_out=&lt;function relu&gt;</em>, <em>filter_length=7</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LFTConv" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">LFTConv</code><span class="sig-paren">(</span><em class="sig-param">scope='lf-conv'</em>, <em class="sig-param">n_ls=32</em>, <em class="sig-param">nonlin_out=&lt;function relu&gt;</em>, <em class="sig-param">filter_length=7</em>, <em class="sig-param">stride=1</em>, <em class="sig-param">pooling=2</em>, <em class="sig-param">padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LFTConv" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Stackable temporal convolutional layer, interpreatble (LF)</p>
 <dl class="method">
 <dt id="mneflow.layers.LFTConv.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='lf-conv'</em>, <em>n_ls=32</em>, <em>nonlin_out=&lt;function relu&gt;</em>, <em>filter_length=7</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LFTConv.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">scope='lf-conv'</em>, <em class="sig-param">n_ls=32</em>, <em class="sig-param">nonlin_out=&lt;function relu&gt;</em>, <em class="sig-param">filter_length=7</em>, <em class="sig-param">stride=1</em>, <em class="sig-param">pooling=2</em>, <em class="sig-param">padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LFTConv.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
@@ -739,12 +740,12 @@ epoch is used for scaling.</p></li>
 
 <dl class="class">
 <dt id="mneflow.layers.VARConv">
-<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">VARConv</code><span class="sig-paren">(</span><em>scope='var-conv'</em>, <em>n_ls=32</em>, <em>nonlin_out=&lt;function relu&gt;</em>, <em>filter_length=7</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">VARConv</code><span class="sig-paren">(</span><em class="sig-param">scope='var-conv'</em>, <em class="sig-param">n_ls=32</em>, <em class="sig-param">nonlin_out=&lt;function relu&gt;</em>, <em class="sig-param">filter_length=7</em>, <em class="sig-param">stride=1</em>, <em class="sig-param">pooling=2</em>, <em class="sig-param">padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Stackable spatio-temporal convolutional Layer (VAR)</p>
 <dl class="method">
 <dt id="mneflow.layers.VARConv.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='var-conv'</em>, <em>n_ls=32</em>, <em>nonlin_out=&lt;function relu&gt;</em>, <em>filter_length=7</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">scope='var-conv'</em>, <em class="sig-param">n_ls=32</em>, <em class="sig-param">nonlin_out=&lt;function relu&gt;</em>, <em class="sig-param">filter_length=7</em>, <em class="sig-param">stride=1</em>, <em class="sig-param">pooling=2</em>, <em class="sig-param">padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
@@ -752,36 +753,37 @@ epoch is used for scaling.</p></li>
 
 <dl class="function">
 <dt id="mneflow.layers.bias_variable">
-<code class="descclassname">mneflow.layers.</code><code class="descname">bias_variable</code><span class="sig-paren">(</span><em>shape</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.bias_variable" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">bias_variable</code><span class="sig-paren">(</span><em class="sig-param">shape</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.bias_variable" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize bias variable as constant 0.1</p>
 </dd></dl>
 
 <dl class="function">
 <dt id="mneflow.layers.compose">
-<code class="descclassname">mneflow.layers.</code><code class="descname">compose</code><span class="sig-paren">(</span><em>f</em>, <em>g</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.compose" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">compose</code><span class="sig-paren">(</span><em class="sig-param">f</em>, <em class="sig-param">g</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.compose" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="function">
 <dt id="mneflow.layers.spatial_dropout">
-<code class="descclassname">mneflow.layers.</code><code class="descname">spatial_dropout</code><span class="sig-paren">(</span><em>x</em>, <em>keep_prob</em>, <em>seed=1234</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.spatial_dropout" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">spatial_dropout</code><span class="sig-paren">(</span><em class="sig-param">x</em>, <em class="sig-param">keep_prob</em>, <em class="sig-param">seed=1234</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.spatial_dropout" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="function">
 <dt id="mneflow.layers.stack_layers">
-<code class="descclassname">mneflow.layers.</code><code class="descname">stack_layers</code><span class="sig-paren">(</span><em>*args</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.stack_layers" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">stack_layers</code><span class="sig-paren">(</span><em class="sig-param">*args</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.stack_layers" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="function">
 <dt id="mneflow.layers.vgg_block">
-<code class="descclassname">mneflow.layers.</code><code class="descname">vgg_block</code><span class="sig-paren">(</span><em>n_layers</em>, <em>layer</em>, <em>kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.vgg_block" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">vgg_block</code><span class="sig-paren">(</span><em class="sig-param">n_layers</em>, <em class="sig-param">layer</em>, <em class="sig-param">kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.vgg_block" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="function">
 <dt id="mneflow.layers.weight_variable">
-<code class="descclassname">mneflow.layers.</code><code class="descname">weight_variable</code><span class="sig-paren">(</span><em>shape</em>, <em>name=''</em>, <em>method='he'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.weight_variable" title="Permalink to this definition">¶</a></dt>
+<code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">weight_variable</code><span class="sig-paren">(</span><em class="sig-param">shape</em>, <em class="sig-param">name=''</em>, <em class="sig-param">method='he'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.weight_variable" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize weight variable</p>
 </dd></dl>
 
+</div>
 </div>
 </div>
 

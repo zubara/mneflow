@@ -1,16 +1,16 @@
 MNEflow API
 ===========
 
-Implemented models
-------------------
-
-Model class
-***********
+mneflow.models.Model class
+**************************
 
 .. autoclass:: mneflow.models.Model
     :members:
     :undoc-members:
     :show-inheritance:
+
+Implemented models
+------------------
 
 LFCNN
 *****
