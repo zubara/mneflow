@@ -6,9 +6,7 @@ MNEflow provides a convenient way to apply neural networks implemmented in Tenso
 Examples
 ========
 * Data Import and basic MNEFlow pipeline `example <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example.ipynb>`_.
-* Advanced use `example <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example.ipynb>`_.
-* `Data preprocessing <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example.ipynb>`_.
-* `Experimentation <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example.ipynb>`_.
+* Advanced use `example <https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb>`_.
 
 
 
