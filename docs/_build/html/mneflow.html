@@ -34,7 +34,9 @@
   <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
   <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="History" href="changelog.html" />
+    <link rel="prev" title="MNEflow" href="intro.html" /> 
 </head>
 
 <body class="wy-body-for-nav">
@@ -78,17 +80,21 @@
               
             
             
-              <!-- Local TOC -->
-              <div class="local-toc"><ul>
-<li><a class="reference internal" href="#">API Reference</a><ul>
-<li><a class="reference internal" href="#module-mneflow.models">mneflow.models</a></li>
-<li><a class="reference internal" href="#module-mneflow.data">mneflow.Dataset</a></li>
-<li><a class="reference internal" href="#module-mneflow.optimize">mneflow.Optimizer</a></li>
-<li><a class="reference internal" href="#module-mneflow.utils">mneflow.utils</a></li>
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="intro.html">MNEflow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html#examples">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html#references">References</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.models">mneflow.models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.data">mneflow.Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.optimize">mneflow.Optimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.utils">mneflow.utils</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">History</a></li>
 </ul>
-</div>
+
             
           
         </div>
@@ -452,15 +458,14 @@ If None, all classes are used.  Defaults to None.</p></li>
 </div>
 <div class="section" id="module-mneflow.optimize">
 <span id="mneflow-optimizer"></span><h2>mneflow.Optimizer<a class="headerlink" href="#module-mneflow.optimize" title="Permalink to this headline">¶</a></h2>
-<p>Created on Tue Jun 18 15:00:22 2019</p>
-<p>&#64;author: zubarei1</p>
+<p>This module specifies Optimizer object</p>
 <dl class="class">
 <dt id="mneflow.optimize.Optimizer">
-<em class="property">class </em><code class="descclassname">mneflow.optimize.</code><code class="descname">Optimizer</code><span class="sig-paren">(</span><em>params</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">mneflow.optimize.</code><code class="descname">Optimizer</code><span class="sig-paren">(</span><em>learn_rate=0.0003</em>, <em>l1_lambda=0</em>, <em>l2_lambda=0</em>, <em>task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer" title="Permalink to this definition">¶</a></dt>
 <dd><p>Optimizer object.</p>
 <dl class="method">
 <dt id="mneflow.optimize.Optimizer.__init__">
-<code class="descname">__init__</code><span class="sig-paren">(</span><em>params</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>learn_rate=0.0003</em>, <em>l1_lambda=0</em>, <em>l2_lambda=0</em>, <em>task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
@@ -662,6 +667,15 @@ epoch is used for scaling.</p></li>
            
           </div>
           <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="changelog.html" class="btn btn-neutral float-right" title="History" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="intro.html" class="btn btn-neutral float-left" title="MNEflow" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
   
 
   <hr/>
