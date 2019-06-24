@@ -1,5 +1,13 @@
-API Reference
-=============
+MNEflow API
+===========
+
+Submodules
+----------
+
+.. automodule:: mneflow
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
 mneflow.models
 --------------
@@ -17,9 +25,11 @@ mneflow.models
 
 mneflow.Dataset
 ---------------
+
 .. automodule:: mneflow.data
-.. autoclass:: Dataset
     :members:
+    :undoc-members:
+    :show-inheritance:
 
 
 mneflow.Optimizer
@@ -28,13 +38,24 @@ mneflow.Optimizer
 .. automodule:: mneflow.optimize
 .. autoclass:: Optimizer
     :members:
+    :show-inheritance:
 
-mneflow.utils 
+mneflow.utils
 -------------
 
 .. automodule:: mneflow.utils
     :members:
     :undoc-members:
     :show-inheritance:
+
+
+mneflow.layers
+--------------
+
+.. automodule:: mneflow.layers
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 

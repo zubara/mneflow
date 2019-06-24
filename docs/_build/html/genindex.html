@@ -84,8 +84,9 @@
 <li class="toctree-l1"><a class="reference internal" href="intro.html">MNEflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#examples">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#references">References</a></li>
-<li class="toctree-l1"><a class="reference internal" href="mneflow.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mneflow.html">MNEflow API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">mneflow</a></li>
 </ul>
 
             
@@ -164,6 +165,7 @@
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
  | <a href="#V"><strong>V</strong></a>
+ | <a href="#W"><strong>W</strong></a>
  
 </div>
 <h2 id="_">_</h2>
@@ -172,6 +174,16 @@
       <li><a href="mneflow.html#mneflow.data.Dataset.__init__">__init__() (mneflow.data.Dataset method)</a>
 
       <ul>
+        <li><a href="mneflow.html#mneflow.layers.ConvDSV.__init__">(mneflow.layers.ConvDSV method)</a>
+</li>
+        <li><a href="mneflow.html#mneflow.layers.DeMixing.__init__">(mneflow.layers.DeMixing method)</a>
+</li>
+        <li><a href="mneflow.html#mneflow.layers.Dense.__init__">(mneflow.layers.Dense method)</a>
+</li>
+        <li><a href="mneflow.html#mneflow.layers.LFTConv.__init__">(mneflow.layers.LFTConv method)</a>
+</li>
+        <li><a href="mneflow.html#mneflow.layers.VARConv.__init__">(mneflow.layers.VARConv method)</a>
+</li>
         <li><a href="mneflow.html#mneflow.models.Model.__init__">(mneflow.models.Model method)</a>
 </li>
         <li><a href="mneflow.html#mneflow.optimize.Optimizer.__init__">(mneflow.optimize.Optimizer method)</a>
@@ -183,6 +195,8 @@
 <h2 id="B">B</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow.html#mneflow.layers.bias_variable">bias_variable() (in module mneflow.layers)</a>
+</li>
       <li><a href="mneflow.html#mneflow.models.Model.build">build() (mneflow.models.Model method)</a>
 </li>
       <li><a href="mneflow.html#mneflow.models.EEGNet.build_graph">build_graph() (mneflow.models.EEGNet method)</a>
@@ -201,7 +215,13 @@
 <h2 id="C">C</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow.html#mneflow.layers.compose">compose() (in module mneflow.layers)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="mneflow.html#mneflow.models.LFCNN.compute_patterns">compute_patterns() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="mneflow.html#mneflow.layers.ConvDSV">ConvDSV (class in mneflow.layers)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -210,6 +230,12 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="mneflow.html#mneflow.data.Dataset">Dataset (class in mneflow.data)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow.html#mneflow.layers.DeMixing">DeMixing (class in mneflow.layers)</a>
+</li>
+      <li><a href="mneflow.html#mneflow.layers.Dense">Dense (class in mneflow.layers)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -235,6 +261,8 @@
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow.html#mneflow.layers.LFTConv">LFTConv (class in mneflow.layers)</a>
+</li>
       <li><a href="mneflow.html#mneflow.models.Model.load">load() (mneflow.models.Model method)</a>
 </li>
       <li><a href="mneflow.html#mneflow.utils.load_meta">load_meta() (in module mneflow.utils)</a>
@@ -245,12 +273,16 @@
 <h2 id="M">M</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow.html#module-mneflow">mneflow (module)</a>
+</li>
       <li><a href="mneflow.html#module-mneflow.data">mneflow.data (module)</a>
 </li>
-      <li><a href="mneflow.html#module-mneflow.models">mneflow.models (module)</a>
+      <li><a href="mneflow.html#module-mneflow.layers">mneflow.layers (module)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow.html#module-mneflow.models">mneflow.models (module)</a>
+</li>
       <li><a href="mneflow.html#module-mneflow.optimize">mneflow.optimize (module)</a>
 </li>
       <li><a href="mneflow.html#module-mneflow.utils">mneflow.utils (module)</a>
@@ -291,9 +323,13 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="mneflow.html#mneflow.utils.scale_to_baseline">scale_to_baseline() (in module mneflow.utils)</a>
 </li>
+      <li><a href="mneflow.html#mneflow.optimize.Optimizer.set_optimizer">set_optimizer() (mneflow.optimize.Optimizer method)</a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="mneflow.html#mneflow.optimize.Optimizer.set_optimizer">set_optimizer() (mneflow.optimize.Optimizer method)</a>
+      <li><a href="mneflow.html#mneflow.layers.spatial_dropout">spatial_dropout() (in module mneflow.layers)</a>
+</li>
+      <li><a href="mneflow.html#mneflow.layers.stack_layers">stack_layers() (in module mneflow.layers)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -310,6 +346,20 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="mneflow.html#mneflow.models.VARCNN">VARCNN (class in mneflow.models)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow.html#mneflow.layers.VARConv">VARConv (class in mneflow.layers)</a>
+</li>
+      <li><a href="mneflow.html#mneflow.layers.vgg_block">vgg_block() (in module mneflow.layers)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="W">W</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow.html#mneflow.layers.weight_variable">weight_variable() (in module mneflow.layers)</a>
 </li>
   </ul></td>
 </tr></table>

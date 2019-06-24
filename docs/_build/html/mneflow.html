@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>API Reference &mdash; MNEflow 0.2-beta documentation</title>
+  <title>MNEflow API &mdash; MNEflow 0.2-beta documentation</title>
   
 
   
@@ -85,14 +85,17 @@
 <li class="toctree-l1"><a class="reference internal" href="intro.html">MNEflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#examples">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#references">References</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">MNEflow API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#module-mneflow">Submodules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-mneflow.models">mneflow.models</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-mneflow.data">mneflow.Dataset</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-mneflow.optimize">mneflow.Optimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-mneflow.utils">mneflow.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.layers">mneflow.layers</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">mneflow</a></li>
 </ul>
 
             
@@ -138,7 +141,7 @@
     
       <li><a href="index.html">Docs</a> &raquo;</li>
         
-      <li>API Reference</li>
+      <li>MNEflow API</li>
     
     
       <li class="wy-breadcrumbs-aside">
@@ -157,8 +160,11 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <div class="section" id="api-reference">
-<h1>API Reference<a class="headerlink" href="#api-reference" title="Permalink to this headline">¶</a></h1>
+  <div class="section" id="mneflow-api">
+<h1>MNEflow API<a class="headerlink" href="#mneflow-api" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="module-mneflow">
+<span id="submodules"></span><h2>Submodules<a class="headerlink" href="#module-mneflow" title="Permalink to this headline">¶</a></h2>
+</div>
 <div class="section" id="module-mneflow.models">
 <span id="mneflow-models"></span><h2>mneflow.models<a class="headerlink" href="#module-mneflow.models" title="Permalink to this headline">¶</a></h2>
 <p>Defines mneflow.models.Model parent class and the implemented models as its
@@ -427,7 +433,8 @@ prediction of the target variable</p>
 <dl class="class">
 <dt id="mneflow.data.Dataset">
 <em class="property">class </em><code class="descclassname">mneflow.data.</code><code class="descname">Dataset</code><span class="sig-paren">(</span><em>h_params</em>, <em>train_batch=200</em>, <em>class_subset=None</em>, <em>combine_classes=False</em>, <em>pick_channels=None</em>, <em>decim=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset" title="Permalink to this definition">¶</a></dt>
-<dd><p>TFRecords dataset from TFRecords files using the metadata.</p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>TFRecords dataset from TFRecords files using the metadata.</p>
 <dl class="method">
 <dt id="mneflow.data.Dataset.__init__">
 <code class="descname">__init__</code><span class="sig-paren">(</span><em>h_params</em>, <em>train_batch=200</em>, <em>class_subset=None</em>, <em>combine_classes=False</em>, <em>pick_channels=None</em>, <em>decim=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset.__init__" title="Permalink to this definition">¶</a></dt>
@@ -462,7 +469,8 @@ If None, all classes are used.  Defaults to None.</p></li>
 <dl class="class">
 <dt id="mneflow.optimize.Optimizer">
 <em class="property">class </em><code class="descclassname">mneflow.optimize.</code><code class="descname">Optimizer</code><span class="sig-paren">(</span><em>learn_rate=0.0003</em>, <em>l1_lambda=0</em>, <em>l2_lambda=0</em>, <em>task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer" title="Permalink to this definition">¶</a></dt>
-<dd><p>Optimizer object.</p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Optimizer object.</p>
 <dl class="method">
 <dt id="mneflow.optimize.Optimizer.__init__">
 <code class="descname">__init__</code><span class="sig-paren">(</span><em>learn_rate=0.0003</em>, <em>l1_lambda=0</em>, <em>l2_lambda=0</em>, <em>task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer.__init__" title="Permalink to this definition">¶</a></dt>
@@ -657,6 +665,108 @@ epoch is used for scaling.</p></li>
 <dd class="field-odd"><p>ndarray</p>
 </dd>
 </dl>
+</dd></dl>
+
+</div>
+<div class="section" id="module-mneflow.layers">
+<span id="mneflow-layers"></span><h2>mneflow.layers<a class="headerlink" href="#module-mneflow.layers" title="Permalink to this headline">¶</a></h2>
+<p>Created on Fri Dec 29 13:40:09 2017</p>
+<p>&#64;author: Ivan Zubarev, <a class="reference external" href="mailto:ivan&#46;zubarev&#37;&#52;&#48;aalto&#46;fi">ivan<span>&#46;</span>zubarev<span>&#64;</span>aalto<span>&#46;</span>fi</a></p>
+<dl class="class">
+<dt id="mneflow.layers.ConvDSV">
+<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">ConvDSV</code><span class="sig-paren">(</span><em>scope='conv'</em>, <em>n_ls=None</em>, <em>nonlin=None</em>, <em>inch=None</em>, <em>domain=None</em>, <em>padding='SAME'</em>, <em>filter_length=5</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>dropout=0.5</em>, <em>conv_type='depthwise'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.ConvDSV" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Standard/Depthwise/Spearable Convolutional Layer constructor</p>
+<dl class="method">
+<dt id="mneflow.layers.ConvDSV.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='conv'</em>, <em>n_ls=None</em>, <em>nonlin=None</em>, <em>inch=None</em>, <em>domain=None</em>, <em>padding='SAME'</em>, <em>filter_length=5</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>dropout=0.5</em>, <em>conv_type='depthwise'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.ConvDSV.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="mneflow.layers.DeMixing">
+<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">DeMixing</code><span class="sig-paren">(</span><em>scope='de-mix'</em>, <em>n_ls=32</em>, <em>nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.DeMixing" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Spatial demixing Layer</p>
+<dl class="method">
+<dt id="mneflow.layers.DeMixing.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='de-mix'</em>, <em>n_ls=32</em>, <em>nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.DeMixing.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="mneflow.layers.Dense">
+<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">Dense</code><span class="sig-paren">(</span><em>scope='fc'</em>, <em>size=None</em>, <em>dropout=0.5</em>, <em>nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.Dense" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Fully-connected layer</p>
+<dl class="method">
+<dt id="mneflow.layers.Dense.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='fc'</em>, <em>size=None</em>, <em>dropout=0.5</em>, <em>nonlin=&lt;function add_dispatch_support.&lt;locals&gt;.wrapper&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.Dense.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="mneflow.layers.LFTConv">
+<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">LFTConv</code><span class="sig-paren">(</span><em>scope='lf-conv'</em>, <em>n_ls=32</em>, <em>nonlin_out=&lt;function relu&gt;</em>, <em>filter_length=7</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LFTConv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Stackable temporal convolutional layer, interpreatble (LF)</p>
+<dl class="method">
+<dt id="mneflow.layers.LFTConv.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='lf-conv'</em>, <em>n_ls=32</em>, <em>nonlin_out=&lt;function relu&gt;</em>, <em>filter_length=7</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LFTConv.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="mneflow.layers.VARConv">
+<em class="property">class </em><code class="descclassname">mneflow.layers.</code><code class="descname">VARConv</code><span class="sig-paren">(</span><em>scope='var-conv'</em>, <em>n_ls=32</em>, <em>nonlin_out=&lt;function relu&gt;</em>, <em>filter_length=7</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Stackable spatio-temporal convolutional Layer (VAR)</p>
+<dl class="method">
+<dt id="mneflow.layers.VARConv.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>scope='var-conv'</em>, <em>n_ls=32</em>, <em>nonlin_out=&lt;function relu&gt;</em>, <em>filter_length=7</em>, <em>stride=1</em>, <em>pooling=2</em>, <em>padding='SAME'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="mneflow.layers.bias_variable">
+<code class="descclassname">mneflow.layers.</code><code class="descname">bias_variable</code><span class="sig-paren">(</span><em>shape</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.bias_variable" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize bias variable as constant 0.1</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="mneflow.layers.compose">
+<code class="descclassname">mneflow.layers.</code><code class="descname">compose</code><span class="sig-paren">(</span><em>f</em>, <em>g</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.compose" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="mneflow.layers.spatial_dropout">
+<code class="descclassname">mneflow.layers.</code><code class="descname">spatial_dropout</code><span class="sig-paren">(</span><em>x</em>, <em>keep_prob</em>, <em>seed=1234</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.spatial_dropout" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="mneflow.layers.stack_layers">
+<code class="descclassname">mneflow.layers.</code><code class="descname">stack_layers</code><span class="sig-paren">(</span><em>*args</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.stack_layers" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="mneflow.layers.vgg_block">
+<code class="descclassname">mneflow.layers.</code><code class="descname">vgg_block</code><span class="sig-paren">(</span><em>n_layers</em>, <em>layer</em>, <em>kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.vgg_block" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="mneflow.layers.weight_variable">
+<code class="descclassname">mneflow.layers.</code><code class="descname">weight_variable</code><span class="sig-paren">(</span><em>shape</em>, <em>name=''</em>, <em>method='he'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.weight_variable" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize weight variable</p>
 </dd></dl>
 
 </div>
