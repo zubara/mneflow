@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>MNEflow API &mdash; MNEflow 0.2-beta documentation</title>
+  <title>MNEflow API &mdash; MNEflow 0.1.1-beta documentation</title>
   
 
   
@@ -86,16 +86,20 @@
 <li class="toctree-l1"><a class="reference internal" href="intro.html#examples">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#references">References</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">MNEflow API</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#module-mneflow">Submodules</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.models">mneflow.models</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.data">mneflow.Dataset</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.optimize">mneflow.Optimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#implemented-models">Implemented models</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#model-class">Model class</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#lfcnn">LFCNN</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#varcnn">VARCNN</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#eegnet">EEGNet</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#mneflow-dataset">mneflow.Dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mneflow-optimizer">mneflow.Optimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-mneflow.utils">mneflow.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-mneflow.layers">mneflow.layers</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">History</a></li>
-<li class="toctree-l1"><a class="reference internal" href="modules.html">mneflow</a></li>
 </ul>
 
             
@@ -162,17 +166,15 @@
             
   <div class="section" id="mneflow-api">
 <h1>MNEflow API<a class="headerlink" href="#mneflow-api" title="Permalink to this headline">¶</a></h1>
-<div class="section" id="module-mneflow">
-<span id="submodules"></span><h2>Submodules<a class="headerlink" href="#module-mneflow" title="Permalink to this headline">¶</a></h2>
-</div>
-<div class="section" id="module-mneflow.models">
-<span id="mneflow-models"></span><h2>mneflow.models<a class="headerlink" href="#module-mneflow.models" title="Permalink to this headline">¶</a></h2>
-<p>Defines mneflow.models.Model parent class and the implemented models as its
-subclasses. Implemented models inherit basic methods from the parent class.</p>
+<div class="section" id="implemented-models">
+<h2>Implemented models<a class="headerlink" href="#implemented-models" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="model-class">
+<h3>Model class<a class="headerlink" href="#model-class" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="mneflow.models.Model">
 <em class="property">class </em><code class="descclassname">mneflow.models.</code><code class="descname">Model</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Model" title="Permalink to this definition">¶</a></dt>
-<dd><p>Parent class for all MNEflow models</p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Parent class for all MNEflow models</p>
 <p>Provides fast and memory-efficient data handling and simplified API.
 Custom models can be built by overriding _build_graph and
 set_optimizer methods.</p>
@@ -273,10 +275,14 @@ Defaults to 0.</p></li>
 
 </dd></dl>
 
+</div>
+<div class="section" id="lfcnn">
+<h3>LFCNN<a class="headerlink" href="#lfcnn" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="mneflow.models.LFCNN">
 <em class="property">class </em><code class="descclassname">mneflow.models.</code><code class="descname">LFCNN</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN" title="Permalink to this definition">¶</a></dt>
-<dd><p>LF-CNN. Includes basic paramter interpretation options.</p>
+<dd><p>Bases: <a class="reference internal" href="#mneflow.models.Model" title="mneflow.models.Model"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.Model</span></code></a></p>
+<p>LF-CNN. Includes basic paramter interpretation options.</p>
 <p>For details see [1].</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -348,10 +354,14 @@ temporal filters. Defaults to False</p></li>
 
 </dd></dl>
 
+</div>
+<div class="section" id="varcnn">
+<h3>VARCNN<a class="headerlink" href="#varcnn" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="mneflow.models.VARCNN">
 <em class="property">class </em><code class="descclassname">mneflow.models.</code><code class="descname">VARCNN</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.VARCNN" title="Permalink to this definition">¶</a></dt>
-<dd><p>VAR-CNN</p>
+<dd><p>Bases: <a class="reference internal" href="#mneflow.models.Model" title="mneflow.models.Model"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.Model</span></code></a></p>
+<p>VAR-CNN</p>
 <p>For details see [1].</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -386,10 +396,14 @@ prediction of the target variable</p>
 
 </dd></dl>
 
+</div>
+<div class="section" id="eegnet">
+<h3>EEGNet<a class="headerlink" href="#eegnet" title="Permalink to this headline">¶</a></h3>
 <dl class="class">
 <dt id="mneflow.models.EEGNet">
 <em class="property">class </em><code class="descclassname">mneflow.models.</code><code class="descname">EEGNet</code><span class="sig-paren">(</span><em>Dataset</em>, <em>Optimizer</em>, <em>specs</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.EEGNet" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="field-list simple">
+<dd><p>Bases: <a class="reference internal" href="#mneflow.models.Model" title="mneflow.models.Model"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.Model</span></code></a></p>
+<dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>eegnet_params</strong> (<em>dict</em>) – </p></li>
@@ -427,9 +441,9 @@ prediction of the target variable</p>
 </dd></dl>
 
 </div>
-<div class="section" id="module-mneflow.data">
-<span id="mneflow-dataset"></span><h2>mneflow.Dataset<a class="headerlink" href="#module-mneflow.data" title="Permalink to this headline">¶</a></h2>
-<p>Defines mneflow.Dataset object</p>
+</div>
+<div class="section" id="mneflow-dataset">
+<h2>mneflow.Dataset<a class="headerlink" href="#mneflow-dataset" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="mneflow.data.Dataset">
 <em class="property">class </em><code class="descclassname">mneflow.data.</code><code class="descname">Dataset</code><span class="sig-paren">(</span><em>h_params</em>, <em>train_batch=200</em>, <em>class_subset=None</em>, <em>combine_classes=False</em>, <em>pick_channels=None</em>, <em>decim=None</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset" title="Permalink to this definition">¶</a></dt>
@@ -463,9 +477,8 @@ If None, all classes are used.  Defaults to None.</p></li>
 </dd></dl>
 
 </div>
-<div class="section" id="module-mneflow.optimize">
-<span id="mneflow-optimizer"></span><h2>mneflow.Optimizer<a class="headerlink" href="#module-mneflow.optimize" title="Permalink to this headline">¶</a></h2>
-<p>This module specifies Optimizer object</p>
+<div class="section" id="mneflow-optimizer">
+<h2>mneflow.Optimizer<a class="headerlink" href="#mneflow-optimizer" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="mneflow.optimize.Optimizer">
 <em class="property">class </em><code class="descclassname">mneflow.optimize.</code><code class="descname">Optimizer</code><span class="sig-paren">(</span><em>learn_rate=0.0003</em>, <em>l1_lambda=0</em>, <em>l2_lambda=0</em>, <em>task='classification'</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.optimize.Optimizer" title="Permalink to this definition">¶</a></dt>
