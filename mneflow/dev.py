@@ -20,21 +20,21 @@ class VARDAE(Model):
     Paramters:
     ----------
     var_params : dict
-                    {
-                    n_ls : int
-                        number of latent components
-                        Defaults to 32
 
-                    filter_length : int
-                        length of spatio-temporal kernels in the temporal
-                        convolution layer. Defaults to 7
+    n_ls : int
+        number of latent components
+        Defaults to 32
 
-                    stride : int
-                        stride of the max pooling layer. Defaults to 1
+    filter_length : int
+        length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7
 
-                    pooling : int
-                        pooling factor of the max pooling layer. Defaults to 2
-                        }
+    stride : int
+        stride of the max pooling layer. Defaults to 1
+
+    pooling : int
+        pooling factor of the max pooling layer. Defaults to 2
+
     References:
     -----------
         [1]  I. Zubarev, et al., Adaptive neural network classifier for
