@@ -228,7 +228,7 @@ class ConvDSV():
 
 
 def weight_variable(shape, name='', method='he'):
-    """Initialize weight variable"""
+    #    """Initialize weight variable"""
     if method == 'xavier':
         xavf = 2/sum(prod(shape[:-1]))
         initial = xavf*tf.random_uniform(shape, minval=-.5, maxval=.5)
@@ -241,6 +241,6 @@ def weight_variable(shape, name='', method='he'):
 
 
 def bias_variable(shape):
-    """ Initialize bias variable as constant 0.1"""
+    #    """ Initialize bias variable as constant 0.1"""
     initial = tf.constant(0.1, shape=shape)
     return tf.Variable(initial, trainable=True, name='bias')
