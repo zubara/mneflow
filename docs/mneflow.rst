@@ -10,10 +10,10 @@ mneflow.models.Model class
     :show-inheritance:
 
 Implemented models
-------------------
+******************
 
 LFCNN
-*****
+-----
 
 .. autoclass:: mneflow.models.LFCNN
     :members:
@@ -21,7 +21,7 @@ LFCNN
     :show-inheritance:
 
 VARCNN
-******
+------
 
 .. autoclass:: mneflow.models.VARCNN
     :members:
@@ -29,7 +29,7 @@ VARCNN
     :show-inheritance:
 
 EEGNet
-******
+------
 
 .. autoclass:: mneflow.models.EEGNet
     :members:
@@ -37,7 +37,7 @@ EEGNet
     :show-inheritance:
 
 mneflow.Dataset
----------------
+***************
 
 .. autoclass:: mneflow.data.Dataset
     :members:
@@ -45,7 +45,7 @@ mneflow.Dataset
     :show-inheritance:
 
 mneflow.Optimizer
------------------
+*****************
 
 .. autoclass:: mneflow.optimize.Optimizer
     :members:
@@ -53,7 +53,7 @@ mneflow.Optimizer
     :show-inheritance:
 
 mneflow.utils
--------------
+*************
 
 .. automodule:: mneflow.utils
     :members:
@@ -62,11 +62,10 @@ mneflow.utils
 
 
 mneflow.layers
---------------
+**************
 
 .. automodule:: mneflow.layers
     :members:
-    :undoc-members:
     :show-inheritance:
 
 
