@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Dec 28 16:12:48 2017
-Read/ Preprocess data & labels/ Shuffle/  Split/ Scale/ Serialize/ Save
-mne version = 0.15.2/ python2.7
-@author: zubarei1
+Specifies utility functions.
 """
-
 import os
 import numpy as np
 import tensorflow as tf
@@ -19,11 +15,19 @@ import csv
 
 def load_meta(fname):
 
-    """Loads a metadata file
+    """
+    Loads a metadata file
     Parameters
     ----------
 
-    fname : path to TFRecord folder
+    fname : str
+            path to TFRecord folder
+
+    Returns
+    -------
+    meta : dict
+        metadata file
+
     """
     with open(fname+'meta.pkl', 'rb') as f:
         meta = pickle.load(f)
@@ -31,7 +35,32 @@ def load_meta(fname):
 
 
 def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
-    """Performs a leave-one-subject out cross-validation"""
+    """
+    Performs a leave-one-out cross-validation such that on each fold one
+    input .tfrecord file is used as a validation set.
+
+    Parameters
+    ----------
+    meta : dict
+            Dictionary containing metadata for initializing mneflow.Dataset.
+            Normally meta is anoutput of produce_tfrecords function.
+
+    optimizer_params : dict
+            Dictionary of parameters for initializing mneflow.Opimizer.
+
+    graph_specs : dict
+            Dictionary of model-specific parameters.
+
+    model : mneflow.models.Model
+            Class of model to be used
+
+    Returns
+    -------
+    results : list of dict
+            List of dictionaries, containg final cost and performance estimates
+            on each fold of the cross-validation
+    """
+
     results = []
     optimizer = Optimizer(optimizer_params)
     for i, path in enumerate(meta['orig_paths']):
@@ -74,7 +103,28 @@ def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
 
 
 def scale_to_baseline(X, baseline=None, crop_baseline=False):
-    """Perform scaling based on the specified baseline"""
+    """Perform global scaling based on a specified baseline.
+
+    Subtracts the mean and divides by the standard deviation of the amplitude
+    of all channels during the baseline interval. If input contains 306
+    channels performs separate scaling for magnetometers and gradiometers.
+
+    Parameters
+    ----------
+    X : ndarray
+        data array with dimensions [n_epochs, n_channels, time].
+    baseline : tuple of int, None
+               baseline definition (in samples). If baseline == None the whole
+               epoch is used for scaling.
+    crop_baseline : bool
+                    whether to crop the baseline after scaling is applied.
+
+    Returns
+    -------
+
+    X : ndarray
+
+    """
     if baseline is None:
         interval = np.arange(X.shape[-1])
         crop_baseline = False
@@ -102,7 +152,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     return X
 
 
-def write_tfrecords(X_, y_, output_file, task='classification'):
+def _write_tfrecords(X_, y_, output_file, task='classification'):
     """Serialize and write datasets in TFRecords fromat
 
     Parameters
@@ -113,6 +163,7 @@ def write_tfrecords(X_, y_, output_file, task='classification'):
         Class labels.
     output_file : str
         Name of the TFRecords file.
+
     Returns
     -------
     TFRecord : TFrecords file.
@@ -137,7 +188,7 @@ def write_tfrecords(X_, y_, output_file, task='classification'):
     writer.close()
 
 
-def split_sets(X, y, val=.1):
+def _split_sets(X, y, val=.1):
     """Applies shuffle and splits the shuffled data
 
     Parameters
@@ -148,6 +199,7 @@ def split_sets(X, y, val=.1):
         Class labels.
     val : float from 0 to 1
         Name of the TFRecords file.
+
     Returns
     -------
     X_train, y_train, X_val, y_val : ndarray
@@ -200,7 +252,8 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                       combine_events=None, task='classification',
                       array_keys={'X': 'X', 'y': 'y'}):
 
-    """Produces TFRecord files from input, applies (optional) preprocessing
+    r"""
+    Produces TFRecord files from input, applies (optional) preprocessing
 
     Calling this function will covnert the input data into TFRecords format
     that is used to effiently store and run Tensorflow models on the data.
@@ -217,7 +270,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
         files will be stored.
 
     out_name :str
-            filename prefix for the output files
+            filename prefix for the output files.
 
     savebatch : int
         number of input files per to be stored in the output TFRecord file.
@@ -227,51 +280,48 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
         If True, also saves the whole dataset in original order, e.g. for
         leave-one-subject-out cross-validation. Defaults to False.
 
-    val_size : float [0,1), optional
+    val_size : float, optional
         Proportion of the data to use as a validation set. Only used if
-        shuffle_split = True. Defaults to 0.2
+        shuffle_split = True. Defaults to 0.2.
 
-    fs : float, int, optional
+    fs : float, optional
         Sampling frequency, required only if inputs are not mne.Epochs
 
     scale : bool, optinal
-        whether to perform scaling to baseline. Defaults to False
+        whether to perform scaling to baseline. Defaults to False.
 
     scale_interval : NoneType, tuple of ints or floats,  optinal
-        baseline definition. If None (default) scaling is perfromed based on
-        all timepoints of the epoch. If int, than baseline is defined as
-        data[epoch_start : scale_interval], if tuple, than baseline is
-        data[tuple[0] : tuple[1]]. Only used if scale = True
-        #float for ecpohs?
+        baseline definition. If None (default) scaling is
+        perfromed based on all timepoints of the epoch.
+        If tuple, than baseline is data[tuple[0] : tuple[1]].
+        Only used if scale == True.
 
     crop_baseline : bool, optinal
-        whether to crop baseline specified by 'scale_interval' after scaling
-        (defaults to False).
+        whether to crop baseline specified by 'scale_interval'
+        after scaling (defaults to False).
 
     decimate : False, int, optional
         whether to decimate the input data (defaults to False).
 
     bp_filter : bool, tuple, optinal
-        band pass filter
-
+        band pass filter.
 
     picks : ndarray of int, optional
-        Indices of channels to pick for processing, if None all channels are
-        used.
-
+        Indices of channels to pick for processing, if None all channels
+        are used.
 
     task : 'classification', optional
-        So far the only available task
+        So far the only available task.
 
     array_keys : dict, optional
         Dictionary mapping {'X':'data_matrix','y':'labels'},
         where 'data_matrix' and 'labels' are names of the corresponding
-        variables if your input is paths to *mat or *npz files.
+        variables if your input is paths to .mat or .npz files.
         Defaults to {'X':'X', 'y':'y'}
 
     overwrite : bool, optional
-        Whether to overwrite the metafile if it already exists at the specified
-        path
+        Whether to overwrite the metafile if it already exists at the
+        specified path.
 
     Returns
     -------
@@ -280,7 +330,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
         information about the dataset required for further processing with
         mneflow.
         Whenever the function is called the copy of metadata is also saved to
-        savepath/meta.pkl so it can be restored at any time
+        savepath/meta.pkl so it can be restored at any time.
 
 
 
@@ -292,21 +342,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
 
     Examples
     --------
-    1.Using mne.epochs
-    import_opts = dict(savepath='path_to_output/', out_name='example',
-                      picks={'meg':'grad'},scale=True,
-                      crop_baseline=True, scale_interval=78,savebatch=1)
-    meta = mneflow.produce_tfrecords(my_epochs,**import_opts)
-
-    2.Using *.mat files
-    input_paths = ['matlab_file_1.mat,'matlab_file_2.mat,'matlab_file_3.mat]
-    import_opts = dict(savepath='path_to_output/', out_name='matlab_example',
-                      scale=True, crop_baseline=True, scale_interval=(0,36),
-                      savebatch=8, fs=500., bp_filter=(0.1,45.), decimate=4,
-                      val_size=.15, array_keys={'X':'meg_data', 'y':'labels'},
-                      savebatch=2)
-
-    meta = mneflow.produce_tfrecords(input_paths,**import_opts)
+    meta = mneflow.produce_tfrecords(input_paths, \**import_opts)
 
     """
 
@@ -372,7 +408,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                 break
             if task == 'classification':
                 if combine_events:
-                    events, keep_ind = combine_labels(events, combine_events)
+                    events, keep_ind = _combine_labels(events, combine_events)
                     data = data[keep_ind, ...]
                     events = events[keep_ind]
 
@@ -398,22 +434,22 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                 print('Saving TFRecord# {}'.format(jj))
                 X = X.astype(np.float32)
                 n_trials, meta['n_ch'], meta['n_t'] = X.shape
-                X_train, y_train, X_val, y_val = split_sets(X, y, val=val_size)
+                X_train, y_train, X_val, y_val = _split_sets(X, y, val=val_size)
                 meta['val_size'] += len(y_val)
                 meta['train_paths'].append(''.join([savepath, out_name,
                                                     '_train_', str(jj),
                                                     '.tfrecord']))
-                write_tfrecords(X_train, y_train, meta['train_paths'][-1],
+                _write_tfrecords(X_train, y_train, meta['train_paths'][-1],
                                 task=task)
                 meta['val_paths'].append(''.join([savepath, out_name,
                                                  '_val_', str(jj),
                                                   '.tfrecord']))
-                write_tfrecords(X_val, y_val, meta['val_paths'][-1], task=task)
+                _write_tfrecords(X_val, y_val, meta['val_paths'][-1], task=task)
                 if save_origs:
                     meta['orig_paths'].append(''.join([savepath, out_name,
                                                        '_orig_', str(jj),
                                                        '.tfrecord']))
-                    write_tfrecords(X, y, meta['orig_paths'][-1], task=task)
+                    _write_tfrecords(X, y, meta['orig_paths'][-1], task=task)
                 jj += 1
                 i = 0
                 del X, y
@@ -425,7 +461,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
     return meta
 
 
-def combine_labels(labels, new_mapping):
+def _combine_labels(labels, new_mapping):
     """Combines labels
 
     Parameters
