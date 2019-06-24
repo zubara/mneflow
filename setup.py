@@ -14,7 +14,7 @@ if __name__ == "__main__":
         description='Interface for running tensorflow models on MEG/EEG data with MNE-python',
         license='BSD-3',
         url='https://github.com/zubara/mneflow',
-        version='0.2',
+        version='0.1.1-beta',
         download_url='https://github.com/zubara/mneflow/archive/master.zip',
         long_description=codecs.open('README.md', encoding='utf8').read(),
         classifiers=['Intended Audience :: Science/Research',
@@ -29,5 +29,6 @@ if __name__ == "__main__":
                      'Operating System :: MacOS'],
         platforms='any',
         packages=['mneflow'],
-        install_requires=['numpy', 'scipy', 'mne', 'tensorflow',  'matplotlib', 'sklearn'],
+        install_requires=['numpy', 'scipy', 'mne', 'tensorflow',  'matplotlib',
+                          'sklearn'],
     )

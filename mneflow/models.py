@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed May 30 16:39:39 2018
+Defines mneflow.models.Model parent class and the implemented models as its
+subclasses. Implemented models inherit basic methods from the parent class.
 
-
-@author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
 from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing
 import tensorflow as tf
@@ -12,24 +11,31 @@ from sklearn.covariance import ledoit_wolf
 
 
 class Model(object):
-    """Parent class for all MNEflow models
+    """
+    Parent class for all MNEflow models
 
     Provides fast and memory-efficient data handling and simplified API.
     Custom models can be built by overriding _build_graph and
-    _set_optimizer methods.
+    set_optimizer methods.
+
     """
     def __init__(self, Dataset, Optimizer, specs):
         """
-        Parameters:
+        Parameters
         -----------
         Dataset : mneflow.Dataset
+                    Dataset object.
 
         Optimizer : mneflow.Optimizer
+                    Optimizer object.
 
         specs : dict
-            dictionary of model hyperparameters specific to your architecture
-            Must include at least model_path - path for saving a trained model
+                dictionary of model-specific hyperparameters. Must include at
+                least model_path - path for saving a trained model. See
+                subclass definitions for details.
+
         """
+
         self.specs = specs
         self.model_path = specs['model_path']
         if Dataset.h_params['task'] == 'classification':
@@ -39,8 +45,8 @@ class Model(object):
         self.fs = Dataset.h_params['fs']
         self.sess = tf.Session()
         self.handle = tf.placeholder(tf.string, shape=[])
-        self.train_iter, self.train_handle = self.start_iterator(Dataset.train)
-        self.val_iter, self.val_handle = self.start_iterator(Dataset.val)
+        self.train_iter, self.train_handle = self._start_iterator(Dataset.train)
+        self.val_iter, self.val_handle = self._start_iterator(Dataset.val)
 
         self.iterator = tf.data.Iterator.from_string_handle(self.handle, Dataset.train.output_types, Dataset.train.output_shapes)
         self.X, self.y_ = self.iterator.get_next()
@@ -48,9 +54,11 @@ class Model(object):
         self.dataset = Dataset
         self.optimizer = Optimizer
 
-    def start_iterator(self, Dataset):
+    def _start_iterator(self, Dataset):
 
-        """Builds initializable iterator and string handle."""
+        """
+        Builds initializable iterator and string handle.
+        """
 
         ds_iterator = Dataset.make_initializable_iterator()
         handle = self.sess.run(ds_iterator.string_handle())
@@ -59,29 +67,34 @@ class Model(object):
 
     def build(self):
 
-        """Compile a model"""
+        """
+        Compile a model
+
+        """
 
         # Initialize computational graph
-        self.y_pred = self._build_graph()
+        self.y_pred = self.build_graph()
         print('y_pred:', self.y_pred.shape)
         # Initialize optimizer
         self.saver = tf.train.Saver(max_to_keep=1)
-        opt_handles = self.optimizer._set_optimizer(self.y_pred, self.y_)
+        opt_handles = self.optimizer.set_optimizer(self.y_pred, self.y_)
         self.train_step, self.accuracy, self.cost, self.p_classes = opt_handles
         print('Initialization complete!')
 
-    def _build_graph(self):
+    def build_graph(self):
 
-        """Build computational graph using defined placeholder self.X as input
+        """
+        Build computational graph using defined placeholder self.X as input
 
         Can be overriden in a sub-class for customized architecture.
 
-        Returns:
+        Returns
         --------
         y_pred : tf.Tensor
                 output of the forward pass of the computational graph.
-                prediction of the target variable"""
+                prediction of the target variable
 
+        """
         print('Specify a model. Set to linear classifier!')
         fc_1 = Dense(size=self.n_classes, nonlin=tf.identity,
                      dropout=self.rate)
@@ -89,16 +102,17 @@ class Model(object):
         return y_pred
 
     def train(self, n_iter, eval_step=250, min_delta=1e-6, early_stopping=3):
-        """ Trains a model
+        """
+        Trains a model
 
-        Parameters:
+        Parameters
         -----------
 
         n_iter : int
-                maximum number of training iterations
+                maximum number of training iterations.
 
         eval_step : int
-                How often to evaluate model performance during training
+                How often to evaluate model performance during training.
 
         early_stopping : int
                 Patience parameter for early stopping. Specifies the number of
@@ -107,7 +121,7 @@ class Model(object):
 
         min_delta : float
                 Convergence threshold for validation cost during training.
-                Defaults to 0
+                Defaults to 0.
         """
         self.sess.run(tf.global_variables_initializer())
         min_val_loss = np.inf
@@ -144,10 +158,12 @@ class Model(object):
                       % (i, t_loss, acc, v_loss, self.v_acc))
 
     def load(self):
-        """Loads a pretrained model.
+        """
+        Loads a pretrained model
 
         To load a specific model the model object should be initialized using
-        the corresponding metadata and computational graph"""
+        the corresponding metadata and computational graph
+        """
 
         self.saver.restore(self.sess, ''.join([self.model_path,
                                               self.scope, '-',
@@ -156,56 +172,81 @@ class Model(object):
                                    feed_dict={self.handle: self.val_handle})
 
     def evaluate_performance(self, data_path, batch_size=None):
-        """Compute performance metric on a TFR dataset specified by path"""
-        test_dataset = self.dataset.build_dataset(data_path,
-                                                  n_batch=batch_size)
+        """
+        Compute performance metric on a TFR dataset specified by path
+
+        Parameters
+        ----------
+        data_path : str, list of str
+                    path to .tfrecords file(s).
+
+        batch_size : NoneType, int
+                    whether to split the dataset into batches.
+        """
+        test_dataset = self.dataset._build_dataset(data_path,
+                                                   n_batch=batch_size)
         test_iter, test_handle = self.start_iterator(test_dataset)
         acc = self.sess.run(self.accuracy, feed_dict={self.handle: test_handle,
                                                       self.rate: 1.})
         print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
         return np.mean(acc)
 
-    def evaluate_realtime(self, data_path, batch_size=None, step_size=1):
-
-        """Compute performance metric on a TFR dataset specified by path
-            batch by batch with updating the model after each batch """
-
-        prt_batch_pred = []
-        prt_logits = []
-        n_test_points = batch_size//step_size
-        count = 0
-
-        test_dataset = tf.data.TFRecordDataset(data_path).map(self._parse_function)
-        test_dataset = test_dataset.batch(step_size)
-        test_iter = test_dataset.make_initializable_iterator()
-        self.sess.run(test_iter.initializer)
-        test_handle = self.sess.run(test_iter.string_handle())
-
-        while True:
-            try:
-                self.load()
-                count += 1
-                preds = 0
-                for jj in range(n_test_points):
-                    pred, probs = self.sess.run([self.correct_prediction,
-                                                self.p_classes],
-                                                feed_dict={self.handle: test_handle,
-                                                           self.rate: 1})
-                    self.sess.run(self.train_step,
-                                  feed_dict={self.handle: test_handle,
-                                             self.rate: self.specs['dropout']})
-                    preds += np.mean(pred)
-                    prt_logits.append(probs)
-                prt_batch_pred.append(preds/n_test_points)
-            except tf.errors.OutOfRangeError:
-                print('prt_done: count: %d, acc: %g +\\- %g'
-                      % (count, np.mean(prt_batch_pred), np.std(prt_batch_pred)))
-                break
-        return prt_batch_pred, np.concatenate(prt_logits)
+#    def evaluate_realtime(self, data_path, batch_size=None, step_size=1):
+#
+#        """Compute performance metric on a TFR dataset specified by path
+#            batch by batch with updating the model after each batch """
+#
+#        prt_batch_pred = []
+#        prt_logits = []
+#        n_test_points = batch_size//step_size
+#        count = 0
+#
+#        test_dataset = tf.data.TFRecordDataset(data_path).map(self._parse_function)
+#        test_dataset = test_dataset.batch(step_size)
+#        test_iter = test_dataset.make_initializable_iterator()
+#        self.sess.run(test_iter.initializer)
+#        test_handle = self.sess.run(test_iter.string_handle())
+#
+#        while True:
+#            try:
+#                self.load()
+#                count += 1
+#                preds = 0
+#                for jj in range(n_test_points):
+#                    pred, probs = self.sess.run([self.correct_prediction,
+#                                                self.p_classes],
+#                                                feed_dict={self.handle: test_handle,
+#                                                           self.rate: 1})
+#                    self.sess.run(self.train_step,
+#                                  feed_dict={self.handle: test_handle,
+#                                             self.rate: self.specs['dropout']})
+#                    preds += np.mean(pred)
+#                    prt_logits.append(probs)
+#                prt_batch_pred.append(preds/n_test_points)
+#            except tf.errors.OutOfRangeError:
+#                print('prt_done: count: %d, acc: %g +\\- %g'
+#                      % (count, np.mean(prt_batch_pred), np.std(prt_batch_pred)))
+#                break
+#        return prt_batch_pred, np.concatenate(prt_logits)
 
     def plot_cm(self, dataset='validation', class_names=None, normalize=False):
 
-        """ Plot a confusion matrix"""
+        """
+        Plot a confusion matrix
+
+        Parameters
+        ----------
+
+        dataset : str {'training', 'validation'}
+                which dataset to use for plotting confusion matrix
+
+        class_names : list of str, optional
+                if provided subscribes the classes, otherwise class labels
+                are used
+
+        normalize : bool
+                whether to return percentages (if True) or counts (False)
+        """
 
         from matplotlib import pyplot as plt
         from sklearn.metrics import confusion_matrix
@@ -245,6 +286,13 @@ class Model(object):
 
 
 class VGG19(Model):
+    """
+    VGG-19 model.
+
+    References
+    ----------
+
+    """
     def __init__(self, Dataset, params, specs):
         super().__init__(Dataset, params)
         self.specs = dict(n_ls=self.params['n_ls'], nonlin_out=tf.nn.relu,
@@ -252,7 +300,7 @@ class VGG19(Model):
                           domain='2d', stride=1, pooling=1, conv_type='2d')
         self.scope = 'vgg19'
 
-    def _build_graph(self):
+    def build_graph(self):
         X1 = tf.expand_dims(self.X, -1)
         if X1.shape[1] == 306:
             X1 = tf.concat([X1[:, 0:306:3, :],
@@ -298,22 +346,22 @@ class EEGNet(Model):
     ----------
     eegnet_params : dict
 
-                    n_ls : int
-                        number of (temporal) convolution kernrels in the first layer.
-                        Defaults to 8
+    n_ls : int
+            number of (temporal) convolution kernrels in the first layer.
+            Defaults to 8
 
-                    filter_length : int
-                        length of temporal filters in the first layer.
-                        Defaults to 32
+    filter_length : int
+                    length of temporal filters in the first layer.
+                    Defaults to 32
 
-                    stride : int
-                        stride of the average polling layers. Defaults to 4
+    stride : int
+             stride of the average polling layers. Defaults to 4.
 
-                    pooling : int
-                        pooling factor of the average polling layers. Defaults to 4
-                        }
+    pooling : int
+              pooling factor of the average polling layers. Defaults to 4.
 
-    ---------
+    References
+    ----------
     [1] V.J. Lawhern, et al., EEGNet: A compact convolutional neural network
     for EEG-based brain–computer interfaces 10 J. Neural Eng., 15 (5) (2018),
     p. 056013
@@ -322,7 +370,7 @@ class EEGNet(Model):
     https://github.com/vlawhern/arl-eegmodels
     """
 
-    def _build_graph(self):
+    def build_graph(self):
         self.scope = 'eegnet'
 
         X1 = tf.expand_dims(self.X, -1)
@@ -374,9 +422,44 @@ class EEGNet(Model):
 
 class LFCNN(Model):
 
-    """Refactored LFCNN"""
+    """
+    LF-CNN. Includes basic paramter interpretation options.
 
-    def _build_graph(self):
+    For details see [1].
+
+    Parameters
+    ----------
+    n_ls : int
+        number of latent components
+        Defaults to 32
+
+    filter_length : int
+        length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7
+
+    stride : int
+        stride of the max pooling layer. Defaults to 1
+
+    pooling : int
+        pooling factor of the max pooling layer. Defaults to 2
+
+    References
+    ----------
+        [1]  I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+        """
+
+    def build_graph(self):
+        """
+        Build computational graph using defined placeholder self.X as input
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+                output of the forward pass of the computational graph.
+                prediction of the target variable
+
+        """
         self.scope = 'var-cnn'
         self.demix = DeMixing(n_ls=self.specs['n_ls'])
 
@@ -394,6 +477,10 @@ class LFCNN(Model):
         return y_pred
 
     def plot_out_weihts(self,):
+        """
+        Plots the weights of the output layer
+
+        """
         from matplotlib import pyplot as plt
 
         f, ax = plt.subplots(1, self.n_classes)
@@ -409,6 +496,12 @@ class LFCNN(Model):
         plt.show()
 
     def compute_patterns(self, megdata=None, output='patterns'):
+        """
+        Computes spatial patterns from filter weights.
+
+        Required for visualization.
+        """
+
         vis_dict = {self.handle: self.train_handle, self.rate: 1}
         spatial = self.sess.run(self.demix.W, feed_dict=vis_dict)
         self.filters = np.squeeze(self.sess.run(self.tconv1.filters,
@@ -431,6 +524,36 @@ class LFCNN(Model):
 
     def plot_patterns(self, sensor_layout='Vectorview-grad', sorting='l2',
                       spectra=True, fs=None, scale=False, names=False):
+        """
+        Plot informative spatial activations patterns for each class of stimuli
+
+        Parameters
+        ----------
+
+        sensor_layout : str or mne.channels.Layout
+            sensor layout. See mne.channels.read_layout for details
+
+        sorting : str, optional
+
+        spectra : bool, optional
+            If True will also plot frequency responses of the associated
+            temporal filters. Defaults to False
+
+        fs : float
+            sampling frequency
+
+        scale : bool, otional
+            If True will min-max scale the output. Defaults to False
+
+        names : list of str, optional
+            Class names
+
+        Returns
+        -------
+
+        Figure
+
+        """
         from mne import channels, evoked, create_info
         import matplotlib.pyplot as plt
         from scipy.signal import freqz
@@ -519,30 +642,29 @@ class VARCNN(Model):
 
     For details see [1].
 
-    Paramters:
+    Parameters
     ----------
-    var_params : dict
-                    {
-                    n_ls : int
-                        number of latent components
-                        Defaults to 32
+    n_ls : int
+        number of latent components
+        Defaults to 32
 
-                    filter_length : int
-                        length of spatio-temporal kernels in the temporal
-                        convolution layer. Defaults to 7
+    filter_length : int
+        length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7
 
-                    stride : int
-                        stride of the max pooling layer. Defaults to 1
+    stride : int
+        stride of the max pooling layer. Defaults to 1
 
-                    pooling : int
-                        pooling factor of the max pooling layer. Defaults to 2
-                        }
-    References:
-    -----------
+    pooling : int
+        pooling factor of the max pooling layer. Defaults to 2
+
+    References
+    ----------
         [1]  I. Zubarev, et al., Adaptive neural network classifier for
-        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434"""
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+        """
 
-    def _build_graph(self):
+    def build_graph(self):
         self.scope = 'var-cnn'
         self.demix = DeMixing(n_ls=self.specs['n_ls'])
 
@@ -561,51 +683,47 @@ class VARCNN(Model):
         return y_pred
 
 
-class VARCNN2(Model):
-
-    """VAR-CNN
-
-    For details see [1].
-
-    Paramters:
-    ----------
-    var_params : dict
-                    {
-                    n_ls : int
-                        number of latent components
-                        Defaults to 32
-
-                    filter_length : int
-                        length of spatio-temporal kernels in the temporal
-                        convolution layer. Defaults to 7
-
-                    stride : int
-                        stride of the max pooling layer. Defaults to 1
-
-                    pooling : int
-                        pooling factor of the max pooling layer. Defaults to 2
-                        }
-    """
-
-    def _build_graph(self):
-        self.scope = 'var2'
-        self.demix = DeMixing(n_ls=self.specs['n_ls'])
-
-        self.tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
-                              nonlin_out=tf.nn.relu,
-                              filter_length=self.specs['filter_length']//2,
-                              stride=self.specs['stride']//2,
-                              pooling=self.specs['pooling']//2,
-                              padding=self.specs['padding'])
-        self.tconv2 = VARConv(scope="conv", n_ls=self.specs['n_ls']//2,
-                              nonlin_out=tf.nn.relu,
-                              filter_length=self.specs['filter_length']//4,
-                              stride=self.specs['stride']//4,
-                              pooling=self.specs['pooling']//4,
-                              padding=self.specs['padding'])
-
-        self.fin_fc = Dense(size=self.n_classes,
-                            nonlin=tf.identity, dropout=self.rate)
-
-        y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
-        return y_pred
+#class VARCNN2(Model):
+#
+#    """VAR-CNN
+#
+#    Parameters
+#    ----------
+#    n_ls : int
+#        number of latent components
+#        Defaults to 32
+#
+#    filter_length : int
+#        length of spatio-temporal kernels in the temporal
+#        convolution layer. Defaults to 7
+#
+#    stride : int
+#        stride of the max pooling layer. Defaults to 1
+#
+#    pooling : int
+#        pooling factor of the max pooling layer. Defaults to 2
+#
+#    """
+#
+#    def build_graph(self):
+#        self.scope = 'var2'
+#        self.demix = DeMixing(n_ls=self.specs['n_ls'])
+#
+#        self.tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
+#                              nonlin_out=tf.nn.relu,
+#                              filter_length=self.specs['filter_length']//2,
+#                              stride=self.specs['stride']//2,
+#                              pooling=self.specs['pooling']//2,
+#                              padding=self.specs['padding'])
+#        self.tconv2 = VARConv(scope="conv", n_ls=self.specs['n_ls']//2,
+#                              nonlin_out=tf.nn.relu,
+#                              filter_length=self.specs['filter_length']//4,
+#                              stride=self.specs['stride']//4,
+#                              pooling=self.specs['pooling']//4,
+#                              padding=self.specs['padding'])
+#
+#        self.fin_fc = Dense(size=self.n_classes,
+#                            nonlin=tf.identity, dropout=self.rate)
+#
+#        y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
+#        return y_pred
