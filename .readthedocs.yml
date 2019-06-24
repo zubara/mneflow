@@ -26,4 +26,4 @@ sphinx:
   fail_on_warning: false
 
 conda:
-  environment: environment.yml
+  environment: py3ml.yml
