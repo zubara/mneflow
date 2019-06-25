@@ -1,40 +1,73 @@
-API Reference
-=============
+MNEflow API
+===========
 
-mneflow.models
---------------
+mneflow.models.Model class
+**************************
 
-.. automodule:: mneflow.models
-.. autoclass:: Model
+.. autoclass:: mneflow.models.Model
     :members:
-.. autoclass:: LFCNN
-    :members:
-.. autoclass:: VARCNN
-    :members:
-.. autoclass:: EEGNet
-    :members:
+    :undoc-members:
+    :show-inheritance:
 
+Implemented models
+------------------
+
+LFCNN
+*****
+
+.. autoclass:: mneflow.models.LFCNN
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+VARCNN
+******
+
+.. autoclass:: mneflow.models.VARCNN
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+EEGNet
+******
+
+.. autoclass:: mneflow.models.EEGNet
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
 mneflow.Dataset
 ---------------
-.. automodule:: mneflow.data
-.. autoclass:: Dataset
-    :members:
 
+.. autoclass:: mneflow.data.Dataset
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
 mneflow.Optimizer
 -----------------
 
-.. automodule:: mneflow.optimize
-.. autoclass:: Optimizer
+.. autoclass:: mneflow.optimize.Optimizer
     :members:
+    :undoc-members:
+    :show-inheritance:
 
-mneflow.utils 
+mneflow.utils
 -------------
 
 .. automodule:: mneflow.utils
     :members:
     :undoc-members:
     :show-inheritance:
+
+
+mneflow.layers
+--------------
+
+.. automodule:: mneflow.layers
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 

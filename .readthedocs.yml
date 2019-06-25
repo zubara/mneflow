@@ -5,21 +5,19 @@
 # Required
 version: 2
 
-# Build documentation with MkDocs
-#mkdocs:
-#  configuration: mkdocs.yml
-
 # Optionally build your docs in additional formats such as PDF and ePub
 formats: all
 
 # Optionally set the version of Python and requirements required to build your docs
 python:
   version: 3.7
+  install:
+      - requirements: requirements.txt
 
 sphinx:
   builder: html
   configuration: docs/conf.py
   fail_on_warning: false
 
-conda:
-  environment: py3ml.yml
+#conda:
+#  environment: py3ml.yml

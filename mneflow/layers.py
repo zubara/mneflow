@@ -29,7 +29,9 @@ def vgg_block(n_layers, layer, kwargs):
 
 
 class Dense():
-    """Fully-connected layer"""
+    """
+    Fully-connected layer
+    """
     def __init__(self, scope="fc", size=None, dropout=.5,
                  nonlin=tf.identity):
         assert size, "Must specify layer size (num nodes)"
@@ -60,7 +62,9 @@ class Dense():
 
 
 class LFTConv():
-    """Stackable temporal convolutional layer, interpreatble (LF)"""
+    """
+    Stackable temporal convolutional layer, interpreatble (LF)
+    """
     def __init__(self, scope="lf-conv", n_ls=32,  nonlin_out=tf.nn.relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME'):
         self.scope = scope
@@ -92,7 +96,9 @@ class LFTConv():
 
 
 class VARConv():
-    """Stackable spatio-temporal convolutional Layer (VAR)"""
+    """
+    Stackable spatio-temporal convolutional Layer (VAR)
+    """
     def __init__(self, scope="var-conv", n_ls=32,  nonlin_out=tf.nn.relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME'):
         self.scope = scope
@@ -124,7 +130,9 @@ class VARConv():
 
 
 class DeMixing():
-    """Spatial demixing Layer"""
+    """
+    Spatial demixing Layer
+    """
     def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity):
         self.scope = scope
         self.size = n_ls
@@ -161,7 +169,9 @@ def spatial_dropout(x, keep_prob, seed=1234):
 
 
 class ConvDSV():
-    """Standard/Depthwise/Spearable Convolutional Layer constructor"""
+    """
+    Standard/Depthwise/Spearable Convolutional Layer constructor
+    """
 
     def __init__(self, scope="conv", n_ls=None, nonlin=None, inch=None,
                  domain=None, padding='SAME', filter_length=5, stride=1,
@@ -228,7 +238,7 @@ class ConvDSV():
 
 
 def weight_variable(shape, name='', method='he'):
-    """Initialize weight variable"""
+    #    """Initialize weight variable"""
     if method == 'xavier':
         xavf = 2/sum(prod(shape[:-1]))
         initial = xavf*tf.random_uniform(shape, minval=-.5, maxval=.5)
@@ -241,6 +251,6 @@ def weight_variable(shape, name='', method='he'):
 
 
 def bias_variable(shape):
-    """ Initialize bias variable as constant 0.1"""
+    #    """ Initialize bias variable as constant 0.1"""
     initial = tf.constant(0.1, shape=shape)
     return tf.Variable(initial, trainable=True, name='bias')
