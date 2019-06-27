@@ -584,7 +584,7 @@ class LFCNN(Model):
         lo = channels.read_layout(sensor_layout)
         info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
         self.fake_evoked = evoked.EvokedArray(self.patterns, info)
-        nfilt = min(self.specs['n_ls']//self.n_classes, 8)
+        nfilt = min(self.n_classes, 8)
         if sorting == 'l2':
             order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=2))
         elif sorting == 'l1':
@@ -596,11 +596,11 @@ class LFCNN(Model):
                 inds = np.argsort(self.out_weights[..., i].sum(-1))[::-1]
                 order += list(inds[:nfilt])
             order = np.array(order)
-        elif sorting == 'abs':
+        elif sorting == 'best_spatial':
             nfilt = self.n_classes
             order = []
             for i in range(self.n_classes):
-                pat = np.argmax(np.abs(self.out_weights[..., i].sum(-1)))
+                pat = np.argmax(self.out_weights[..., i].sum(-1))
                 order.append(pat)
             order = np.array(order)
         elif sorting == 'best':
@@ -643,7 +643,7 @@ class LFCNN(Model):
         ncols = min(nfilt, len(order))
 
         f, ax = plt.subplots(z*nrows, ncols, sharey=True)
-#        f.set_size_inches([16,9])
+        f.set_size_inches([16,9])
         ax = np.atleast_2d(ax)
         for i in range(nrows):
             if spectra:
@@ -656,6 +656,7 @@ class LFCNN(Model):
                                           vmax=np.percentile(self.fake_evoked.data[:, :len(order)], 99),
                                           scalings=1, time_format='class # %g',
                                           title='Informative patterns ('+sorting+')')
+
         return f
 
 
@@ -704,49 +705,3 @@ class VARCNN(Model):
         y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
 
         return y_pred
-
-
-#class VARCNN2(Model):
-#
-#    """VAR-CNN
-#
-#    Parameters
-#    ----------
-#    n_ls : int
-#        number of latent components
-#        Defaults to 32
-#
-#    filter_length : int
-#        length of spatio-temporal kernels in the temporal
-#        convolution layer. Defaults to 7
-#
-#    stride : int
-#        stride of the max pooling layer. Defaults to 1
-#
-#    pooling : int
-#        pooling factor of the max pooling layer. Defaults to 2
-#
-#    """
-#
-#    def build_graph(self):
-#        self.scope = 'var2'
-#        self.demix = DeMixing(n_ls=self.specs['n_ls'])
-#
-#        self.tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
-#                              nonlin_out=tf.nn.relu,
-#                              filter_length=self.specs['filter_length']//2,
-#                              stride=self.specs['stride']//2,
-#                              pooling=self.specs['pooling']//2,
-#                              padding=self.specs['padding'])
-#        self.tconv2 = VARConv(scope="conv", n_ls=self.specs['n_ls']//2,
-#                              nonlin_out=tf.nn.relu,
-#                              filter_length=self.specs['filter_length']//4,
-#                              stride=self.specs['stride']//4,
-#                              pooling=self.specs['pooling']//4,
-#                              padding=self.specs['padding'])
-#
-#        self.fin_fc = Dense(size=self.n_classes,
-#                            nonlin=tf.identity, dropout=self.rate)
-#
-#        y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
-#        return y_pred
