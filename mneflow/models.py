@@ -191,6 +191,29 @@ class Model(object):
         print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
         return np.mean(acc)
 
+    def predict(self, data_path, batch_size=None):
+        """
+        Compute performance metric on a TFR dataset specified by path
+
+        Parameters
+        ----------
+        data_path : str, list of str
+                    path to .tfrecords file(s).
+
+        batch_size : NoneType, int
+                    whether to split the dataset into batches.
+        """
+        if data_path:
+            test_dataset = self.dataset._build_dataset(data_path,
+                                                       n_batch=batch_size)
+            test_iter, test_handle = self.start_iterator(test_dataset)
+        else:
+            test_iter, test_handle = self.start_iterator(self.dataset.val)
+        pred, true = self.sess.run([self.y_pred, self.y_],
+                                   feed_dict={self.handle: test_handle,
+                                              self.rate: 1.})
+        return pred, true
+
 #    def evaluate_realtime(self, data_path, batch_size=None, step_size=1):
 #
 #        """Compute performance metric on a TFR dataset specified by path

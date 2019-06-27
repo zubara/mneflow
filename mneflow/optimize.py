@@ -19,8 +19,9 @@ class Optimizer(object):
         learn_rate : float
                     learning rate
         l1_lambda : float, optional
-                    coefficient for sparse penaly on hte parameter weights
-
+                    coefficient for sparse penaly on the model weights
+        l2_lambda : float, optional
+                    coefficient for l2 on the model weights
         task : str, {'classification', 'regression'}
 
 

@@ -10,10 +10,10 @@ import pickle
 from operator import itemgetter
 from mneflow.data import Dataset
 from mneflow.optimize import Optimizer
-from mne import epochs as mnepochs, filter as mnefilt
+
 import csv
 
-def load_meta(fname):
+def load_meta(fname,data_id=''):
 
     """
     Loads a metadata file
@@ -29,7 +29,7 @@ def load_meta(fname):
         metadata file
 
     """
-    with open(fname+'meta.pkl', 'rb') as f:
+    with open(fname+data_id+'_meta.pkl', 'rb') as f:
         meta = pickle.load(f)
     return meta
 
@@ -62,7 +62,7 @@ def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
     """
 
     results = []
-    optimizer = Optimizer(optimizer_params)
+    optimizer = Optimizer(**optimizer_params)
     for i, path in enumerate(meta['orig_paths']):
         meta_loso = meta.copy()
         train_fold = [i for i, _ in enumerate(meta['train_paths'])]
@@ -348,7 +348,8 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
 
     if not os.path.exists(savepath):
         os.mkdir(savepath)
-    if overwrite or not os.path.exists(savepath+'meta.pkl'):
+    if overwrite or not os.path.exists(savepath+out_name+'meta.pkl'):
+        from mne import epochs as mnepochs, filter as mnefilt
         meta = dict(train_paths=[], val_paths=[], orig_paths=[],
                     data_id=out_name, val_size=0, task=task)
         jj = 0
@@ -456,7 +457,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
             with open(savepath+'meta.pkl', 'wb') as f:
                 pickle.dump(meta, f)
 
-    elif os.path.exists(savepath+'meta.pkl'):
+    elif os.path.exists(savepath+out_name+'_meta.pkl'):
         meta = load_meta(savepath)
     return meta
 
