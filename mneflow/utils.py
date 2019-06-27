@@ -348,7 +348,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
 
     if not os.path.exists(savepath):
         os.mkdir(savepath)
-    if overwrite or not os.path.exists(savepath+out_name+'meta.pkl'):
+    if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
         from mne import epochs as mnepochs, filter as mnefilt
         meta = dict(train_paths=[], val_paths=[], orig_paths=[],
                     data_id=out_name, val_size=0, task=task)
@@ -454,10 +454,11 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                 jj += 1
                 i = 0
                 del X, y
-            with open(savepath+'meta.pkl', 'wb') as f:
+            with open(savepath+out_name+'_meta.pkl', 'wb') as f:
                 pickle.dump(meta, f)
 
     elif os.path.exists(savepath+out_name+'_meta.pkl'):
+        print('Metadata file found, restoring')
         meta = load_meta(savepath)
     return meta
 
