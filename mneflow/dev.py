@@ -6,9 +6,12 @@ Created on Mon Jun  3 15:20:39 2019
 @author: zubarei1
 """
 import tensorflow as tf
+import os
+
+os.chdir('/m/nbe/work/zubarei1/mneflow/mneflow/')
 from .models import Model
 from .layers import DeMixing, VARConv, Dense, weight_variable, bias_variable
-from .utils import scale_to_baseline
+#from .utils import scale_to_baseline
 import numpy as np
 
 
@@ -41,7 +44,7 @@ class VARDAE(Model):
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
 
-    def _build_graph(self):
+    def build_graph(self):
         self.scope = 'var-cnn-autoencoder'
         self.demix = DeMixing(n_ls=self.specs['n_ls'])
 
@@ -60,7 +63,7 @@ class VARDAE(Model):
                               padding=self.specs['padding'])
 
         self.encoding_fc = Dense(size=self.specs['df'],
-                                 nonlin=tf.identity,
+                                 nonlin=tf.nn.relu,
                                  dropout=self.rate)
 
         encoder = self.encoding_fc(self.tconv2(self.tconv1(self.demix(self.X))))
@@ -180,8 +183,9 @@ def preprocess_continuous(inputs, val_size=.1, overlap=False, segment=False,
     if scale:
         segments = (scale_to_baseline(s, baseline=None,
                                       crop_baseline=False) for s in segments)
+    #    segments = (scale_to_baseline(s, baseline=None,
+    #                                  crop_baseline=False) for s in segments if s.shape[1]!=5)
     return segments
-
 
 def sliding_augmentation(datas, labels=None, segment=500, stride=1,
                          tile_epochs=True):
