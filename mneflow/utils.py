@@ -459,7 +459,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
 
     elif os.path.exists(savepath+out_name+'_meta.pkl'):
         print('Metadata file found, restoring')
-        meta = load_meta(savepath)
+        meta = load_meta(savepath, data_id=out_name)
     return meta
 
 
