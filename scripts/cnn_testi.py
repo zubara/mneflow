@@ -14,7 +14,7 @@ epochs_list = [mne.read_epochs(f) for f in filenames]
 
 
 #Specify import options
-import_opt = dict(savepath=data_path+'tfr/', #path where TFR files will be saved
+import_opt = dict(savepath='tfr/', #path where TFR files will be saved
 	   out_name='data1', #name of TFRecords files
 	   picks={'eeg':False, 'meg':'grad'}, #used only if input_type is mne.epochs.Epochs or path to saved '*-epo.fif'
 	   scale=True, #apply baseline_scaling?
