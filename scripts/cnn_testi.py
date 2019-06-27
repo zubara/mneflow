@@ -14,26 +14,26 @@ epochs_list = [mne.read_epochs(f) for f in filenames]
 
 
 #Specify import options
-import_opt = dict(savepath='tfr/', #path where TFR files will be saved
+import_opt = dict(savepath=data_path+'tfr/', #path where TFR files will be saved
 	   out_name='data1', #name of TFRecords files
 	   picks={'eeg':False, 'meg':'grad'}, #used only if input_type is mne.epochs.Epochs or path to saved '*-epo.fif'
-	   scale=True, #apply baseline_scaling? 
+	   scale=True, #apply baseline_scaling?
 	   crop_baseline=False,
 	   decimate = 4,
 	   bp_filter=(1.,45.),
 	   scale_interval=(0,200), #indices in time axis corresponding to baseline interval
-	   savebatch=1, # number of input files per TFRecord file           
+	   savebatch=1, # number of input files per TFRecord file
 	   save_origs=True, # whether to produce separate TFR-file for inputs in original order
-	   val_size=0.1,#validations set size set to 10% of all data
-           overwrite=False) 
+	   val_size=0.1,#validation set is 10% of all data
+       overwrite=True) #if False loads existing metafile and tfrecords if they already exist, saves time!
 
 meta = mneflow.produce_tfrecords(epochs_list,**import_opt)
 dataset = mneflow.Dataset(meta, train_batch = 200, class_subset=None, pick_channels=None, decim=None)
 
 
 #specify optimizer parmeters
-optimizer_params = dict(l1_lambda=3e-4,learn_rate=3e-4) 
-optimizer = mneflow.Optimizer(**optimizer_params)
+optimizer_params = dict(l1_lambda=3e-4,learn_rate=3e-4)
+#optimizer = mneflow.Optimizer(**optimizer_params)
 
 
 #specify parameters specific for the model
