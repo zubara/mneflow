@@ -383,6 +383,9 @@ class EEGNet(Model):
     pooling : int
               pooling factor of the average polling layers. Defaults to 4.
 
+    dropout : float
+              dropout coefficient
+
     References
     ----------
     [1] V.J. Lawhern, et al., EEGNet: A compact convolutional neural network
@@ -397,12 +400,12 @@ class EEGNet(Model):
         self.scope = 'eegnet'
 
         X1 = tf.expand_dims(self.X, -1)
-        vc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin_out=tf.identity, inch=1,
+        vc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity, inch=1,
                       filter_length=self.specs['filter_length'], domain='time',
                       stride=1, pooling=1, conv_type='2d')
         vc1o = vc1(X1)
         bn1 = tf.layers.batch_normalization(vc1o)
-        dwc1 = ConvDSV(n_ls=1, nonlin_out=tf.identity, inch=self.specs['n_ls'],
+        dwc1 = ConvDSV(n_ls=1, nonlin=tf.identity, inch=self.specs['n_ls'],
                        padding='VALID', filter_length=bn1.get_shape()[1].value,
                        domain='space',  stride=1, pooling=1,
                        conv_type='depthwise')
@@ -411,7 +414,7 @@ class EEGNet(Model):
         out2 = tf.nn.elu(bn2)
         out22 = tf.nn.dropout(out2, self.rate)
 
-        sc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin_out=tf.identity,
+        sc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity,
                       inch=self.specs['n_ls'],
                       filter_length=self.specs['filter_length']//4,
                       domain='time', stride=1, pooling=1,
@@ -424,7 +427,7 @@ class EEGNet(Model):
                               [1, 1, self.specs['stride'], 1], 'SAME')
         out44 = tf.nn.dropout(out4, self.rate)
 
-        sc2 = ConvDSV(n_ls=self.specs['n_ls']*2, nonlin_out=tf.identity,
+        sc2 = ConvDSV(n_ls=self.specs['n_ls']*2, nonlin=tf.identity,
                       inch=self.specs['n_ls'],
                       filter_length=self.specs['filter_length']//4,
                       domain='time', stride=1, pooling=1,
