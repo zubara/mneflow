@@ -74,7 +74,7 @@ def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
                           pick_channels=None, decim=None)
         m = model(dataset, optimizer, graph_specs)
         m.build()
-        m.train(n_iter=30, eval_step=5, min_delta=0, early_stopping=3)
+        m.train(n_iter=30000, eval_step=250, min_delta=0, early_stopping=3)
         test_acc = m.evaluate_performance(path)
         print(i, ':', 'test_acc:', test_acc)
         results.append({'val_acc': m.v_acc, 'test_init': test_acc})
