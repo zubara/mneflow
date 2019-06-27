@@ -169,7 +169,8 @@ class Model(object):
                                               self.scope, '-',
                                               self.dataset.h_params['data_id']]))
         self.v_acc = self.sess.run([self.accuracy],
-                                   feed_dict={self.handle: self.val_handle})
+                                   feed_dict={self.handle: self.val_handle,
+                                              self.rate: 1.})
 
     def evaluate_performance(self, data_path, batch_size=None):
         """
@@ -185,13 +186,13 @@ class Model(object):
         """
         test_dataset = self.dataset._build_dataset(data_path,
                                                    n_batch=batch_size)
-        test_iter, test_handle = self.start_iterator(test_dataset)
+        test_iter, test_handle = self._start_iterator(test_dataset)
         acc = self.sess.run(self.accuracy, feed_dict={self.handle: test_handle,
                                                       self.rate: 1.})
         print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
         return np.mean(acc)
 
-    def predict(self, data_path, batch_size=None):
+    def predict(self, data_path=None, batch_size=None):
         """
         Compute performance metric on a TFR dataset specified by path
 
@@ -206,9 +207,9 @@ class Model(object):
         if data_path:
             test_dataset = self.dataset._build_dataset(data_path,
                                                        n_batch=batch_size)
-            test_iter, test_handle = self.start_iterator(test_dataset)
+            test_iter, test_handle = self._start_iterator(test_dataset)
         else:
-            test_iter, test_handle = self.start_iterator(self.dataset.val)
+            test_iter, test_handle = self._start_iterator(self.dataset.val)
         pred, true = self.sess.run([self.y_pred, self.y_],
                                    feed_dict={self.handle: test_handle,
                                               self.rate: 1.})
