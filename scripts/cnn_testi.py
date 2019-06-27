@@ -25,7 +25,7 @@ import_opt = dict(savepath='tfr/', #path where TFR files will be saved
 	   savebatch=1, # number of input files per TFRecord file
 	   save_origs=True, # whether to produce separate TFR-file for inputs in original order
 	   val_size=0.1,#validation set is 10% of all data
-       overwrite=True) #if False loads existing metafile and tfrecords if they already exist, saves time!
+       overwrite=False) #if False loads existing metafile and tfrecords if they already exist, saves time!
 
 meta = mneflow.produce_tfrecords(epochs_list,**import_opt)
 dataset = mneflow.Dataset(meta, train_batch = 200, class_subset=None, pick_channels=None, decim=None)
