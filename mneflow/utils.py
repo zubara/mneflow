@@ -349,7 +349,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
     if not os.path.exists(savepath):
         os.mkdir(savepath)
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
-        from mne import epochs as mnepochs, filter as mnefilt
+        from mne import epochs as mnepochs, filter as mnefilt, pick_types
         meta = dict(train_paths=[], val_paths=[], orig_paths=[],
                     data_id=out_name, val_size=0, task=task)
         jj = 0
@@ -364,6 +364,8 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                 data = inp.get_data()
                 events = inp.events[:, 2]
                 fs = inp.info['sfreq']
+                if isinstance(picks,dict):
+                        picks = pick_types(inp.info,**picks)
             elif isinstance(inp, tuple) and len(inp) == 2:
                 data, events = inp
             elif isinstance(inp, str):
@@ -372,6 +374,8 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                 if fname[-3:] == 'fif':
                     epochs = mnepochs.read_epochs(fname, preload=True,
                                                   verbose='CRITICAL')
+                    if isinstance(picks,dict):
+                        picks = pick_types(epochs.info,**picks)
                     events = epochs.events[:, 2]
                     fs = epochs.info['sfreq']
                     data = epochs.get_data()
@@ -382,8 +386,8 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
                     if fname[-3:] == 'npz':
                         datafile = np.load(fname)
 
-                data = datafile[array_keys['X']]
-                events = datafile[array_keys['y']]
+                    data = datafile[array_keys['X']]
+                    events = datafile[array_keys['y']]
             if not fs:
                 print('Specify sampling frequency')
                 return
