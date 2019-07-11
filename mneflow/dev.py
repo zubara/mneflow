@@ -8,7 +8,7 @@ Created on Mon Jun  3 15:20:39 2019
 import tensorflow as tf
 from .models import Model
 from .layers import DeMixing, VARConv, Dense, weight_variable, bias_variable
-from .utils import scale_to_baseline
+#from .utils import scale_to_baseline
 import numpy as np
 
 
@@ -115,14 +115,18 @@ class DeConvLayer():
                     print(self.scope, 'init : OK')
 
 
-def preprocess_continuous(inputs, val_size=.1, overlap=False, segment=False,
-                          stride=1, scale=False):
+def preprocess_continuous(inputs, labels=None, val_size=.1, split=True,
+                          overlap=False, segment=False, stride=1):
     """ Preprocess contious data
 
     Parameters:
     -----------
     inputs : list of ndarrays
             data to be preprocessed
+
+    split : bool, optional
+            whether to split the data into training and validation sets
+
 
     val_size : float
             proportion of data to use as validation set
@@ -169,17 +173,18 @@ def preprocess_continuous(inputs, val_size=.1, overlap=False, segment=False,
     """
     if not isinstance(inputs, list):
         inputs = list(inputs)
-    split_datasets = train_test_split_cont(inputs, test_size=val_size)
+    if split:
+        inputs = train_test_split_cont(inputs, test_size=val_size)
     if overlap:
-        segments = sliding_augmentation(split_datasets, segment=segment,
-                                        stride=stride)
+        segments = sliding_augmentation(inputs, segment=segment, labels=labels,
+                                        stride=stride, tile_epochs=True)
     elif segment:
-        segments = segment_raw(inputs, segment, tile_epochs=True)
+        segments = segment_raw(inputs, segment=segment, labels=labels,
+                               tile_epochs=True)
     else:
-        segments = split_datasets
-    if scale:
-        segments = (scale_to_baseline(s, baseline=None,
-                                      crop_baseline=False) for s in segments)
+        segments = inputs
+    print(len(segments))
+    print(segments[0].shape)
     return segments
 
 
@@ -187,8 +192,8 @@ def sliding_augmentation(datas, labels=None, segment=500, stride=1,
                          tile_epochs=True):
     """Return an image of x split in overlapping time segments"""
     output = []
-    if not isinstance(datas, list):
-        datas = [datas]
+#    if not isinstance(datas, list):
+#        datas = [datas]
     for x in datas:
         while x.ndim < 3:
             x = np.expand_dims(x, 0)
@@ -200,8 +205,8 @@ def sliding_augmentation(datas, labels=None, segment=500, stride=1,
                                               strides=(a, b, c, c))
         x4D = x4D[:, :, ::stride, :]
         if tile_epochs:
-            if labels:
-                labels = np.tile(labels, x4D.shape[2])
+            if np.any(labels):
+                labs = np.tile(labels, x4D.shape[2])
             x4D = np.moveaxis(x4D, [2], [0])
             x4D = x4D.reshape([n_epochs*x4D.shape[0], n_ch, segment],
                               order='C')
@@ -213,15 +218,15 @@ def sliding_augmentation(datas, labels=None, segment=500, stride=1,
 #        print(np.all(x[0,0,2*stride:segment+2*stride]==x4D[2,0,...]))
 #        print(np.all(x[0,0,stride+segment_length:segment_length+stride*2] ==
 #                     x4D[2,0,...]))
-    if labels:
-        output.append(labels)
+        if np.any(labels):
+            output.append(labs)
     return output
 
 
 def segment_raw(inputs, segment, tile_epochs=True):
     out = []
-    if not isinstance(inputs, list):
-        inputs = [inputs]
+#    if not isinstance(inputs, list):
+#        inputs = [inputs]
     raw_len = inputs[0].shape[-1]
     for x in inputs:
         assert x.shape[-1] == raw_len
@@ -231,12 +236,19 @@ def segment_raw(inputs, segment, tile_epochs=True):
         leftover = raw_len % (segment)
         print('dropping:', str(leftover), ':', leftover//2, '+',
               leftover-leftover//2)
-        crop_start = leftover//2
         crop_stop = -1*(leftover-leftover//2)
-        x = x[..., crop_start:crop_stop]
+        if crop_stop <= 0:
+            crop_start = leftover
+            x = x[..., crop_start:]
+        else:
+            crop_start = leftover//2
+            x = x[..., crop_start:crop_stop]
+        print(x.shape)
         x = x.reshape([*orig_shape, -1, segment])
+        print(x.shape)
         if tile_epochs:
             x = np.moveaxis(x, [-2], [0])
+            print(x.shape)
             x = x.reshape([orig_shape[0]*x.shape[0], *orig_shape[1:],
                            segment], order='C')
         out.append(x)
@@ -259,3 +271,53 @@ def train_test_split_cont(inputs, test_size):
         out.append(x_train)
         out.append(x_test)
     return out
+
+
+def scale_to_baseline(X, baseline=None, crop_baseline=False):
+    """Perform global scaling based on a specified baseline.
+
+    Subtracts the mean and divides by the standard deviation of the amplitude
+    of all channels during the baseline interval. If input contains 306
+    channels performs separate scaling for magnetometers and gradiometers.
+
+    Parameters
+    ----------
+    X : ndarray
+        data array with dimensions [n_epochs, n_channels, time].
+    baseline : tuple of int, None
+               baseline definition (in samples). If baseline == None the whole
+               epoch is used for scaling.
+    crop_baseline : bool
+                    whether to crop the baseline after scaling is applied.
+
+    Returns
+    -------
+
+    X : ndarray
+
+    """
+    if baseline is None:
+        interval = np.arange(X.shape[-1])
+        crop_baseline = False
+    elif isinstance(baseline, int):
+        interval = np.arange(baseline)
+    elif isinstance(baseline, tuple):
+        interval = np.arange(baseline[0], baseline[1])
+    X0 = X[:, :, interval]
+    if X.shape[1] == 306:
+        magind = np.arange(2, 306, 3)
+        gradind = np.delete(np.arange(306), magind)
+        X0m = X0[:, magind, :].reshape([X0.shape[0], -1])
+        X0g = X0[:, gradind, :].reshape([X0.shape[0], -1])
+
+        X[:, magind, :] -= X0m.mean(-1)[:, None, None]
+        X[:, magind, :] /= X0m.std(-1)[:, None, None]
+        X[:, gradind, :] -= X0m.mean(-1)[:, None, None]
+        X[:, gradind, :] /= X0g.std(-1)[:, None, None]
+    else:
+        X0 = X0.reshape([X.shape[0], -1])
+        X -= X0.mean(-1)[:, None, None]
+        X /= X0.std(-1)[:, None, None]
+    if baseline and crop_baseline:
+        X = X[..., interval[-1]:]
+    return X

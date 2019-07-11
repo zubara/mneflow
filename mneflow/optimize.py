@@ -12,7 +12,7 @@ class Optimizer(object):
 
     """
     def __init__(self, learn_rate=3e-4, l1_lambda=0, l2_lambda=0,
-                 task='classification'):
+                 task='classification',class_weights=None):
         """
         Parameters
         ----------
@@ -28,6 +28,8 @@ class Optimizer(object):
         """
         self.params = dict(learn_rate=learn_rate, l1_lambda=l1_lambda,
                            l2_lambda=l2_lambda, task=task)
+        self.class_weights = class_weights
+
         # TODO : add cost function options,
         # TODO : class balance
         # TODO : regularization options,
@@ -66,17 +68,32 @@ class Optimizer(object):
         """
         # Define cost, and performance metric, treat prediction if needed
         if self.params['task'] == 'classification':
-            cost_function = tf.nn.sparse_softmax_cross_entropy_with_logits
             prediction = tf.nn.softmax(y_pred)
-            cost = tf.reduce_mean(cost_function(labels=y_true, logits=y_pred))
+            cost_function = tf.losses.sparse_softmax_cross_entropy
+            if self.class_weights:
+                print('Adjusting for imbalanced classes')
+                class_weights = tf.constant(self.class_weights,
+                                            dtype=tf.float32)
+                #print(y_true, class_weights)
+                weights = tf.gather(class_weights,y_true)
+            else:
+                weights=1
+            cost = tf.reduce_mean(cost_function(labels=y_true, logits=y_pred,
+                                                weights=weights))
             correct_prediction = tf.equal(tf.argmax(y_pred, 1), y_true)
             performance = tf.reduce_mean(tf.cast(correct_prediction,
                                                  tf.float32), name='accuracy')
-
         elif self.params['task'] == 'ae':
+            cost = tf.losses.cosine_distance(y_true, y_pred)
+            var_ = tf.reduce_sum(y_true**2)
+            performance = 1 - cost/var_
+            prediction = y_pred
+            print(cost.shape, performance.shape)
+
+        elif self.params['task'] == 'regression':
             cost = tf.reduce_sum((y_true-y_pred)**2)
-            var = tf.reduce_sum(y_true**2)
-            performance = 1 - cost/var
+            var_ = tf.reduce_sum(y_true**2)
+            performance = 1 - cost/var_
             prediction = y_pred
 
         #  Regularization

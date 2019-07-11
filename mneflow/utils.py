@@ -74,7 +74,7 @@ def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
                           pick_channels=None, decim=None)
         m = model(dataset, optimizer, graph_specs)
         m.build()
-        m.train(n_iter=30000, eval_step=250, min_delta=0, early_stopping=3)
+        m.train(n_iter=30000, eval_step=250, min_delta=1e-6, early_stopping=3)
         test_acc = m.evaluate_performance(path)
         print(i, ':', 'test_acc:', test_acc)
         results.append({'val_acc': m.v_acc, 'test_init': test_acc})
@@ -145,7 +145,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
         X[:, gradind, :] /= X0g.std(-1)[:, None, None]
     else:
         X0 = X0.reshape([X.shape[0], -1])
-        X -= X.mean(-1)[..., None]
+        X -= X0.mean(-1)[..., None, None]
         X /= X0.std(-1)[:, None, None]
     if baseline and crop_baseline:
         X = X[..., interval[-1]:]
@@ -237,7 +237,7 @@ def produce_labels(y, return_stats=True):
                                            return_counts=True)
     total_counts = np.sum(counts)
     counts = counts/float(total_counts)
-    class_proportions = {clss: cnt for clss, cnt in zip(inds, counts)}
+    class_proportions = {clss: cnt for clss, cnt in zip(inv[inds], counts)}
     orig_classes = {new: old for new, old in zip(inv[inds], classes)}
     if return_stats:
         return inv, total_counts, class_proportions, orig_classes
@@ -304,11 +304,17 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
         whether to decimate the input data (defaults to False).
 
     bp_filter : bool, tuple, optinal
-        band pass filter.
+        band pass filter. Tuple of int or NoneType.
 
     picks : ndarray of int, optional
         Indices of channels to pick for processing, if None all channels
         are used.
+
+    combine_events : dict, optional
+        dictionary for combining or otherwise manipulating lables. SHould
+        contain mapping {old_label: new_label}. If provided, but some
+        old_labels are not specified in keys the corresponding epochs are
+        discarded.
 
     task : 'classification', optional
         So far the only available task.

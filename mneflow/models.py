@@ -74,11 +74,13 @@ class Model(object):
 
         # Initialize computational graph
         self.y_pred = self.build_graph()
+        print('X:', self.X.shape)
         print('y_pred:', self.y_pred.shape)
         # Initialize optimizer
         self.saver = tf.train.Saver(max_to_keep=1)
         opt_handles = self.optimizer.set_optimizer(self.y_pred, self.y_)
         self.train_step, self.accuracy, self.cost, self.p_classes = opt_handles
+
         print('Initialization complete!')
 
     def build_graph(self):
@@ -128,11 +130,14 @@ class Model(object):
 
         patience_cnt = 0
         for i in range(n_iter+1):
-            _, t_loss, acc = self.sess.run([self.train_step, self.cost, self.accuracy],
-                                           feed_dict={self.handle: self.train_handle,
-                                                      self.rate: self.specs['dropout']})
+            _ = self.sess.run([self.train_step],
+                              feed_dict={self.handle: self.train_handle,
+                                         self.rate: self.specs['dropout']})
             if i % eval_step == 0:
                 self.dataset.train.shuffle(buffer_size=10000)
+                t_loss, acc = self.sess.run([self.cost, self.accuracy],
+                                           feed_dict={self.handle: self.train_handle,
+                                                      self.rate: 1.})
                 self.v_acc, v_loss = self.sess.run([self.accuracy, self.cost],
                                                    feed_dict={self.handle: self.val_handle,
                                                               self.rate: 1.})
@@ -319,7 +324,7 @@ class VGG19(Model):
     """
     def __init__(self, Dataset, params, specs):
         super().__init__(Dataset, params)
-        self.specs = dict(n_ls=self.params['n_ls'], nonlin_out=tf.nn.relu,
+        self.specs = dict(n_ls=self.params['n_ls'], nonlin=tf.nn.relu,
                           inch=1, padding='SAME', filter_length=(3, 3),
                           domain='2d', stride=1, pooling=1, conv_type='2d')
         self.scope = 'vgg19'
@@ -491,7 +496,7 @@ class LFCNN(Model):
         self.demix = DeMixing(n_ls=self.specs['n_ls'])
 
         self.tconv1 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
-                              nonlin_out=tf.nn.relu,
+                              nonlin=tf.nn.relu,
                               filter_length=self.specs['filter_length'],
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
@@ -697,7 +702,7 @@ class VARCNN(Model):
         self.demix = DeMixing(n_ls=self.specs['n_ls'])
 
         self.tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
-                              nonlin_out=tf.nn.relu,
+                              nonlin=tf.nn.relu,
                               filter_length=self.specs['filter_length'],
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
@@ -709,3 +714,154 @@ class VARCNN(Model):
         y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
 
         return y_pred
+
+class VARCNN2(Model):
+
+    """VAR-CNN
+
+    For details see [1].
+
+    Parameters
+    ----------
+    n_ls : int
+        number of latent components
+        Defaults to 32
+
+    filter_length : int
+        length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7
+
+    stride : int
+        stride of the max pooling layer. Defaults to 1
+
+    pooling : int
+        pooling factor of the max pooling layer. Defaults to 2
+
+    References
+    ----------
+        [1]  I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+        """
+
+    def build_graph(self):
+        self.scope = 'var-cnn'
+        self.demix = DeMixing(n_ls=self.specs['n_ls'])
+
+        self.tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
+                              nonlin=tf.nn.relu,
+                              filter_length=self.specs['filter_length'],
+                              stride=self.specs['stride'],
+                              pooling=self.specs['pooling'],
+                              padding=self.specs['padding'])
+        self.tconv2 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
+                              nonlin=tf.nn.relu,
+                              filter_length=self.specs['filter_length']//3,
+                              stride=1,
+                              pooling=self.specs['pooling']//3,
+                              padding=self.specs['padding'])
+
+        self.fin_fc = Dense(size=self.n_classes,
+                            nonlin=tf.identity, dropout=self.rate)
+
+        y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
+        return y_pred
+
+
+class LFCNN2(Model):
+
+    """VAR-CNN
+
+    For details see [1].
+
+    Parameters
+    ----------
+    n_ls : int
+        number of latent components
+        Defaults to 32
+
+    filter_length : int
+        length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7
+
+    stride : int
+        stride of the max pooling layer. Defaults to 1
+
+    pooling : int
+        pooling factor of the max pooling layer. Defaults to 2
+
+    References
+    ----------
+        [1]  I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+        """
+
+    def build_graph(self):
+        self.scope = 'var-cnn'
+        self.demix = DeMixing(n_ls=self.specs['n_ls'])
+
+        self.tconv1 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
+                              nonlin=tf.nn.relu,
+                              filter_length=self.specs['filter_length'],
+                              stride=self.specs['stride'],
+                              pooling=self.specs['pooling'],
+                              padding=self.specs['padding'])
+        self.tconv2 = LFTConv(scope="conv", n_ls=self.specs['n_ls']//2,
+                              nonlin=tf.nn.relu,
+                              filter_length=self.specs['filter_length']//2,
+                              stride=1,
+                              pooling=self.specs['pooling']//2,
+                              padding=self.specs['padding'])
+
+        self.fin_fc = Dense(size=self.n_classes,
+                            nonlin=tf.identity, dropout=self.rate)
+
+        y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
+        return y_pred
+
+#class EEGNet_orig(Model):
+#
+#    def build_graph(self):
+#        self.scope = 'eegnet_keras'
+#        F1 = 8
+#        D = 2
+#        F2 = 16
+#        Chans = self.X.shape[-2].value
+#        Samples = self.X.shape[-1].value
+#        from tensorflow.keras.layers import Dense, Activation, Dropout
+#        from tensorflow.keras.layers import Conv2D, AveragePooling2D
+#        from tensorflow.keras.layers import SeparableConv2D, DepthwiseConv2D
+#        from tensorflow.keras.layers import BatchNormalization
+#        from tensorflow.keras.layers import Input, Flatten
+#        from tensorflow.keras.constraints import max_norm
+#
+#
+#
+#        input1   = tf.expand_dims(self.X,-1)#Input(shape = (1, Chans, Samples))
+#        print(input1.shape)
+#    ##################################################################
+#        block1       = Conv2D(F1, (1, self.specs['filter_length']),
+#                              padding='same',
+#                              input_shape=(1, Chans, Samples),
+#                              use_bias=False)(input1)
+#        block1       = BatchNormalization(axis=-1)(block1)
+#        block1       = DepthwiseConv2D((Chans, 1), use_bias=False,
+#                                       depth_multiplier=D,
+#                                       depthwise_constraint = max_norm(1.))(block1)
+#        block1       = BatchNormalization(axis=-1)(block1)
+#        block1       = Activation('elu')(block1)
+#        block1       = AveragePooling2D((1, 4))(block1)
+#        block1       = Dropout(self.rate)(block1)
+#
+#        block2       = SeparableConv2D(F2, (1, 16),
+#                                       use_bias = False, padding = 'same')(block1)
+#        block2       = BatchNormalization(axis = -1)(block2)
+#        block2       = Activation('elu')(block2)
+#        block2       = AveragePooling2D((1, 8))(block2)
+#        block2       = Dropout(self.rate)(block2)
+#
+#        flatten      = Flatten(name = 'flatten')(block2)
+#
+#        dense        = Dense(self.n_classes, name = 'dense',
+#                             kernel_constraint = max_norm(0.25))(flatten)
+#        softmax      = Activation('softmax', name = 'softmax')(dense)
+#        return softmax

@@ -65,14 +65,14 @@ class LFTConv():
     """
     Stackable temporal convolutional layer, interpreatble (LF)
     """
-    def __init__(self, scope="lf-conv", n_ls=32,  nonlin_out=tf.nn.relu,
+    def __init__(self, scope="lf-conv", n_ls=32,  nonlin=tf.nn.relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME'):
         self.scope = scope
         self.size = n_ls
         self.filter_length = filter_length
         self.stride = stride
         self.pooling = pooling
-        self.nonlin_out = nonlin_out
+        self.nonlin = nonlin
         self.padding = padding
 
     def __call__(self, x):
@@ -83,7 +83,7 @@ class LFTConv():
                                                   padding=self.padding,
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
-                    conv = self.nonlin_out(conv + self.b)
+                    conv = self.nonlin(conv + self.b)
                     conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
                                           strides=[1, self.stride, 1, 1],
                                           padding=self.padding)
@@ -99,14 +99,14 @@ class VARConv():
     """
     Stackable spatio-temporal convolutional Layer (VAR)
     """
-    def __init__(self, scope="var-conv", n_ls=32,  nonlin_out=tf.nn.relu,
+    def __init__(self, scope="var-conv", n_ls=32,  nonlin=tf.nn.relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME'):
         self.scope = scope
         self.size = n_ls
         self.filter_length = filter_length
         self.stride = stride
         self.pooling = pooling
-        self.nonlin_out = nonlin_out
+        self.nonlin = nonlin
         self.padding = padding
 
     def __call__(self, x):
@@ -116,7 +116,10 @@ class VARConv():
                     conv = tf.nn.conv2d(x, self.filters, padding=self.padding,
                                         strides=[1, 1, 1, 1],
                                         data_format='NHWC')
-                    conv = self.nonlin_out(conv + self.b)
+                    conv = self.nonlin(conv + self.b)
+#                    conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
+#                                          strides=[1, self.stride, 1, 1],
+#                                          padding=self.padding)
                     conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
                                           strides=[1, self.stride, 1, 1],
                                           padding=self.padding)
