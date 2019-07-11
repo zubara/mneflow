@@ -8,7 +8,8 @@ from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing
 import tensorflow as tf
 import numpy as np
 from sklearn.covariance import ledoit_wolf
-
+import csv
+import os
 
 class Model(object):
     """
@@ -156,11 +157,14 @@ class Model(object):
                     self.saver.restore(self.sess, ''.join([self.model_path,
                                                            self.scope, '-',
                                                            self.dataset.h_params['data_id']]))
+                    self.train_params = (eval_step, early_stopping, i)
                     print('stopped at: epoch %d, val loss %g, val acc %g'
                           % (i,  min_val_loss, v_acc))
                     break
                 print('i %d, tr_loss %g, tr_acc %g v_loss %g, v_acc %g'
                       % (i, t_loss, acc, v_loss, self.v_acc))
+        self.train_params = (eval_step, early_stopping, i)
+
 
     def load(self):
         """
@@ -191,9 +195,10 @@ class Model(object):
         """
         test_dataset = self.dataset._build_dataset(data_path,
                                                    n_batch=batch_size)
-        test_iter, test_handle = self._start_iterator(test_dataset)
-        acc = self.sess.run(self.accuracy, feed_dict={self.handle: test_handle,
-                                                      self.rate: 1.})
+        test_iter, self.test_handle = self._start_iterator(test_dataset)
+        acc = self.sess.run(self.accuracy,
+                            feed_dict={self.handle: self.test_handle,
+                                       self.rate: 1.})
         print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
         return np.mean(acc)
 
@@ -219,6 +224,50 @@ class Model(object):
                                    feed_dict={self.handle: test_handle,
                                               self.rate: 1.})
         return pred, true
+
+    def update_log(self):
+        appending = os.path.exists(self.model_path + self.scope + '_log.csv')
+        log = dict()
+        log['data_id'] = self.dataset.h_params['data_id']
+        log['eval_step'], log['patience'], log['n_iter'] = self.train_params
+        log['data_path'] = self.dataset.h_params['savepath']
+        log['decim'] = str(self.dataset.decim)
+        if self.dataset.class_subset:
+            log['class_subset'] = '-'.join(str(self.dataset.class_subset).split(','))
+        else:
+            log['class_subset'] = 'all'
+        log['class_proportions'] = ' : '.join([str(v)[:4] for v in self.dataset.h_params['class_proportions'].values()])
+        if self.dataset.h_params['task'] == 'classification':
+            log['n_classes'] = self.dataset.h_params['n_classes']
+        else:
+            log['y_shape'] = self.dataset.h_params['y_shape']
+        log['fs'] = str(self.dataset.h_params['fs'])
+        log.update(self.optimizer.params)
+        log.update(self.specs)
+        v_acc, v_loss = self.sess.run([self.accuracy, self.cost],
+                                      feed_dict={self.handle: self.val_handle,
+                                      self.rate: 1.})
+        log['v_acc'] = v_acc
+        log['v_loss'] = v_loss
+
+        if hasattr(self, 'test_handle'):
+            t_acc, t_loss = self.sess.run([self.accuracy, self.cost],
+                                          feed_dict={self.handle: self.test_handle,
+                                          self.rate: 1.})
+            log['test_acc'] = t_acc
+            log['test_loss'] = t_loss
+        self.log = log
+        with open(self.model_path + self.scope + '_log.csv', 'a') as csv_file:
+
+            writer = csv.DictWriter(csv_file, fieldnames=self.log.keys())
+            if not appending:
+                writer.writeheader()
+
+            writer.writerow(self.log)
+
+
+
+
 
 #    def evaluate_realtime(self, data_path, batch_size=None, step_size=1):
 #
@@ -747,23 +796,23 @@ class VARCNN2(Model):
         self.scope = 'var-cnn'
         self.demix = DeMixing(n_ls=self.specs['n_ls'])
 
-        self.tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
+        tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
                               filter_length=self.specs['filter_length'],
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
-        self.tconv2 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
+        tconv2 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
-                              filter_length=self.specs['filter_length']//3,
-                              stride=1,
-                              pooling=self.specs['pooling']//3,
+                              filter_length=self.specs['filter_length'],
+                              stride=self.specs['stride'],
+                              pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-        self.fin_fc = Dense(size=self.n_classes,
+        fin_fc = Dense(size=self.n_classes,
                             nonlin=tf.identity, dropout=self.rate)
 
-        y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
+        y_pred = fin_fc(tconv2(tconv1(self.demix(self.X))))
         return y_pred
 
 
@@ -805,11 +854,11 @@ class LFCNN2(Model):
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
-        self.tconv2 = LFTConv(scope="conv", n_ls=self.specs['n_ls']//2,
+        self.tconv2 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
-                              filter_length=self.specs['filter_length']//2,
-                              stride=1,
-                              pooling=self.specs['pooling']//2,
+                              filter_length=self.specs['filter_length'],
+                              stride=self.specs['stride'],
+                              pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
         self.fin_fc = Dense(size=self.n_classes,
@@ -817,51 +866,3 @@ class LFCNN2(Model):
 
         y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
         return y_pred
-
-#class EEGNet_orig(Model):
-#
-#    def build_graph(self):
-#        self.scope = 'eegnet_keras'
-#        F1 = 8
-#        D = 2
-#        F2 = 16
-#        Chans = self.X.shape[-2].value
-#        Samples = self.X.shape[-1].value
-#        from tensorflow.keras.layers import Dense, Activation, Dropout
-#        from tensorflow.keras.layers import Conv2D, AveragePooling2D
-#        from tensorflow.keras.layers import SeparableConv2D, DepthwiseConv2D
-#        from tensorflow.keras.layers import BatchNormalization
-#        from tensorflow.keras.layers import Input, Flatten
-#        from tensorflow.keras.constraints import max_norm
-#
-#
-#
-#        input1   = tf.expand_dims(self.X,-1)#Input(shape = (1, Chans, Samples))
-#        print(input1.shape)
-#    ##################################################################
-#        block1       = Conv2D(F1, (1, self.specs['filter_length']),
-#                              padding='same',
-#                              input_shape=(1, Chans, Samples),
-#                              use_bias=False)(input1)
-#        block1       = BatchNormalization(axis=-1)(block1)
-#        block1       = DepthwiseConv2D((Chans, 1), use_bias=False,
-#                                       depth_multiplier=D,
-#                                       depthwise_constraint = max_norm(1.))(block1)
-#        block1       = BatchNormalization(axis=-1)(block1)
-#        block1       = Activation('elu')(block1)
-#        block1       = AveragePooling2D((1, 4))(block1)
-#        block1       = Dropout(self.rate)(block1)
-#
-#        block2       = SeparableConv2D(F2, (1, 16),
-#                                       use_bias = False, padding = 'same')(block1)
-#        block2       = BatchNormalization(axis = -1)(block2)
-#        block2       = Activation('elu')(block2)
-#        block2       = AveragePooling2D((1, 8))(block2)
-#        block2       = Dropout(self.rate)(block2)
-#
-#        flatten      = Flatten(name = 'flatten')(block2)
-#
-#        dense        = Dense(self.n_classes, name = 'dense',
-#                             kernel_constraint = max_norm(0.25))(flatten)
-#        softmax      = Activation('softmax', name = 'softmax')(dense)
-#        return softmax
