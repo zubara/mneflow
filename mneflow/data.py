@@ -56,6 +56,7 @@ class Dataset(object):
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
+
     def _build_dataset(self, path, n_batch=None):
         """
         Produce a tf.Dataset object and apply preprocessing functions
@@ -89,6 +90,9 @@ class Dataset(object):
 #    def global_scale(self,example_proto):
 #        example_proto['X'] -= tf.reduce_mean(example_proto['X'],axis = -1,
 #        return example_proto
+    def class_weights(self):
+        weights = np.array([v for k,v in self.h_params['class_proportions'].items()])
+        return  1./(weights*float(len(weights)))
 
     def _decimate(self, example_proto):
         """Downsample data"""
