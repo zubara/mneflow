@@ -266,9 +266,6 @@ class Model(object):
             writer.writerow(self.log)
 
 
-
-
-
 #    def evaluate_realtime(self, data_path, batch_size=None, step_size=1):
 #
 #        """Compute performance metric on a TFR dataset specified by path
@@ -333,6 +330,9 @@ class Model(object):
             feed_dict = {self.handle: self.val_handle, self.rate: 1.}
         elif dataset == 'training':
             feed_dict = {self.handle: self.train_handle, self.rate: 1.}
+        elif dataset == 'test':
+            feed_dict = {self.handle: self.test_handle, self.rate: 1.}
+
         y_true, y_pred = self.sess.run([self.y_, self.p_classes],
                                        feed_dict=feed_dict)
         y_pred = np.argmax(y_pred, 1)
@@ -353,6 +353,7 @@ class Model(object):
         tick_marks = np.arange(len(class_names))
         plt.xticks(tick_marks, class_names, rotation=45)
         plt.yticks(tick_marks, class_names)
+        plt.ylim(-0.5, tick_marks[-1]+0.5)
 
         fmt = '.2f' if normalize else 'd'
         thresh = cm.max() / 2.
