@@ -12,7 +12,8 @@ class Optimizer(object):
 
     """
     def __init__(self, learn_rate=3e-4, l1_lambda=0, l2_lambda=0,
-                 task='classification',class_weights=None):
+                 l1_scope=['weights'], l2_scope=['weights'],
+                 task='classification', class_weights=None):
         """
         Parameters
         ----------
@@ -29,6 +30,8 @@ class Optimizer(object):
         self.params = dict(learn_rate=learn_rate, l1_lambda=l1_lambda,
                            l2_lambda=l2_lambda, task=task)
         self.class_weights = class_weights
+        self.l1_scope = l1_scope
+        self.l2_scope = l2_scope
 
         # TODO : add cost function options,
         # TODO : class balance
@@ -77,7 +80,7 @@ class Optimizer(object):
                 #print(y_true, class_weights)
                 weights = tf.gather(class_weights,y_true)
             else:
-                weights=1
+                weights = 1
             cost = tf.reduce_mean(cost_function(labels=y_true, logits=y_pred,
                                                 weights=weights))
             correct_prediction = tf.equal(tf.argmax(y_pred, 1), y_true)
@@ -91,27 +94,43 @@ class Optimizer(object):
             print(cost.shape, performance.shape)
 
         elif self.params['task'] == 'regression':
-            cost = tf.reduce_sum((y_true-y_pred)**2)
-            var_ = tf.reduce_sum(y_true**2)
+            cost = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred,
+                                                reduction='weighted_sum')
+            #cost = tf.losses.cosine_distance(y_true, y_pred, axis=1)
+
+            #cost = tf.losses.absolute_difference(labels=y_true, predictions=y_pred,
+            #                                    reduction='weighted_sum')
+            #print(cost)
+            #var_ =
+            #mn, var_ = tf.nn.moments(y_true, axes=[-1])
+            #mn_ = y_true - tf.nn
+            mn = tf.reduce_mean(y_true)
+            #var_ = tf.reduce_sum(tf.abs(y_true-mn))
+            #print(mn)
+            var_ = tf.reduce_sum((y_true-mn)**2)
+
+            #print(var_)
             performance = 1 - cost/var_
             prediction = y_pred
 
         #  Regularization
         if self.params['l1_lambda'] > 0:
-            coef = self.params['l1_lambda']
+
             reg = [tf.reduce_sum(tf.abs(var))
                    for var in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-                   if 'weights' in var.name]
-            cost = cost + coef * tf.add_n(reg)
+                   if any(scope in var.name for scope in self.l1_scope)]
+            print('L1 penalty applied to', ', '.join(self.l1_scope))
+            cost = cost + self.params['l1_lambda'] * tf.add_n(reg)
 
-        elif self.params['l2_lambda'] > 0:
-            coef = self.params['l2_lambda']
+        if self.params['l2_lambda'] > 0:
             reg = [tf.nn.l2_loss(var) for var in
                    tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-                   if 'weights' in var.name]
-            cost = cost + coef * tf.add_n(reg)
+                   if any(scope in var.name for scope in self.l2_scope)]
+            print('L2 penalty applied to', ', '.join(self.l2_scope))
+            cost = cost + self.params['l2_lambda'] * tf.add_n(reg)
 
         #  Optimizer
-        train_step = tf.train.AdamOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
+        #train_step = tf.train.AdamOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
+        train_step = tf.train.RMSPropOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
 
         return train_step, performance, cost, prediction

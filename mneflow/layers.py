@@ -54,6 +54,7 @@ class Dense():
                         self.flatsize = prod(x.shape[1:]).value
                     else:
                         self.flatsize = x.shape[1].value
+                    print(self.scope, self.flatsize)
                     self.w = weight_variable((self.flatsize, self.size),
                                              name='fc_')
                     self.b = bias_variable([self.size])
@@ -122,11 +123,13 @@ class VARConv():
 #                                          padding=self.padding)
                     conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
                                           strides=[1, self.stride, 1, 1],
-                                          padding=self.padding)
-
+                                          padding='VALID')
+                    print(conv.shape)
                     return conv
                 except(AttributeError):
-                    self.filters = weight_variable([self.filter_length, 1, x.shape[-1].value, self.size],
+                    self.filters = weight_variable([self.filter_length, 1,
+                                                    x.shape[-1].value,
+                                                    self.size],
                                                    name='tconv_')
                     self.b = bias_variable([self.size])
                     print(self.scope, 'init : OK')
@@ -153,7 +156,7 @@ class DeMixing():
                     return x_reduced
                 except(AttributeError):
                     self.W = weight_variable((x.shape[1].value, self.size),
-                                             name='fc_')
+                                             name='dmx_')
                     self.b_in = bias_variable([self.size])
                     print(self.scope, 'init : OK')
 
