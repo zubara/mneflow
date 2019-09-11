@@ -176,7 +176,7 @@ def _write_tfrecords(X_, y_, output_file, task='classification'):
         feature['X'] = tf.train.Feature(float_list=tf.train.FloatList(value=X.flatten()))
         if task == 'classification':
             feature['y'] = tf.train.Feature(int64_list=tf.train.Int64List(value=y.flatten()))
-        elif task == 'ae':
+        else:
             y = y.astype(np.float32)
             feature['y'] = tf.train.Feature(float_list=tf.train.FloatList(value=y.flatten()))
         # Construct the Example proto object

@@ -115,165 +115,68 @@ class DeConvLayer():
                     print(self.scope, 'init : OK')
 
 
-def preprocess_continuous(inputs, labels=None, val_size=.1, split=True,
-                          overlap=False, segment=False, stride=1):
-    """ Preprocess contious data
-
+def segment(data, labels, segment_length=200):
+    """
     Parameters:
     -----------
-    inputs : list of ndarrays
-            data to be preprocessed
+    data : ndarray
+            data array of shape (n_epochs, n_channels, n_times)
 
-    split : bool, optional
-            whether to split the data into training and validation sets
+    labels : ndarray
+            array of labels (n_epochs,)
 
-
-    val_size : float
-            proportion of data to use as validation set
-
-    segment : int or False
-            length of segment into which to split the data in time samples
-
-    overlap : bool
-            whether to use overlapping segments, False by default
-
-    stride : int
-            stride in time samples for overlapping segments, defaults to 1
-
-    Returns:
-    --------
-    segments : tuple
-            of size len(inputs)*2 traning and vaildation data split into
-            (overlapping) segments
-
-    Example:
-    -------
-    X_train, X_val = preprocess_continuous(X, val_size=.1, overlap=False,
-                                           segment=False, stride=None)
-
-    Returns two continuous data segments split into training and validation
-    sets (90% and 10%, respectively). Validation set is defined as a single
-    randomly picked segment of the data
-    with length euqal to int(X.shape[-1]*val_size)
-
-    X_train, X_val, Y_train, Y_val = train_test_split_cont([X,Y],val_size=.1,
-    segment=500)
-
-    Returns training and validation sets for two input arrays split into
-    non-overlapping segments of 500 samples. This requires last
-    dimentions of all inputs to be equal.
-
-
-    X_train, X_val = preprocess_continuous(X, val_size=.1, overlap=True,
-                                           segment=500, stride=25)
-
-    Returns training and validation sets split into overlapping segments
-    of 500 samples with stride of 25 time samples.
+    segment_length : int or False
+                    length of segment into which to split the data in time samples
 
     """
-    if not isinstance(inputs, list):
-        inputs = list(inputs)
-    if split:
-        inputs = train_test_split_cont(inputs, test_size=val_size)
-    if overlap:
-        segments = sliding_augmentation(inputs, segment=segment, labels=labels,
-                                        stride=stride, tile_epochs=True)
-    elif segment:
-        segments = segment_raw(inputs, segment=segment, labels=labels,
-                               tile_epochs=True)
-    else:
-        segments = inputs
-    print(len(segments))
-    print(segments[0].shape)
-    return segments
+    x_out = []
+    y_out = []
+    assert data.ndim == 3
+    n_epochs, n_ch, n_t = data.shape
+    bins = np.arange(0, n_t+1, segment_length)[1:]
+    for x, y in zip(data, labels):
+        #  split into non-overlapping segments
+        xx = np.split(x, bins, axis=-1)[:-1]
+        x_out.append(xx)
+        y_out.append(np.repeat(y, len(xx)))
+        #  print(y, y_out[-1])
+    return np.concatenate(x_out), np.concatenate(y_out)
 
 
-def sliding_augmentation(datas, labels=None, segment=500, stride=1,
-                         tile_epochs=True):
-    """Return an image of x split in overlapping time segments"""
-    output = []
-#    if not isinstance(datas, list):
-#        datas = [datas]
-    for x in datas:
-        while x.ndim < 3:
-            x = np.expand_dims(x, 0)
-        n_epochs, n_ch, n_t = x.shape
-        nrows = n_t - segment + 1
-        a, b, c = x.strides
-        x4D = np.lib.stride_tricks.as_strided(x,
-                                              shape=(n_epochs, n_ch, nrows, segment),
-                                              strides=(a, b, c, c))
-        x4D = x4D[:, :, ::stride, :]
-        if tile_epochs:
-            if np.any(labels):
-                labs = np.tile(labels, x4D.shape[2])
-            x4D = np.moveaxis(x4D, [2], [0])
-            x4D = x4D.reshape([n_epochs*x4D.shape[0], n_ch, segment],
-                              order='C')
-        output.append(x4D)
-#        print(x.shape,x4D.shape)
-#        print(np.all(x[0,0,:segment]==x4D[0,0,...]))
-#        print(np.all(x[0,1,:segment]==x4D[0,1,...]))
-#        print(np.all(x[0,0,stride:segment+stride]==x4D[1,0,...]))
-#        print(np.all(x[0,0,2*stride:segment+2*stride]==x4D[2,0,...]))
-#        print(np.all(x[0,0,stride+segment_length:segment_length+stride*2] ==
-#                     x4D[2,0,...]))
-        if np.any(labels):
-            output.append(labs)
-    return output
+def augment(data, labels, segment_length, stride=25):
+    """
+    Parameters:
+    -----------
+    data : ndarray
+            data array of shape (n_epochs, n_channels, n_times)
+
+    labels : ndarray
+            array of labels (n_epochs,)
+
+    segment_length : int or False
+                    length of segment into which to split the data in time samples
+
+    stride : int
+            stride in time samples for overlapping segments, defaults to 25
+
+    """
+
+    assert data.ndim == 3
+    n_epochs, n_ch, n_t = data.shape
+    nrows = n_t - segment_length + 1
+    a, b, c = data.strides
+    x4D = np.lib.stride_tricks.as_strided(data,
+                                          shape=(n_epochs, n_ch, nrows, segment_length),
+                                          strides=(a, b, c, c))
+    x4D = x4D[:, :, ::stride, :]
+    labels = np.tile(labels, x4D.shape[2])
+    x4D = np.moveaxis(x4D, [2], [0])
+    x4D = x4D.reshape([n_epochs * x4D.shape[0], n_ch, segment_length], order='C')
+    return x4D, labels
 
 
-def segment_raw(inputs, segment, tile_epochs=True):
-    out = []
-#    if not isinstance(inputs, list):
-#        inputs = [inputs]
-    raw_len = inputs[0].shape[-1]
-    for x in inputs:
-        assert x.shape[-1] == raw_len
-        while x.ndim < 3:
-            x = np.expand_dims(x, 0)
-        orig_shape = x.shape[:-1]
-        leftover = raw_len % (segment)
-        print('dropping:', str(leftover), ':', leftover//2, '+',
-              leftover-leftover//2)
-        crop_stop = -1*(leftover-leftover//2)
-        if crop_stop <= 0:
-            crop_start = leftover
-            x = x[..., crop_start:]
-        else:
-            crop_start = leftover//2
-            x = x[..., crop_start:crop_stop]
-        print(x.shape)
-        x = x.reshape([*orig_shape, -1, segment])
-        print(x.shape)
-        if tile_epochs:
-            x = np.moveaxis(x, [-2], [0])
-            print(x.shape)
-            x = x.reshape([orig_shape[0]*x.shape[0], *orig_shape[1:],
-                           segment], order='C')
-        out.append(x)
-    return out
 
-
-def train_test_split_cont(inputs, test_size):
-    out = []
-    if not isinstance(inputs, list):
-        inputs = [inputs]
-    raw_len = inputs[0].shape[-1]
-    test_samples = int(test_size*raw_len)
-    test_start = np.random.randint(test_samples//2,
-                                   int(raw_len-test_samples*1.5))
-    test_indices = np.arange(test_start, test_start+test_samples)
-    for x in inputs:
-        assert x.shape[-1] == raw_len
-        x_test = x[..., test_indices]
-        x_train = np.delete(x, test_indices, axis=-1)
-        out.append(x_train)
-        out.append(x_test)
-    return out
-
-
-def scale_to_baseline(X, baseline=None, crop_baseline=False):
+def scale_to_baseline(X, baseline=None, crop_baseline=False, mode='standard'):
     """Perform global scaling based on a specified baseline.
 
     Subtracts the mean and divides by the standard deviation of the amplitude
@@ -299,25 +202,16 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     if baseline is None:
         interval = np.arange(X.shape[-1])
         crop_baseline = False
-    elif isinstance(baseline, int):
-        interval = np.arange(baseline)
     elif isinstance(baseline, tuple):
         interval = np.arange(baseline[0], baseline[1])
     X0 = X[:, :, interval]
-    if X.shape[1] == 306:
-        magind = np.arange(2, 306, 3)
-        gradind = np.delete(np.arange(306), magind)
-        X0m = X0[:, magind, :].reshape([X0.shape[0], -1])
-        X0g = X0[:, gradind, :].reshape([X0.shape[0], -1])
-
-        X[:, magind, :] -= X0m.mean(-1)[:, None, None]
-        X[:, magind, :] /= X0m.std(-1)[:, None, None]
-        X[:, gradind, :] -= X0m.mean(-1)[:, None, None]
-        X[:, gradind, :] /= X0g.std(-1)[:, None, None]
-    else:
-        X0 = X0.reshape([X.shape[0], -1])
+    X0 = X0.reshape([X.shape[0], -1])
+    if mode == 'standard':
         X -= X0.mean(-1)[:, None, None]
         X /= X0.std(-1)[:, None, None]
+    elif mode == 'minmax':
+        X -= X0.min(-1)[:, None, None]
+        X /= X0.max(-1)[:, None, None]
     if baseline and crop_baseline:
         X = X[..., interval[-1]:]
     return X

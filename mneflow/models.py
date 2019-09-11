@@ -250,12 +250,12 @@ class Model(object):
         log['v_acc'] = v_acc
         log['v_loss'] = v_loss
 
-        if hasattr(self, 'test_handle'):
-            t_acc, t_loss = self.sess.run([self.accuracy, self.cost],
-                                          feed_dict={self.handle: self.test_handle,
-                                          self.rate: 1.})
-            log['test_acc'] = t_acc
-            log['test_loss'] = t_loss
+
+        t_acc, t_loss = self.sess.run([self.accuracy, self.cost],
+                                      feed_dict={self.handle: self.train_handle,
+                                      self.rate: 1.})
+        log['train_acc'] = t_acc
+        log['train_loss'] = t_loss
         self.log = log
         with open(self.model_path + self.scope + '_log.csv', 'a') as csv_file:
 
@@ -638,6 +638,14 @@ class LFCNN(Model):
         from mne import channels, evoked, create_info
         import matplotlib.pyplot as plt
         from scipy.signal import freqz
+        if fs:
+            self.fs = fs
+        elif self.dataset.h_params['fs']:
+            self.fs = self.dataset.h_params['fs']
+        else:
+            print('Sampling frequency not specified, setting to 1.')
+            self.fs = 1.
+
         self.ts = []
         lo = channels.read_layout(sensor_layout)
         info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
@@ -711,7 +719,7 @@ class LFCNN(Model):
 
             self.fake_evoked.plot_topomap(times=np.arange(i*ncols,  (i+1)*ncols, 1.),
                                           axes=ax[z*i], colorbar=False,
-                                          vmax=np.percentile(self.fake_evoked.data[:, :len(order)], 99),
+                                          vmax=np.percentile(self.fake_evoked.data[:, :len(order)], 95),
                                           scalings=1, time_format='class # %g',
                                           title='Informative patterns ('+sorting+')')
 
@@ -764,7 +772,7 @@ class VARCNN(Model):
 
         return y_pred
 
-class VARCNN2(Model):
+class VARCNNR(Model):
 
     """VAR-CNN
 
@@ -802,17 +810,13 @@ class VARCNN2(Model):
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
-        tconv2 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
-                              nonlin=tf.nn.relu,
-                              filter_length=self.specs['filter_length'],
-                              stride=self.specs['stride'],
-                              pooling=self.specs['pooling'],
-                              padding=self.specs['padding'])
 
-        fin_fc = Dense(size=self.n_classes,
-                            nonlin=tf.identity, dropout=self.rate)
+        fc1 = Dense(size=self.y_shape[0]**2,
+                            nonlin=tf.nn.relu, dropout=self.rate)
+        fin_fc = Dense(size=self.y_shape[0],
+                            nonlin=tf.nn.relu, dropout=self.rate)
 
-        y_pred = fin_fc(tconv2(tconv1(self.demix(self.X))))
+        y_pred = fin_fc(fc1(tconv1(self.demix(self.X))))
         return y_pred
 
 
@@ -862,7 +866,7 @@ class LFCNN2(Model):
                               padding=self.specs['padding'])
 
         self.fin_fc = Dense(size=self.n_classes,
-                            nonlin=tf.identity, dropout=self.rate)
+                            nonlin=tf.softmax, dropout=self.rate)
 
         y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
         return y_pred
