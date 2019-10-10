@@ -34,7 +34,7 @@ import pickle
 import mne
 
 D_PATH = '/m/nbe/work/vranoug1/OPM-BCI/'
-DEBUG = True
+DEBUG = False
 
 
 def _check_valid_preset(preset):
@@ -227,6 +227,7 @@ def meg_stroke_rest_vs_motion(preset, **args):
     rdata = dev.scale_to_baseline(rdata, baseline=(0, 1000), crop_baseline=0)
     mlabels = epochs.events[:, 2]
     rlabels = rest_epochs.events[:, 2]
+    meta['event_id'] = event_id
 
     return mdata, mlabels, rdata, rlabels, meta, list(event_id.keys())
 
@@ -863,6 +864,8 @@ def test_loop(meta, model, train_params, event_names, n=10, **args):
     dropbad = args.get("dropbad", False)
     dd = 'CONT' if meta['cont'] else 'DISC'
     subset_names = args.get("subset_names", event_names)
+    p = args.get("preset", meta['sensors'])
+
     savefig = args.get("savefig", True)
     if savefig:
         spath = args.get("savepath", './')
@@ -892,7 +895,7 @@ def test_loop(meta, model, train_params, event_names, n=10, **args):
         else:
             figname = '%s_%s_%d.png' % (meta['sensors'], dd, ii)
 
-        plt.title('%s %s %s ' % (model.scope.upper(), meta['sensors'].upper(),
+        plt.title('%s %s %s ' % (model.scope.upper(), p.upper(),
                                  plt.gca().get_title()))
         h = plt.gcf()
         h.set_size_inches(6.4, 6)
@@ -907,7 +910,7 @@ if __name__ == '__main__':
     # %%
     print('Reloaded')
 
-    preset = 'lvsr'
+    preset = 'rest'
     dropbad = True
     cont = False
 
@@ -931,4 +934,4 @@ if __name__ == '__main__':
     test_loop(meta, model, train_params, event_names, n=1,
               dropbad=dropbad, subset_names=subset_names,
               savefig=False,
-              savepath=D_PATH+'plots/')
+              savepath=D_PATH+'plots/', preset=preset)
