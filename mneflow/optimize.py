@@ -130,7 +130,7 @@ class Optimizer(object):
             cost = cost + self.params['l2_lambda'] * tf.add_n(reg)
 
         #  Optimizer
-        #train_step = tf.train.AdamOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
-        train_step = tf.train.RMSPropOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
+        train_step = tf.train.AdamOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
+        # train_step = tf.train.RMSPropOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
 
         return train_step, performance, cost, prediction
