@@ -844,7 +844,7 @@ def model_parameters(preset, savepath='./tfr/'):
         graph_specs, optimizer_p, train_p = opm_parameters(savepath)
     elif preset in ['emg']:
         graph_specs, optimizer_p, train_p = emg_parameters(savepath)
-    elif preset in ['lvsr']:
+    elif preset in ['lvsr', 'rest']:
         graph_specs, optimizer_p, train_p = stroke_parameters(savepath)
 
     return graph_specs, optimizer_p, train_p
