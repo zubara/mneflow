@@ -260,3 +260,47 @@ def bias_variable(shape):
     #    """ Initialize bias variable as constant 0.1"""
     initial = tf.constant(0.1, shape=shape)
     return tf.Variable(initial, trainable=True, name='bias')
+
+
+class DeConvLayer():
+    """DeConvolution Layer"""
+    def __init__(self, n_ls, y_shape, scope="deconv", flat_out=False,
+                 filter_length=5):
+        self.scope = scope
+        self.n_ch, self.n_t = y_shape
+        self.size = n_ls
+        self.filter_length = filter_length
+        self.flat_out = flat_out
+
+    def __call__(self, x):
+        with tf.name_scope(self.scope):
+            while True:
+                try:
+                    latent = tf.nn.relu(tf.tensordot(x, self.W,
+                                                     axes=[[1], [0]]) +
+                                        self.b_in)
+
+                    print('x_reduced', latent.shape)
+                    x_perm = tf.expand_dims(latent, 1)
+                    print('x_perm', x_perm.shape)
+
+                    conv_ = tf.einsum('lij, ki -> lkj', x_perm, self.filters)
+                    print('deconv:', conv_.shape)
+                    out = tf.einsum('lkj, jm -> lmk', conv_, self.demixing)
+                    out = out + self.b_out
+                    if self.flat_out:
+                        return tf.reshape(out, [-1, self.n_t*self.n_ch])
+                    else:
+                        print(out.shape)
+                        return out
+                except(AttributeError):
+                    self.W = weight_variable((x.get_shape()[1].value,
+                                              self.size))
+                    self.W = tf.nn.dropout(self.W, rate=.5)
+                    self.b_in = bias_variable([self.size])
+                    self.filters = weight_variable([self.n_t, 1])
+                    #  self.b = bias_variable([self.size])
+                    self.demixing = weight_variable((self.size, self.n_ch))
+                    self.demixing = tf.nn.dropout(self.demixing, rate=.5)
+                    self.b_out = bias_variable([self.n_ch])
+                    print(self.scope, 'init : OK')
