@@ -51,6 +51,9 @@ class Model(object):
 
         self.iterator = tf.data.Iterator.from_string_handle(self.handle, Dataset.train.output_types, Dataset.train.output_shapes)
         self.X, self.y_ = self.iterator.get_next()
+        print(len(self.X.shape))
+        if len(self.X.shape) == 3:
+            self.X = tf.expand_dims(self.X, -1)
         self.rate = tf.placeholder(tf.float32, name='rate')
         self.dataset = Dataset
         self.optimizer = Optimizer
@@ -543,6 +546,7 @@ class LFCNN(Model):
 
         """
         self.scope = 'var-cnn'
+
         self.demix = DeMixing(n_ls=self.specs['n_ls'])
 
         self.tconv1 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
@@ -555,7 +559,7 @@ class LFCNN(Model):
         self.fin_fc = Dense(size=self.n_classes,
                             nonlin=tf.identity, dropout=self.rate)
 
-        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
+        y_pred = self.fin_fc(self.tconv1(self.demix(X1)))
         return y_pred
 
     def plot_out_weihts(self,):
@@ -822,6 +826,8 @@ class VARCNNR(Model):
         y_pred = fin_fc(fc2(fc1(tconv1(self.demix(self.X)))))
         return y_pred
 
+#def DEEP4(Model):
+
 
 class LFCNNR(Model):
 
@@ -853,19 +859,21 @@ class LFCNNR(Model):
 
     def build_graph(self):
         self.scope = 'var-cnn'
-        self.demix = DeMixing(n_ls=self.specs['n_ls'])
 
-        self.tconv1 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
-                              nonlin=tf.nn.relu,
+        self.demix = DeMixing(n_ls=self.specs['n_ls'],axis=1)
+
+        self.tconv1 =LFTConv(scope="conv", #n_ls=self.specs['n_ls'],
+                              nonlin=tf.identity,
                               filter_length=self.specs['filter_length'],
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-
+        #self.fc1 = Dense(size=256,
+        #                    nonlin=tf.sigmoid, dropout=self.rate)
 
         self.fin_fc = Dense(size=self.y_shape[0],
-                            nonlin=tf.tanh, dropout=self.rate)
+                            nonlin=tf.identity, dropout=self.rate)
 
         y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
         return y_pred

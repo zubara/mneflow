@@ -62,6 +62,9 @@ class Dense():
                     print(self.scope, 'init : OK')
 
 
+
+
+
 class LFTConv():
     """
     Stackable temporal convolutional layer, interpreatble (LF)
@@ -69,7 +72,7 @@ class LFTConv():
     def __init__(self, scope="lf-conv", n_ls=32,  nonlin=tf.nn.relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME'):
         self.scope = scope
-        self.size = n_ls
+        #self.size = n_ls
         self.filter_length = filter_length
         self.stride = stride
         self.pooling = pooling
@@ -80,6 +83,7 @@ class LFTConv():
         with tf.name_scope(self.scope):
             while True:
                 try:  # reuse weights if already initialized
+                    print('lf-inp', x.shape)
                     conv = tf.nn.depthwise_conv2d(x, self.filters,
                                                   padding=self.padding,
                                                   strides=[1, 1, 1, 1],
@@ -88,11 +92,13 @@ class LFTConv():
                     conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
                                           strides=[1, self.stride, 1, 1],
                                           padding=self.padding)
+                    print('f:',self.filters.shape)
+                    print('lf-out',conv.shape)
                     return conv
                 except(AttributeError):
-                    self.filters = weight_variable([self.filter_length, 1, self.size, 1],
+                    self.filters = weight_variable([self.filter_length, 1, x.shape[-1].value, 1],
                                                    name='tconv_')
-                    self.b = bias_variable([self.size])
+                    self.b = bias_variable([x.shape[-1].value])
                     print(self.scope, 'init : OK')
 
 
@@ -137,25 +143,28 @@ class VARConv():
 
 class DeMixing():
     """
-    Spatial demixing Layer
+    Reducing dimensions across one domain
     """
-    def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity):
+    def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity, axis=1):
         self.scope = scope
         self.size = n_ls
         self.nonlin = nonlin
+        self.axis = axis
 
     def __call__(self, x):
         with tf.name_scope(self.scope):
             while True:
                 try:  # reuse weights if already initialized
                     x_reduced = self.nonlin(tf.tensordot(x, self.W,
-                                                         axes=[[1], [0]],
+                                                         axes=[[self.axis], [0]],
                                                          name='de-mix') +
                                             self.b_in)
-                    x_reduced = tf.expand_dims(x_reduced, -2)
+
+                    #x_reduced = tf.transpose(x_reduced, perm = [0,3,2,1])
+                    print('dmx', x_reduced.shape)
                     return x_reduced
                 except(AttributeError):
-                    self.W = weight_variable((x.shape[1].value, self.size),
+                    self.W = weight_variable((x.shape[self.axis].value, self.size),
                                              name='dmx_')
                     self.b_in = bias_variable([self.size])
                     print(self.scope, 'init : OK')
