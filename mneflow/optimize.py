@@ -132,7 +132,7 @@ class Optimizer(object):
 
 
         #  Optimizer
-        #train_step = tf.train.AdamOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
-        train_step = tf.train.RMSPropOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
+        train_step = tf.train.AdamOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
+        # train_step = tf.train.RMSPropOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
 
         return train_step, performance, cost, prediction
