@@ -492,7 +492,8 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                                                                        segment=segment,
                                                                        augment=augment,
                                                                        val_size=val_size,
-                                                                       aug_stride=aug_stride)
+                                                                       aug_stride=aug_stride,
+                                                                       decimate=decimate)
                 meta['y_shape'] = y_train.shape[1:]
             print(x_train.shape, y_train.shape, meta['y_shape'])
             print('Saving TFRecord# {}'.format(jj))
@@ -652,7 +653,7 @@ def partition(data, test_indices):
 
 def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
                           val_size=0.1, aug_stride=25, transform_targets=True,
-                          bp_filter=False, fs=None):
+                          bp_filter=False, fs=None, decimate=None):
     """Global scaling"""
     if bp_filter:
 
@@ -662,6 +663,10 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
 #        targets = mnefilt.filter_data(targets, fs, l_freq=bp_filter[0],
 #                                   h_freq=bp_filter[1],
 #                                   method='iir', verbose=False)
+    if decimate:
+        data = data[..., ::decimate]
+        targets = targets[..., ::decimate]
+
     if scale:
             data -= data.mean(-1, keepdims=True)
             data /= data.std()

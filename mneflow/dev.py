@@ -115,7 +115,7 @@ class DeConvLayer():
                     print(self.scope, 'init : OK')
 
 
-def segment(data, labels, segment_length=200):
+def segment(data, labels=None, segment_length=200):
     """
     Parameters:
     -----------
@@ -131,15 +131,22 @@ def segment(data, labels, segment_length=200):
     """
     x_out = []
     y_out = []
-    assert data.ndim == 3
-    n_epochs, n_ch, n_t = data.shape
+    assert data.ndim >= 2
+    n_ch, n_t = data.shape[-2:]
     bins = np.arange(0, n_t+1, segment_length)[1:]
-    for x, y in zip(data, labels):
+    for x in data:
         #  split into non-overlapping segments
         xx = np.split(x, bins, axis=-1)[:-1]
         x_out.append(xx)
-        y_out.append(np.repeat(y, len(xx)))
-        #  print(y, y_out[-1])
+    if np.any(labels):
+        for y in labels:
+            if y.shape[-1] == data.shape[-1]:
+                y_out.append(np.split(y, bins, axis=-1)[:-1])
+            else:
+                y_out.append(np.repeat(y, len(xx)))
+    else:
+        labels = [[labels]]
+
     return np.concatenate(x_out), np.concatenate(y_out)
 
 

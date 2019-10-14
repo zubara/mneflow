@@ -104,12 +104,12 @@ class Optimizer(object):
             print(loss.shape, performance.shape)
 
         elif self.params['task'] == 'regression':
-            loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred)
+            loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred, weights=tf.abs(y_true), reduction='weighted_sum')
             #mn, var_ = tf.nn.moments(y_true)
             #var_ = tf.reduce_mean(y_true**2)
 
             #print(var_)
-            performance = tf.reduce_mean((y_true-y_pred)**2/y_true**2)#loss/tf.reduce_mean(var_)
+            performance = tf.reduce_sum((y_true-y_pred)**2)/tf.reduce_sum(y_true**2)#loss/tf.reduce_mean(var_)
             prediction = y_pred
 
         #  Regularization
