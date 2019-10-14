@@ -12,6 +12,8 @@ from tensorflow.keras import layers
 from tensorflow.keras.initializers import Constant
 from tensorflow.keras.activations import relu
 
+# TODO: add vgg_block layer
+
 
 class Dense(layers.Layer):
     """

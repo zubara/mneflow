@@ -13,6 +13,7 @@ from keras_layers import DeMixing, VARConv, LSTMv1, Dense
 
 
 class VARCNNLSTM(tf.keras.Model):
+    # TODO: not tested yet
 
     """VAR-CNN-LSTM
 
