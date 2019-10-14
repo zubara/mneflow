@@ -10,8 +10,10 @@ import pickle
 from operator import itemgetter
 from mneflow.data import Dataset
 from mneflow.optimize import Optimizer
-
+from mne import filter as mnefilt
+from mne import epochs as mnepochs, pick_types
 import csv
+from mne import filter as mnefilt
 
 def load_meta(fname,data_id=''):
 
@@ -125,30 +127,24 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     X : ndarray
 
     """
+
     if baseline is None:
-        interval = np.arange(X.shape[-1])
+        X0 = X.reshape([X.shape[0], -1])
         crop_baseline = False
-    elif isinstance(baseline, int):
-        interval = np.arange(baseline)
     elif isinstance(baseline, tuple):
         interval = np.arange(baseline[0], baseline[1])
-    X0 = X[:, :, interval]
-    if X.shape[1] == 306:
-        magind = np.arange(2, 306, 3)
-        gradind = np.delete(np.arange(306), magind)
-        X0m = X0[:, magind, :].reshape([X0.shape[0], -1])
-        X0g = X0[:, gradind, :].reshape([X0.shape[0], -1])
+        X0 = X[..., interval].reshape([X.shape[0], -1])
+        if crop_baseline:
+            X = X[..., interval[-1]:]
+    X0m = X0.mean(-1, keepdims=True)
+    X0sd = X0.std(-1, keepdims=True)
+    while X0m.ndim < X.ndim:
+        X0m = np.expand_dims(X0m, -1)
+        X0sd = np.expand_dims(X0sd, -1)
+    print(X0.shape)
+    X -= X0m
+    X /= X0sd
 
-        X[:, magind, :] -= X0m.mean(-1)[:, None, None]
-        X[:, magind, :] /= X0m.std(-1)[:, None, None]
-        X[:, gradind, :] -= X0m.mean(-1)[:, None, None]
-        X[:, gradind, :] /= X0g.std(-1)[:, None, None]
-    else:
-        X0 = X0.reshape([X.shape[0], -1])
-        X -= X0.mean(-1)[..., None, None]
-        X /= X0.std(-1)[:, None, None]
-    if baseline and crop_baseline:
-        X = X[..., interval[-1]:]
     return X
 
 
@@ -212,6 +208,131 @@ def _split_sets(X, y, val=.1):
     y_train = y[shuffle[val_size:], ...]
     return X_train, y_train, X_val, y_val
 
+def process_labels(y, scale=False, decimate=False, normalize=False,
+                   transpose=False, transform=False, segment=False):
+    """Preprocess target variables"""
+    if transpose:
+        y = np.swapaxes(y, -2, -1)
+
+    if segment:
+        y, _ = _segment(y, labels=None, segment_length=segment)
+    if decimate:
+        assert y.ndim == 3
+        y = y[...,::decimate]
+    if normalize:
+        y = scale_to_baseline(y, baseline=None, crop_baseline=False)
+    y = np.mean(y**2,axis=-1)
+    print('y', y.shape)
+#    if isinstance(transform, callable):
+#        y = transform(y)
+
+    return y
+
+
+
+
+def import_continuous(inp, picks=None, target_picks=None, array_keys={'X': 'X', 'y': 'y'},
+                      transpose=False, task='autoencoding'):
+    # Returns data.ndim==3 [epochs, channels, times] and targets
+    if isinstance(inp, tuple) and len(inp) == 2:
+        data, targets = inp
+    elif isinstance(inp, str):
+        fname = inp
+        print(fname[-3:])
+        if fname[-3:] == 'mat':
+            datafile = sio.loadmat(fname)
+
+        if fname[-3:] == 'npz':
+            datafile = np.load(fname)
+
+        data = datafile[array_keys['X']]
+    data = data.astype(np.float32)
+
+    if data.ndim == 2:
+        data = np.expand_dims(data,0)
+    if transpose:
+        data = np.swapaxes(data,-1,-2)
+
+    if task == 'autoencoding':
+        if np.any(target_picks):
+            targets = data[:,target_picks,:]
+            data = np.delete(data, target_picks, axis=1)
+            print('Extracting target variables from target_picks')
+        else:
+            targets = datafile[array_keys['y']]
+            if targets.ndim == 2:
+                targets = np.expand_dims(targets,0)
+            if transpose:
+                targets = np.swapaxes(targets,-1,-2)
+            print('Extracting target variables from {}'.format(array_keys['y']))
+    if isinstance(picks, np.ndarray):
+        data = data[:, picks, :]
+    return data, targets
+
+
+
+
+def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
+    """
+    inputs : list, mne.epochs.Epochs, str
+        list of mne.epochs.Epochs or strings with filenames. If input is a
+        single string or Epochs object it is firts converted into a list.
+
+    picks : ndarray of int, optional
+        Indices of channels to pick for processing, if None all channels
+        are used.
+
+    array_keys : dict, optional
+        Dictionary mapping {'X':'data_matrix','y':'labels'},
+        where 'data_matrix' and 'labels' are names of the corresponding
+        variables if your input is paths to .mat or .npz files.
+        Defaults to {'X':'X', 'y':'y'}
+
+    """
+
+    #  Import data and labels
+    # for inp in inputs:
+    if isinstance(inp, mnepochs.BaseEpochs):
+        print('processing epochs')
+        inp.load_data()
+        data = inp.get_data()
+        events = inp.events[:, 2]
+        # fs = inp.info['sfreq']
+        if isinstance(picks, dict):
+            picks = pick_types(inp.info, **picks)
+           #print('picks:', picks )
+    elif isinstance(inp, tuple) and len(inp) == 2:
+        data, events = inp
+    elif isinstance(inp, str):
+        fname = inp
+        print(fname[-3:])
+        if fname[-3:] == 'fif':
+            epochs = mnepochs.read_epochs(fname, preload=True,
+                                          verbose='CRITICAL')
+            if isinstance(picks, dict):
+                picks = pick_types(epochs.info, **picks)
+            events = epochs.events[:, 2]
+            # fs = epochs.info['sfreq']
+            data = epochs.get_data()
+        else:
+            if fname[-3:] == 'mat':
+                datafile = sio.loadmat(fname)
+
+            if fname[-3:] == 'npz':
+                datafile = np.load(fname)
+
+            data = datafile[array_keys['X']]
+            events = datafile[array_keys['y']]
+#        if not fs:
+#            print('Specify sampling frequency')
+        #return
+    data = data.astype(np.float32)
+    if isinstance(picks, np.ndarray):
+        data = data[:, picks, :]
+        #print(data.shape)
+    return data, events
+
+
 
 def produce_labels(y, return_stats=True):
     """Produces labels array from e.g. event (unordered) trigger codes
@@ -245,12 +366,14 @@ def produce_labels(y, return_stats=True):
         return inv
 
 
-def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
-                      savebatch=1,  save_origs=False, val_size=0.2, fs=None,
-                      scale=False, scale_interval=None, crop_baseline=True,
-                      decimate=False, bp_filter=False, picks=None,
+def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
+                      overwrite=True, savebatch=1,  save_origs=False, val_size=0.2,
+                      array_keys={'X': 'X', 'y': 'y'},
+                      picks=None, target_picks=None,
                       combine_events=None, task='classification',
-                      array_keys={'X': 'X', 'y': 'y'}):
+                      segment=False, augment=False, aug_stride=50, transpose=False,
+                      scale=False, scale_interval=None,
+                      crop_baseline=False, decimate=False, bp_filter=False):
 
     r"""
     Produces TFRecord files from input, applies (optional) preprocessing
@@ -261,9 +384,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
 
     Parameters
     ----------
-    inputs : list, mne.epochs.Epochs, str
-        list of mne.epochs.Epochs or strings with filenames. If input is a
-        single string or Epochs object it is firts converted into a list.
+
 
     savepath : str
         a path where the output TFRecord and corresponding metadata
@@ -285,20 +406,9 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
         shuffle_split = True. Defaults to 0.2.
 
     fs : float, optional
-        Sampling frequency, required only if inputs are not mne.Epochs
+            Sampling frequency, required only if inputs are not mne.Epochs
 
-    scale : bool, optinal
-        whether to perform scaling to baseline. Defaults to False.
 
-    scale_interval : NoneType, tuple of ints or floats,  optinal
-        baseline definition. If None (default) scaling is
-        perfromed based on all timepoints of the epoch.
-        If tuple, than baseline is data[tuple[0] : tuple[1]].
-        Only used if scale == True.
-
-    crop_baseline : bool, optinal
-        whether to crop baseline specified by 'scale_interval'
-        after scaling (defaults to False).
 
     decimate : False, int, optional
         whether to decimate the input data (defaults to False).
@@ -306,9 +416,7 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
     bp_filter : bool, tuple, optinal
         band pass filter. Tuple of int or NoneType.
 
-    picks : ndarray of int, optional
-        Indices of channels to pick for processing, if None all channels
-        are used.
+
 
     combine_events : dict, optional
         dictionary for combining or otherwise manipulating lables. SHould
@@ -316,18 +424,18 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
         old_labels are not specified in keys the corresponding epochs are
         discarded.
 
+
+
     task : 'classification', optional
         So far the only available task.
 
-    array_keys : dict, optional
-        Dictionary mapping {'X':'data_matrix','y':'labels'},
-        where 'data_matrix' and 'labels' are names of the corresponding
-        variables if your input is paths to .mat or .npz files.
-        Defaults to {'X':'X', 'y':'y'}
+
 
     overwrite : bool, optional
         Whether to overwrite the metafile if it already exists at the
         specified path.
+
+
 
     Returns
     -------
@@ -355,122 +463,101 @@ def produce_tfrecords(inputs, savepath, out_name, overwrite=False,
     if not os.path.exists(savepath):
         os.mkdir(savepath)
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
-        from mne import epochs as mnepochs, filter as mnefilt, pick_types
+
         meta = dict(train_paths=[], val_paths=[], orig_paths=[],
-                    data_id=out_name, val_size=0, task=task)
+                    data_id=out_name, val_size=val_size, task=task)
         jj = 0
         i = 0
-        if not isinstance(inputs, list):
-            inputs = [inputs]
-        #  Import data and labels
+        meta['fs'] = fs
         for inp in inputs:
-            if isinstance(inp, mnepochs.BaseEpochs):
-                print('processing epochs')
-                inp.load_data()
-                data = inp.get_data()
-                events = inp.events[:, 2]
-                fs = inp.info['sfreq']
-                if isinstance(picks,dict):
-                        picks = pick_types(inp.info,**picks)
-            elif isinstance(inp, tuple) and len(inp) == 2:
-                data, events = inp
-            elif isinstance(inp, str):
-                fname = inp
-                print(fname[-3:])
-                if fname[-3:] == 'fif':
-                    epochs = mnepochs.read_epochs(fname, preload=True,
-                                                  verbose='CRITICAL')
-                    if isinstance(picks,dict):
-                        picks = pick_types(epochs.info,**picks)
-                    events = epochs.events[:, 2]
-                    fs = epochs.info['sfreq']
-                    data = epochs.get_data()
-                else:
-                    if fname[-3:] == 'mat':
-                        datafile = sio.loadmat(fname)
+            if input_type=='trials':
+                data, events = import_epochs(inp, picks=picks, array_keys=array_keys)
+                if task == 'classification':
+                    events, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
+                    meta['n_classes'] = len(meta['class_proportions'])
+                x_train,  y_train, x_val, y_val = preprocess_epochs(data, events,
+                                             scale=True, fs=fs, val_size=val_size,
+                                             scale_interval=scale_interval,
+                                             crop_baseline=crop_baseline,
+                                             decimate=decimate, bp_filter=bp_filter)
+                meta['y_shape'] = y_train.shape[1:]
+            elif input_type == 'continuous':
+                data, events = import_continuous(inp, picks=picks,
+                                                 target_picks=target_picks,
+                                                 array_keys=array_keys,
+                                                 transpose=transpose,
+                                                 task='autoencoding')
+                x_train,  y_train, x_val, y_val = preprocess_continuous(data, events,
+                                                                       scale=scale,
+                                                                       segment=segment,
+                                                                       augment=augment,
+                                                                       val_size=val_size,
+                                                                       aug_stride=aug_stride)
+                meta['y_shape'] = y_train.shape[1:]
+            print(x_train.shape, y_train.shape, meta['y_shape'])
+            print('Saving TFRecord# {}'.format(jj))
 
-                    if fname[-3:] == 'npz':
-                        datafile = np.load(fname)
-
-                    data = datafile[array_keys['X']]
-                    events = datafile[array_keys['y']]
-            if not fs:
-                print('Specify sampling frequency')
-                return
-
-            #  IMPORT ENDS HERE!
-            meta['fs'] = fs
-            if isinstance(picks, np.ndarray):
-                data = data[:, picks, :]
-            # Preprocessing
-            if bp_filter:
-                data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
-                                           h_freq=bp_filter[1],
-                                           method='iir', verbose=False)
-            if scale:
-                data = scale_to_baseline(data, scale_interval, crop_baseline)
-
-            if decimate:
-                data = data[..., ::decimate]
-                meta['fs'] /= decimate
-
-            if len(np.unique(events)) == 1:
-                print('Events contain only one class!')
-                break
-            if task == 'classification':
-                if combine_events:
-                    events, keep_ind = _combine_labels(events, combine_events)
-                    data = data[keep_ind, ...]
-                    events = events[keep_ind]
-
-                labels, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
-                meta['n_classes'] = len(meta['class_proportions'])
-                print('n_classes:', meta['n_classes'], ':', np.unique(labels))
-
-            elif task == 'regression':
-                print('Not Implemented')
-
-            i += 1
-            if i == 1:
-                X = data
-                y = labels
-            elif i > 1:
-                X = np.concatenate([X, data])
-                y = np.concatenate([y, labels])
-
-            meta['y_shape'] = y.shape[1:]
-
-            if i % savebatch == 0 or jj*savebatch + i == len(inputs):
-                print('data shape: ', X.shape)
-                print('Saving TFRecord# {}'.format(jj))
-                X = X.astype(np.float32)
-                n_trials, meta['n_ch'], meta['n_t'] = X.shape
-                X_train, y_train, X_val, y_val = _split_sets(X, y, val=val_size)
-                meta['val_size'] += len(y_val)
-                meta['train_paths'].append(''.join([savepath, out_name,
-                                                    '_train_', str(jj),
-                                                    '.tfrecord']))
-                _write_tfrecords(X_train, y_train, meta['train_paths'][-1],
-                                task=task)
-                meta['val_paths'].append(''.join([savepath, out_name,
-                                                 '_val_', str(jj),
-                                                  '.tfrecord']))
-                _write_tfrecords(X_val, y_val, meta['val_paths'][-1], task=task)
-                if save_origs:
-                    meta['orig_paths'].append(''.join([savepath, out_name,
-                                                       '_orig_', str(jj),
-                                                       '.tfrecord']))
-                    _write_tfrecords(X, y, meta['orig_paths'][-1], task=task)
-                jj += 1
-                i = 0
-                del X, y
-            with open(savepath+out_name+'_meta.pkl', 'wb') as f:
-                pickle.dump(meta, f)
+            n_trials, meta['n_ch'], meta['n_t'] = x_train.shape
+            meta['val_size'] += len(y_val)
+            meta['train_paths'].append(''.join([savepath, out_name,
+                                                '_train_', str(jj),
+                                                '.tfrecord']))
+            _write_tfrecords(x_train, y_train, meta['train_paths'][-1],
+                            task=task)
+            meta['val_paths'].append(''.join([savepath, out_name,
+                                             '_val_', str(jj),
+                                              '.tfrecord']))
+            _write_tfrecords(x_val, y_val, meta['val_paths'][-1], task=task)
+#                if save_origs:
+#                    meta['orig_paths'].append(''.join([savepath, out_name,
+#                                                       '_orig_', str(jj),
+#                                                       '.tfrecord']))
+#                    _write_tfrecords(X, y, meta['orig_paths'][-1], task=task)
+            jj += 1
+        with open(savepath+out_name+'_meta.pkl', 'wb') as f:
+            pickle.dump(meta, f)
 
     elif os.path.exists(savepath+out_name+'_meta.pkl'):
         print('Metadata file found, restoring')
         meta = load_meta(savepath, data_id=out_name)
     return meta
+
+def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None, scale_interval=None,
+                      crop_baseline=False, decimate=False, bp_filter=False,
+                      picks=None):
+    """
+    scale : bool, optinal
+        whether to perform scaling to baseline. Defaults to False.
+
+    scale_interval : NoneType, tuple of ints or floats,  optinal
+        baseline definition. If None (default) scaling is
+        perfromed based on all timepoints of the epoch.
+        If tuple, than baseline is data[tuple[0] : tuple[1]].
+        Only used if scale == True.
+
+    crop_baseline : bool, optinal
+        whether to crop baseline specified by 'scale_interval'
+        after scaling (defaults to False).
+        """
+    if bp_filter:
+        data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
+                                   h_freq=bp_filter[1],
+                                   method='iir', verbose=False)
+    if scale:
+        data = scale_to_baseline(data, baseline=scale_interval,
+                                 crop_baseline=crop_baseline)
+
+    if isinstance(picks, np.ndarray):
+        data = data[:, picks, :]
+
+
+    if decimate:
+        data = data[..., ::decimate]
+
+    x_train, y_train, x_val, y_val = _split_sets(data, events, val_size=.1)
+
+    return x_train, y_train, x_val, y_val
+
 
 
 def _combine_labels(labels, new_mapping):
@@ -489,3 +576,121 @@ def _combine_labels(labels, new_mapping):
         new_labels[ind] = new_label
     keep_ind = np.where(new_labels != 404)[0]
     return new_labels, keep_ind
+
+def _segment(data, segment_length=200, augment=False, stride=25, return_consequtive=False):
+    """
+    Parameters:
+    -----------
+    data : list of ndarrays
+            data array of shape (n_epochs, n_channels, n_times)
+
+    labels : ndarray
+            array of labels (n_epochs,)
+
+    segment_length : int or False
+                    length of segment into which to split the data in time samples
+
+    """
+    x_out = []
+    for xx in data:
+        n_epochs, n_ch, n_t = xx.shape
+        if augment:
+            nrows = n_t - segment_length + 1
+            a, b, c = xx.strides
+            x4D = np.lib.stride_tricks.as_strided(xx,
+                                                  shape=(n_epochs, n_ch, nrows, segment_length),
+                                                  strides=(a, b, c, c))
+            x4D = x4D[:, :, ::stride, :]
+            x4D = np.swapaxes(x4D, 2, 1)
+            if not return_consequtive:
+                x4D = x4D.reshape([n_epochs * x4D.shape[1], n_ch, segment_length], order='C')
+            x_out.append(np.squeeze(x4D))
+        else:
+            bins = np.arange(0, n_t+1, segment_length)[1:]
+            xb = np.split(xx, bins, axis=-1)[:-1]
+            x_out.append(np.concatenate(xb))
+    #print([xxx.shape for xxx in x_out])
+    if not return_consequtive:
+        return np.concatenate(x_out,0)
+    else:
+        return(x_out)
+
+
+def cont_split_indices(X, test_size=.1, test_segments=5):
+    """
+    X - 3d data array
+
+    """
+    raw_len = X.shape[-1]
+    test_samples = int(test_size*raw_len//test_segments)
+    interval = raw_len//(test_segments+1)
+    data_intervals = np.arange(test_samples, raw_len-test_samples, interval)
+
+    test_start = [ds + np.random.randint(interval - test_samples) for ds in data_intervals]
+
+    test_indices = [(t_strt, t_strt+test_samples) for t_strt in test_start[:-1]]
+    return test_indices
+
+def partition(data, test_indices):
+    if any(test_indices):
+        if np.ndim(test_indices) == 1 and np.max(test_indices) < data.shape[0]:
+            x_out = [data[test_indices,...], np.delete(data, test_indices, axis=0)][::-1]
+        elif np.ndim(test_indices) == 2:
+            bins = sorted(np.ravel(test_indices))
+            x_out = np.split(data, bins, axis=-1) # data is a list of segmnets of different lengths
+        else:
+            print('Could not split the data, check test_indices!')
+            return
+        x_train = x_out[0::2]
+        x_test = x_out[1::2]
+        #print([xt.shape for xt in x_train])
+        return x_train, x_test
+    else:
+        print('No test labels provided')
+        return None
+
+
+def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
+                          val_size=0.1, aug_stride=25, transform_targets=True,
+                          bp_filter=False, fs=None):
+    """Global scaling"""
+    if bp_filter:
+
+        data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
+                                   h_freq=bp_filter[1],
+                                   method='iir', verbose=False)
+#        targets = mnefilt.filter_data(targets, fs, l_freq=bp_filter[0],
+#                                   h_freq=bp_filter[1],
+#                                   method='iir', verbose=False)
+    if scale:
+            data -= data.mean(-1, keepdims=True)
+            data /= data.std()
+            targets -= targets.mean(-1, keepdims=True)
+            targets /= targets.std(-1, keepdims=True)
+#    if transform_targets:
+#        poles = np.ones(50)/50.
+#        print(targets.shape)
+#        targets[0,0,...] = np.convolve(targets[0,0,...], poles, mode='same')
+
+
+    if val_size > 0:
+        test_inds = cont_split_indices(data, test_size=val_size, test_segments=5)
+        x_train, x_val = partition(data, test_inds)
+        y_train, y_val = partition(targets, test_inds)
+
+    if segment:
+        x_train = _segment(x_train, segment_length=segment, augment=augment,
+                           stride=aug_stride)
+        x_val = _segment(x_val, segment_length=segment, augment=augment,
+                         stride=aug_stride)
+        y_train = _segment(y_train, segment_length=segment, augment=augment,
+                           stride=aug_stride)
+        y_val = _segment(y_val, segment_length=segment, augment=augment,
+                         stride=aug_stride)
+    if transform_targets:
+        #y_train = y_train[:,0,:] - y_train[:,0,:].mean(-1, keepdims=True)
+        #y_val = y_val[:,0,:] - y_val[:,0,:].mean(-1, keepdims=True)
+        y_train = np.mean(y_train[:,0,-25:],axis=-1,keepdims=True)
+        y_val = np.mean(y_val[:,0,-25:], axis=-1,keepdims=True)
+        #y_train = np.max(y_train, -1, keepdims=True) - np.min()
+    return x_train, y_train, x_val, y_val

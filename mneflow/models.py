@@ -4,7 +4,7 @@ Defines mneflow.models.Model parent class and the implemented models as its
 subclasses. Implemented models inherit basic methods from the parent class.
 
 """
-from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing
+from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing, DeConvLayer
 import tensorflow as tf
 import numpy as np
 from sklearn.covariance import ledoit_wolf
@@ -496,7 +496,7 @@ class EEGNet(Model):
         out66 = tf.nn.dropout(out6, self.rate)
 
         out7 = tf.reshape(out66, [-1, np.prod(out66.shape[1:])])
-        fc_out = Dense(size=self.n_classes, nonlin=tf.identity,
+        fc_out = Dense(size=self.y_shape[0], nonlin=tf.identity,
                        dropout=self.rate)
         y_pred = fc_out(out7)
         return y_pred
@@ -812,16 +812,18 @@ class VARCNNR(Model):
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-        fc1 = Dense(size=self.y_shape[0]**2,
-                            nonlin=tf.nn.relu, dropout=self.rate)
+        fc1 = Dense(size=256,
+                            nonlin=tf.tanh, dropout=self.rate)
+        fc2 = Dense(size=64,
+                            nonlin=tf.tanh, dropout=self.rate)
         fin_fc = Dense(size=self.y_shape[0],
-                            nonlin=tf.nn.relu, dropout=self.rate)
+                            nonlin=tf.tanh, dropout=self.rate)
 
-        y_pred = fin_fc(fc1(tconv1(self.demix(self.X))))
+        y_pred = fin_fc(fc2(fc1(tconv1(self.demix(self.X)))))
         return y_pred
 
 
-class LFCNN2(Model):
+class LFCNNR(Model):
 
     """VAR-CNN
 
@@ -859,15 +861,68 @@ class LFCNN2(Model):
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
-        self.tconv2 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
+
+
+
+        self.fin_fc = Dense(size=self.y_shape[0],
+                            nonlin=tf.tanh, dropout=self.rate)
+
+        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
+        return y_pred
+
+class VARDAE(Model):
+    """ VAR-CNN
+
+    For details see [1].
+
+    Paramters:
+    ----------
+    var_params : dict
+
+    n_ls : int
+        number of latent components
+        Defaults to 32
+
+    filter_length : int
+        length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7
+
+    stride : int
+        stride of the max pooling layer. Defaults to 1
+
+    pooling : int
+        pooling factor of the max pooling layer. Defaults to 2
+
+    References:
+    -----------
+        [1]  I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+    """
+
+    def build_graph(self):
+        self.scope = 'var-cnn-autoencoder'
+        self.demix = DeMixing(n_ls=self.specs['n_ls'])
+
+        self.tconv1 = VARConv(scope="var-conv1", n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
                               filter_length=self.specs['filter_length'],
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-        self.fin_fc = Dense(size=self.n_classes,
-                            nonlin=tf.softmax, dropout=self.rate)
 
-        y_pred = self.fin_fc(self.tconv2(self.tconv1(self.demix(self.X))))
-        return y_pred
+
+        self.encoding_fc = Dense(size=self.specs['df'],
+                                 nonlin=tf.nn.relu,
+                                 dropout=self.rate)
+
+        encoder = self.encoding_fc(self.tconv1(self.demix(self.X)))
+
+        self.deconv = DeConvLayer(n_ls=self.specs['n_ls'],
+                                  y_shape=self.y_shape,
+                                  filter_length=self.specs['filter_length'],
+                                  flat_out=False)
+        decoder = self.deconv(encoder)
+        return decoder
+
+
