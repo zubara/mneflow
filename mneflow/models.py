@@ -39,10 +39,7 @@ class Model(object):
 
         self.specs = specs
         self.model_path = specs['model_path']
-        if Dataset.h_params['task'] == 'classification':
-            self.n_classes = Dataset.h_params['n_classes']
-        else:
-            self.y_shape = Dataset.h_params['y_shape']
+        self.y_shape = Dataset.h_params['y_shape']
         self.fs = Dataset.h_params['fs']
         self.sess = tf.Session()
         self.handle = tf.placeholder(tf.string, shape=[])
@@ -50,13 +47,17 @@ class Model(object):
         self.val_iter, self.val_handle = self._start_iterator(Dataset.val)
 
         self.iterator = tf.data.Iterator.from_string_handle(self.handle, Dataset.train.output_types, Dataset.train.output_shapes)
-        self.X, self.y_ = self.iterator.get_next()
-        print(len(self.X.shape))
-        if len(self.X.shape) == 3:
-            self.X = tf.expand_dims(self.X, -1)
+        self.X0, self.y_ = self.iterator.get_next()
+        print('X0:', self.X0.shape)
+        #print(len(self.X0.shape))
+        if len(self.X0.shape) == 3:
+            self.X = tf.expand_dims(self.X0, -1)
+        else:
+            self.X = self.X0
         self.rate = tf.placeholder(tf.float32, name='rate')
         self.dataset = Dataset
         self.optimizer = Optimizer
+        self.trained = False
 
     def _start_iterator(self, Dataset):
 
@@ -129,8 +130,9 @@ class Model(object):
                 Convergence threshold for validation cost during training.
                 Defaults to 0.
         """
-        self.sess.run(tf.global_variables_initializer())
-        min_val_loss = np.inf
+        if not self.trained:
+            self.sess.run(tf.global_variables_initializer())
+            self.min_val_loss = np.inf
 
         patience_cnt = 0
         for i in range(n_iter+1):
@@ -146,8 +148,8 @@ class Model(object):
                                                    feed_dict={self.handle: self.val_handle,
                                                               self.rate: 1.})
 
-                if min_val_loss >= v_loss + min_delta:
-                    min_val_loss = v_loss
+                if self.min_val_loss >= v_loss + min_delta:
+                    self.min_val_loss = v_loss
                     v_acc = self.v_acc
                     self.saver.save(self.sess, ''.join([self.model_path,
                                                         self.scope, '-',
@@ -162,11 +164,12 @@ class Model(object):
                                                            self.dataset.h_params['data_id']]))
                     self.train_params = (eval_step, early_stopping, i)
                     print('stopped at: epoch %d, val loss %g, val acc %g'
-                          % (i,  min_val_loss, v_acc))
+                          % (i,  self.min_val_loss, v_acc))
                     break
                 print('i %d, tr_loss %g, tr_acc %g v_loss %g, v_acc %g'
                       % (i, t_loss, acc, v_loss, self.v_acc))
         self.train_params = (eval_step, early_stopping, i)
+        self.trained = True
 
 
     def load(self):
@@ -581,7 +584,7 @@ class LFCNN(Model):
                        markeredgewidth=2)
         plt.show()
 
-    def compute_patterns(self, megdata=None, output='patterns'):
+    def compute_patterns(self, megdata=None, output='patterns', norm_spect=True):
         """
         Computes spatial patterns from filter weights.
 
@@ -593,23 +596,35 @@ class LFCNN(Model):
         self.filters = np.squeeze(self.sess.run(self.tconv1.filters,
                                                 feed_dict=vis_dict))
         self.patterns = spatial
-
+        data = self.sess.run(self.X, feed_dict=vis_dict)
+        data = np.squeeze(data.transpose([0, 2, 1, 3]))
+        data = data.reshape([-1, data.shape[-1]])
+        self.lat_tcs = np.dot(data,spatial).T
         if 'patterns' in output:
-            data = self.sess.run(self.X, feed_dict=vis_dict)
-            data = data.transpose([0, 2, 1])
-            data = data.reshape([-1, data.shape[-1]])
             self.dcov, _ = ledoit_wolf(data)
             self.patterns = np.dot(self.dcov, self.patterns)
         if 'full' in output:
             lat_cov, _ = ledoit_wolf(np.dot(data, spatial))
             self.lat_prec = np.linalg.inv(lat_cov)
             self.patterns = np.dot(self.patterns, self.lat_prec)
+
+        if norm_spect:
+            from scipy.signal import welch
+            from spectrum import aryule
+            f, psd = welch(self.lat_tcs,fs=1000,nperseg=256)
+            self.d_psds = psd[:,:-1]
+            ar = []
+            for i, ltc in enumerate(self.lat_tcs):
+                coef, _, _ = aryule(ltc, self.specs['filter_length'])
+                ar.append(coef[None,:])
+            self.ar = np.concatenate(ar)
         self.out_weights, self.out_biases = self.sess.run([self.fin_fc.w, self.fin_fc.b], feed_dict=vis_dict)
+
         self.out_weights = np.reshape(self.out_weights,
                                       [self.specs['n_ls'], -1, self.n_classes])
 
-    def plot_patterns(self, sensor_layout='Vectorview-grad', sorting='l2',
-                      spectra=True, fs=None, scale=False, names=False):
+    def plot_patterns(self, sensor_layout=None, sorting='l2',
+                      spectra=True, fs=None, scale=False, names=False, norm_spectra='ar'):
         """
         Plot informative spatial activations patterns for each class of stimuli
 
@@ -642,7 +657,7 @@ class LFCNN(Model):
         """
         from mne import channels, evoked, create_info
         import matplotlib.pyplot as plt
-        from scipy.signal import freqz
+        from scipy.signal import freqz, welch
         if fs:
             self.fs = fs
         elif self.dataset.h_params['fs']:
@@ -652,10 +667,13 @@ class LFCNN(Model):
             self.fs = 1.
 
         self.ts = []
-        lo = channels.read_layout(sensor_layout)
-        info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
-        self.fake_evoked = evoked.EvokedArray(self.patterns, info)
-        nfilt = min(self.n_classes, 8)
+        if sensor_layout:
+            lo = channels.read_layout(sensor_layout)
+            info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
+            self.fake_evoked = evoked.EvokedArray(self.patterns, info)
+
+            nfilt = min(self.n_classes, 8)
+
         if sorting == 'l2':
             order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=2))
         elif sorting == 'l1':
@@ -700,33 +718,55 @@ class LFCNN(Model):
             order = np.array(sorting)
         else:
             order = np.arange(self.specs['n_ls'])
-        self.fake_evoked.data[:, :len(order)] = self.fake_evoked.data[:, order]
-        if scale:
-            self.fake_evoked.data[:, :len(order)] /= self.fake_evoked.data[:, :len(order)].max(0)
-        self.fake_evoked.data[:, len(order):] *= 0
+        if sensor_layout:
+            self.fake_evoked.data[:, :len(order)] = self.fake_evoked.data[:, order]
+            if scale:
+                self.fake_evoked.data[:, :len(order)] /= self.fake_evoked.data[:, :len(order)].max(0)
+            self.fake_evoked.data[:, len(order):] *= 0
         self.out_filters = self.filters[:, order]
         order = np.array(order)
-        if spectra:
+        if spectra and sensor_layout:
             z = 2
         else:
             z = 1
+            nfilt = 8
         nrows = max(1, len(order)//nfilt)
         ncols = min(nfilt, len(order))
 
         f, ax = plt.subplots(z*nrows, ncols, sharey=True)
         f.set_size_inches([16,9])
         ax = np.atleast_2d(ax)
+        zz = 0
         for i in range(nrows):
-            if spectra:
-                for jj, flt in enumerate(self.out_filters[:, i*ncols:(i+1)*ncols].T):
-                    w, h = freqz(flt, 1)
-                    ax[z*i+1, jj].plot(w/np.pi*self.fs/2, np.abs(h))
 
-            self.fake_evoked.plot_topomap(times=np.arange(i*ncols,  (i+1)*ncols, 1.),
-                                          axes=ax[z*i], colorbar=False,
-                                          vmax=np.percentile(self.fake_evoked.data[:, :len(order)], 95),
-                                          scalings=1, time_format='class # %g',
-                                          title='Informative patterns ('+sorting+')')
+            if spectra:
+                zz = 0
+                for jj, flt in enumerate(self.out_filters[:, i*ncols:(i+1)*ncols].T):
+
+                    if norm_spectra == 'ar':
+                        w, h = freqz(flt, self.ar[jj], worN=128)
+                    elif norm_spectra == 'welch':
+                        w, h = freqz(flt, 1,worN=128)
+                        h = np.abs(h) * np.sqrt(self.d_psds[jj])
+                        h /= h.max()
+                    elif norm_spectra == 'plot_ar':
+                        w0, h0 = freqz(flt, 1,worN=128)
+                        w, h = freqz(self.ar[jj],1,worN=128)
+                        ax[z*i+zz, jj].plot(w/np.pi*self.fs/2, np.abs(h0))
+                        print(h0.shape, h.shape, w.shape)
+                    else:
+                        w, h = freqz(flt, 1, worN=128)
+                    #else:
+                     #   density = np.abs(h)
+                    ax[z*i+zz, jj].plot(w/np.pi*self.fs/2, np.abs(h).T)
+                zz=1
+
+            if sensor_layout:
+                self.fake_evoked.plot_topomap(times=np.arange(i*ncols,  (i+1)*ncols, 1.),
+                                              axes=ax[z*i+zz], colorbar=False,
+                                              vmax=np.percentile(self.fake_evoked.data[:, :len(order)], 95),
+                                              scalings=1, time_format='class # %g',
+                                              title='Informative patterns ('+sorting+')')
 
         return f
 
@@ -816,20 +856,19 @@ class VARCNNR(Model):
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-        fc1 = Dense(size=256,
-                            nonlin=tf.tanh, dropout=self.rate)
-        fc2 = Dense(size=64,
-                            nonlin=tf.tanh, dropout=self.rate)
-        fin_fc = Dense(size=self.y_shape[0],
-                            nonlin=tf.tanh, dropout=self.rate)
+        #fc1 = Dense(size=64,
+        #               nonlin=tf.identity, dropout=self.rate)
 
-        y_pred = fin_fc(fc2(fc1(tconv1(self.demix(self.X)))))
+        fin_fc = Dense(size=self.y_shape[0],
+                       nonlin=tf.identity, dropout=self.rate)
+
+        y_pred = fin_fc(tconv1(self.demix(self.X)))
         return y_pred
 
 #def DEEP4(Model):
 
 
-class LFCNNR(Model):
+class LFCNNR(LFCNN):
 
     """VAR-CNN
 
@@ -862,56 +901,7 @@ class LFCNNR(Model):
 
         self.demix = DeMixing(n_ls=self.specs['n_ls'],axis=1)
 
-        self.tconv1 =LFTConv(scope="conv", #n_ls=self.specs['n_ls'],
-                              nonlin=tf.identity,
-                              filter_length=self.specs['filter_length'],
-                              stride=self.specs['stride'],
-                              pooling=self.specs['pooling'],
-                              padding=self.specs['padding'])
-
-        #self.fc1 = Dense(size=256,
-        #                    nonlin=tf.sigmoid, dropout=self.rate)
-
-        self.fin_fc = Dense(size=self.y_shape[0],
-                            nonlin=tf.identity, dropout=self.rate)
-
-        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
-        return y_pred
-
-class VARDAE(Model):
-    """ VAR-CNN
-
-    For details see [1].
-
-    Paramters:
-    ----------
-    var_params : dict
-
-    n_ls : int
-        number of latent components
-        Defaults to 32
-
-    filter_length : int
-        length of spatio-temporal kernels in the temporal
-        convolution layer. Defaults to 7
-
-    stride : int
-        stride of the max pooling layer. Defaults to 1
-
-    pooling : int
-        pooling factor of the max pooling layer. Defaults to 2
-
-    References:
-    -----------
-        [1]  I. Zubarev, et al., Adaptive neural network classifier for
-        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-    """
-
-    def build_graph(self):
-        self.scope = 'var-cnn-autoencoder'
-        self.demix = DeMixing(n_ls=self.specs['n_ls'])
-
-        self.tconv1 = VARConv(scope="var-conv1", n_ls=self.specs['n_ls'],
+        self.tconv1 = LFTConv(scope="conv", #n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
                               filter_length=self.specs['filter_length'],
                               stride=self.specs['stride'],
@@ -920,17 +910,68 @@ class VARDAE(Model):
 
 
 
-        self.encoding_fc = Dense(size=self.specs['df'],
-                                 nonlin=tf.nn.relu,
-                                 dropout=self.rate)
 
-        encoder = self.encoding_fc(self.tconv1(self.demix(self.X)))
 
-        self.deconv = DeConvLayer(n_ls=self.specs['n_ls'],
-                                  y_shape=self.y_shape,
-                                  filter_length=self.specs['filter_length'],
-                                  flat_out=False)
-        decoder = self.deconv(encoder)
-        return decoder
+
+        self.fin_fc = Dense(size=np.prod(self.y_shape),
+                            nonlin=tf.tanh, dropout=self.rate)
+
+        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
+        return y_pred
+
+
+#class LF_LSTM(LFCNN):
+#
+#    """VAR-CNN
+#
+#    For details see [1].
+#
+#    Parameters
+#    ----------
+#    n_ls : int
+#        number of latent components
+#        Defaults to 32
+#
+#    filter_length : int
+#        length of spatio-temporal kernels in the temporal
+#        convolution layer. Defaults to 7
+#
+#    stride : int
+#        stride of the max pooling layer. Defaults to 1
+#
+#    pooling : int
+#        pooling factor of the max pooling layer. Defaults to 2
+#
+#    References
+#    ----------
+#        [1]  I. Zubarev, et al., Adaptive neural network classifier for
+#        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+#        """
+#
+#    def build_graph(self):
+#        self.scope = 'var-cnn'
+#
+#        self.demix = DeMixing(n_ls=self.specs['n_ls'],axis=2)
+#
+#        self.tconv1 = LFTConv(scope="conv", #n_ls=self.specs['n_ls'],
+#                              nonlin=tf.nn.relu,
+#                              filter_length=self.specs['filter_length'],
+#                              stride=self.specs['stride'],
+#                              pooling=self.specs['pooling'],
+#                              padding=self.specs['padding'])
+#        #print(self.tconv1.shape)
+#
+#
+#
+#
+#
+#        print(self.y_shape, np.prod(self.y_shape))
+#        #self.fin_fc = Dense(size=np.prod(self.y_shape),
+#        #                    nonlin=tf.tanh, dropout=self.rate)
+#        self.fin_fc =
+#
+#        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
+#        return y_pred
+
 
 
