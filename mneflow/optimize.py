@@ -104,7 +104,9 @@ class Optimizer(object):
             print(loss.shape, performance.shape)
 
         elif self.params['task'] == 'regression':
-            loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred, weights=tf.abs(y_true), reduction='weighted_sum')
+            #weights = tf.maximum(.5, tf.abs(y_true)**2)
+            #loss = tf.losses.absolute_difference(labels=y_true, predictions=y_pred, weights=weights) #,, reduction='weighted_sum'
+            loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred)
             #mn, var_ = tf.nn.moments(y_true)
             #var_ = tf.reduce_mean(y_true**2)
 

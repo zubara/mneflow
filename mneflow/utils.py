@@ -10,7 +10,7 @@ import pickle
 from operator import itemgetter
 from mneflow.data import Dataset
 from mneflow.optimize import Optimizer
-from mne import filter as mnefilt
+from mne import filter as mnefilt#, not
 from mne import epochs as mnepochs, pick_types
 import csv
 from mne import filter as mnefilt
@@ -148,12 +148,39 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     return X
 
 
-def _write_tfrecords(X_, y_, output_file, task='classification'):
+
+
+def make_example(X, y, input_type='iid', target_type='int'):
+    if input_type in ['iid', 'trials']:
+        feature = {}
+        feature['X'] = tf.train.Feature(float_list=tf.train.FloatList(value=X.flatten()))
+        if target_type == 'int':
+            feature['y'] = tf.train.Feature(int64_list=tf.train.Int64List(value=y.flatten()))
+        else:
+            y = y.astype(np.float32)
+            feature['y'] = tf.train.Feature(float_list=tf.train.FloatList(value=y.flatten()))
+        # Construct the Example proto object
+        example = tf.train.Example(features=tf.train.Features(feature=feature))
+    elif input_type == 'seq':
+        sequence_length = len(X)
+        X_ = tf.train.FeatureList(feature=[tf.train.Feature(float_list=tf.train.FloatList(value=s.flatten())) for s in X])
+        y_ = tf.train.FeatureList(feature=[tf.train.Feature(float_list=tf.train.FloatList(value=l.flatten())) for l in y])
+        example = tf.train.SequenceExample(context={},
+                                      feature_lists=tf.train.FeatureLists(feature_list={'X': X_, 'y':y_}))
+        example.context.feature["length"].int64_list.value.append(sequence_length)
+    #print(token.shape)
+    return example
+
+
+
+
+
+def _write_tfrecords(X_, y_, output_file, input_type='iid', target_type='int'):
     """Serialize and write datasets in TFRecords fromat
 
     Parameters
     ----------
-    X_ : ndarray, shape (n_epochs, n_channels, n_timepoints)
+    X_ : ndarray, shape (n_epochs, time_steps, n_channels, n_timepoints)
         (Preprocessed) data matrix.
     y_ : ndarray, shape (n_epochs,)
         Class labels.
@@ -164,19 +191,11 @@ def _write_tfrecords(X_, y_, output_file, task='classification'):
     -------
     TFRecord : TFrecords file.
     """
-    writer = tf.python_io.TFRecordWriter(output_file)
+    writer = tf.io.TFRecordWriter(output_file)
     for X, y in zip(X_, y_):
         X = X.astype(np.float32)
         # Feature contains a map of string to feature proto objects
-        feature = {}
-        feature['X'] = tf.train.Feature(float_list=tf.train.FloatList(value=X.flatten()))
-        if task == 'classification':
-            feature['y'] = tf.train.Feature(int64_list=tf.train.Int64List(value=y.flatten()))
-        else:
-            y = y.astype(np.float32)
-            feature['y'] = tf.train.Feature(float_list=tf.train.FloatList(value=y.flatten()))
-        # Construct the Example proto object
-        example = tf.train.Example(features=tf.train.Features(feature=feature))
+        example = make_example(X, y, input_type=input_type, target_type=target_type)
         # Serialize the example to a string
         serialized = example.SerializeToString()
         # write the serialized object to the disk
@@ -232,8 +251,13 @@ def process_labels(y, scale=False, decimate=False, normalize=False,
 
 
 def import_continuous(inp, picks=None, target_picks=None, array_keys={'X': 'X', 'y': 'y'},
-                      transpose=False, task='autoencoding'):
-    # Returns data.ndim==3 [epochs, channels, times] and targets
+                      transpose=False, target_type='float'):
+    """
+    Returns
+    -------
+    data.ndim==3 [n_epochs, channels, times] and targets
+    """
+
     if isinstance(inp, tuple) and len(inp) == 2:
         data, targets = inp
     elif isinstance(inp, str):
@@ -253,7 +277,7 @@ def import_continuous(inp, picks=None, target_picks=None, array_keys={'X': 'X', 
     if transpose:
         data = np.swapaxes(data,-1,-2)
 
-    if task == 'autoencoding':
+    if target_type == 'float':
         if np.any(target_picks):
             targets = data[:,target_picks,:]
             data = np.delete(data, target_picks, axis=1)
@@ -287,6 +311,10 @@ def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         where 'data_matrix' and 'labels' are names of the corresponding
         variables if your input is paths to .mat or .npz files.
         Defaults to {'X':'X', 'y':'y'}
+
+    Returns
+    -------
+    data.ndim==3 [n_epochs, channels, times] and targets [n_epochs,...]
 
     """
 
@@ -370,10 +398,11 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                       overwrite=True, savebatch=1,  save_origs=False, val_size=0.2,
                       array_keys={'X': 'X', 'y': 'y'},
                       picks=None, target_picks=None,
-                      combine_events=None, task='classification',
+                      combine_events=None, target_type='float',
                       segment=False, augment=False, aug_stride=50, transpose=False,
                       scale=False, scale_interval=None,
-                      crop_baseline=False, decimate=False, bp_filter=False):
+                      crop_baseline=False, decimate=False, bp_filter=False,
+                      transform_targets=False):
 
     r"""
     Produces TFRecord files from input, applies (optional) preprocessing
@@ -465,50 +494,60 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
 
         meta = dict(train_paths=[], val_paths=[], orig_paths=[],
-                    data_id=out_name, val_size=val_size, task=task)
+                    data_id=out_name, val_size=val_size, target_type=target_type,
+                    input_type=input_type)
         jj = 0
         i = 0
         meta['fs'] = fs
         for inp in inputs:
             if input_type=='trials':
                 data, events = import_epochs(inp, picks=picks, array_keys=array_keys)
-                if task == 'classification':
+                if target_type == 'int':
                     events, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
-                    meta['n_classes'] = len(meta['class_proportions'])
+                    #meta['n_classes'] = len(meta['class_proportions'])
                 x_train,  y_train, x_val, y_val = preprocess_epochs(data, events,
                                              scale=True, fs=fs, val_size=val_size,
                                              scale_interval=scale_interval,
                                              crop_baseline=crop_baseline,
                                              decimate=decimate, bp_filter=bp_filter)
-                meta['y_shape'] = y_train.shape[1:]
-            elif input_type == 'continuous':
+
+            else:
+                # TODO: continous classification
                 data, events = import_continuous(inp, picks=picks,
                                                  target_picks=target_picks,
                                                  array_keys=array_keys,
                                                  transpose=transpose,
-                                                 task='autoencoding')
+                                                 target_type='float')
                 x_train,  y_train, x_val, y_val = preprocess_continuous(data, events,
                                                                        scale=scale,
                                                                        segment=segment,
                                                                        augment=augment,
                                                                        val_size=val_size,
                                                                        aug_stride=aug_stride,
-                                                                       decimate=decimate)
-                meta['y_shape'] = y_train.shape[1:]
-            print(x_train.shape, y_train.shape, meta['y_shape'])
+                                                                       decimate=decimate,
+                                                                       fs=fs,
+                                                                       transform_targets=transform_targets,
+                                                                       bp_filter=bp_filter,
+                                                                       input_type=input_type)
+            print(x_train[0].shape)
+            meta['x_shape'] = x_train[0].shape
+            n_epochs, meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
+            meta['y_shape'] = y_train[0].shape[1:]
+            print(x_train[0].shape, y_train[0].shape, meta['y_shape'])
             print('Saving TFRecord# {}'.format(jj))
+#
 
-            n_trials, meta['n_ch'], meta['n_t'] = x_train.shape
             meta['val_size'] += len(y_val)
             meta['train_paths'].append(''.join([savepath, out_name,
                                                 '_train_', str(jj),
                                                 '.tfrecord']))
             _write_tfrecords(x_train, y_train, meta['train_paths'][-1],
-                            task=task)
+                           input_type=input_type, target_type=target_type)
             meta['val_paths'].append(''.join([savepath, out_name,
                                              '_val_', str(jj),
                                               '.tfrecord']))
-            _write_tfrecords(x_val, y_val, meta['val_paths'][-1], task=task)
+            _write_tfrecords(x_val, y_val, meta['val_paths'][-1],
+                           input_type=input_type, target_type=target_type)
 #                if save_origs:
 #                    meta['orig_paths'].append(''.join([savepath, out_name,
 #                                                       '_orig_', str(jj),
@@ -539,8 +578,17 @@ def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None, scale_int
     crop_baseline : bool, optinal
         whether to crop baseline specified by 'scale_interval'
         after scaling (defaults to False).
-        """
+
+
+    Returns
+    -------
+    x_train, x_val - arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
+    y_train, y_val - arrays of dimensions [n_epochs, n_seq, n_targets]
+    """
+
     if bp_filter:
+        data = data.astype(np.float64)
+        print(data.shape)
         data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
                                    h_freq=bp_filter[1],
                                    method='iir', verbose=False)
@@ -555,7 +603,9 @@ def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None, scale_int
     if decimate:
         data = data[..., ::decimate]
 
-    x_train, y_train, x_val, y_val = _split_sets(data, events, val_size=.1)
+    sets = _split_sets(data, events, val=.1)
+
+    x_train, y_train, x_val, y_val = [np.expand_dims(s, 1) for s in sets]
 
     return x_train, y_train, x_val, y_val
 
@@ -578,7 +628,7 @@ def _combine_labels(labels, new_mapping):
     keep_ind = np.where(new_labels != 404)[0]
     return new_labels, keep_ind
 
-def _segment(data, segment_length=200, augment=False, stride=25, return_consequtive=False):
+def _segment(data, segment_length=200, augment=False, stride=25, input_type='iid'):
     """
     Parameters:
     -----------
@@ -592,6 +642,7 @@ def _segment(data, segment_length=200, augment=False, stride=25, return_consequt
                     length of segment into which to split the data in time samples
 
     """
+    print('input_type:', input_type)
     x_out = []
     for xx in data:
         n_epochs, n_ch, n_t = xx.shape
@@ -603,15 +654,16 @@ def _segment(data, segment_length=200, augment=False, stride=25, return_consequt
                                                   strides=(a, b, c, c))
             x4D = x4D[:, :, ::stride, :]
             x4D = np.swapaxes(x4D, 2, 1)
-            if not return_consequtive:
-                x4D = x4D.reshape([n_epochs * x4D.shape[1], n_ch, segment_length], order='C')
-            x_out.append(np.squeeze(x4D))
+            if input_type != 'seq':
+                x4D = x4D.reshape([n_epochs * x4D.shape[1], 1, n_ch, segment_length], order='C')
+            print('x4d:',x4D.shape)
+            x_out.append(x4D)
         else:
             bins = np.arange(0, n_t+1, segment_length)[1:]
             xb = np.split(xx, bins, axis=-1)[:-1]
             x_out.append(np.concatenate(xb))
     #print([xxx.shape for xxx in x_out])
-    if not return_consequtive:
+    if input_type != 'seq':
         return np.concatenate(x_out,0)
     else:
         return(x_out)
@@ -642,8 +694,10 @@ def partition(data, test_indices):
         else:
             print('Could not split the data, check test_indices!')
             return
+        x_out = [xt - np.median(xt, axis=-1,keepdims=True) for xt in x_out]
         x_train = x_out[0::2]
         x_test = x_out[1::2]
+
         #print([xt.shape for xt in x_train])
         return x_train, x_test
     else:
@@ -652,30 +706,49 @@ def partition(data, test_indices):
 
 
 def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
-                          val_size=0.1, aug_stride=25, transform_targets=True,
-                          bp_filter=False, fs=None, decimate=None):
-    """Global scaling"""
+                          val_size=0.1, aug_stride=10, transform_targets=True,
+                          bp_filter=False, fs=None, decimate=None, input_type='iid'):
+    """
+    Returns
+    -------
+    x_train, x_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
+    y_train, y_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_targets]
+    """
     if bp_filter:
+        data = data.astype(np.float64)
+        data = mnefilt.notch_filter(data, fs, freqs=np.arange(50,101,50), notch_widths=1)
 
         data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
                                    h_freq=bp_filter[1],
                                    method='iir', verbose=False)
-#        targets = mnefilt.filter_data(targets, fs, l_freq=bp_filter[0],
-#                                   h_freq=bp_filter[1],
-#                                   method='iir', verbose=False)
-    if decimate:
-        data = data[..., ::decimate]
-        targets = targets[..., ::decimate]
+
+
+
+
+
+    if transform_targets:
+        poles = .02*np.ones(50)
+        #print(targets.shape)
+        targets_new = [np.convolve(targets[0,i,...], poles, mode='same') for i in range(5)]
+        #print(targets_new[0].shape)
+        targets = np.stack(targets_new)[None,...]
+
+        targets = mnefilt.filter_data(targets, sfreq=fs, l_freq=.05, h_freq=None,
+                                      method='iir', verbose=False)
 
     if scale:
             data -= data.mean(-1, keepdims=True)
             data /= data.std()
-            targets -= targets.mean(-1, keepdims=True)
-            targets /= targets.std(-1, keepdims=True)
-#    if transform_targets:
-#        poles = np.ones(50)/50.
-#        print(targets.shape)
-#        targets[0,0,...] = np.convolve(targets[0,0,...], poles, mode='same')
+            y_median = np.median(targets[0,:,:], axis=-1)
+            print(y_median.shape)
+            #y_max = np.max(targets[0,0,...])
+            q1, q5 = np.percentile(targets[0,...], [5,95], axis=-1)
+            qrange  = np.array(q5)-np.array(q1)
+            #print(qrange.shape)
+
+    if decimate:
+        data = data[..., ::decimate]
+        targets = targets[..., ::decimate]
 
 
     if val_size > 0:
@@ -684,18 +757,37 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
         y_train, y_val = partition(targets, test_inds)
 
     if segment:
+        #return
         x_train = _segment(x_train, segment_length=segment, augment=augment,
-                           stride=aug_stride)
+                           stride=aug_stride, input_type=input_type)
+
         x_val = _segment(x_val, segment_length=segment, augment=augment,
-                         stride=aug_stride)
+                         stride=aug_stride, input_type=input_type)
         y_train = _segment(y_train, segment_length=segment, augment=augment,
-                           stride=aug_stride)
+                           stride=aug_stride, input_type=input_type)
         y_val = _segment(y_val, segment_length=segment, augment=augment,
-                         stride=aug_stride)
+                         stride=aug_stride, input_type=input_type)
     if transform_targets:
-        #y_train = y_train[:,0,:] - y_train[:,0,:].mean(-1, keepdims=True)
-        #y_val = y_val[:,0,:] - y_val[:,0,:].mean(-1, keepdims=True)
-        y_train = np.mean(y_train[:,0,-25:],axis=-1,keepdims=True)
-        y_val = np.mean(y_val[:,0,-25:], axis=-1,keepdims=True)
+
+
+        if input_type=='seq':
+            y_train = [np.mean(y_tr[...,-aug_stride:],axis=-1) for y_tr in y_train]
+            y_val = [np.mean(y_v[...,-aug_stride:], axis=-1) for y_v in y_val]
+            #y_train = [np.mean(y_tr[...,-25:],axis=-1) for y_tr in y_train]
+            #y_val = [np.mean(y_v[...,-25:], axis=-1) for y_v in y_val]
+        else:
+            y_train = np.mean(y_train[...,-aug_stride:],axis=-1)
+            y_val = np.mean(y_val[...,-aug_stride:], axis=-1)
+            y_train -= y_median[None, None, :]
+            y_val -= y_median[None, None, :]
+            y_train /= qrange[None, None, :]
+            y_val /= qrange[None, None, :]
+#            y_train = np.squeeze(y_train)
+#            y_val = np.squeeze(y_val)
+
+
+
+
+
         #y_train = np.max(y_train, -1, keepdims=True) - np.min()
     return x_train, y_train, x_val, y_val
