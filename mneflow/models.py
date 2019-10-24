@@ -103,7 +103,7 @@ class Model(object):
 
         """
         print('Specify a model. Set to linear classifier!')
-        fc_1 = Dense(size=self.n_classes, nonlin=tf.identity,
+        fc_1 = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
                      dropout=self.rate)
         y_pred = fc_1(self.X)
         return y_pred
@@ -130,6 +130,7 @@ class Model(object):
                 Convergence threshold for validation cost during training.
                 Defaults to 0.
         """
+
         if not self.trained:
             self.sess.run(tf.global_variables_initializer())
             self.min_val_loss = np.inf
@@ -242,11 +243,11 @@ class Model(object):
             log['class_subset'] = '-'.join(str(self.dataset.class_subset).split(','))
         else:
             log['class_subset'] = 'all'
-        log['class_proportions'] = ' : '.join([str(v)[:4] for v in self.dataset.h_params['class_proportions'].values()])
-        if self.dataset.h_params['task'] == 'classification':
-            log['n_classes'] = self.dataset.h_params['n_classes']
-        else:
-            log['y_shape'] = self.dataset.h_params['y_shape']
+        #log['class_proportions'] = ' : '.join([str(v)[:4] for v in self.dataset.h_params['class_proportions'].values()])
+#        if self.dataset.h_params['task'] == 'classification':
+#            log['n_classes'] = self.dataset.h_params['n_classes']
+        #else:
+        log['y_shape'] = self.dataset.h_params['y_shape']
         log['fs'] = str(self.dataset.h_params['fs'])
         log.update(self.optimizer.params)
         log.update(self.specs)
@@ -418,7 +419,7 @@ class VGG19(Model):
 #
         fc_1 = Dense(size=4096, nonlin=tf.nn.relu, dropout=self.rate)
         fc_2 = Dense(size=4096, nonlin=tf.nn.relu, dropout=self.rate)
-        fc_out = Dense(size=self.n_classes, nonlin=tf.identity,
+        fc_out = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
                        dropout=self.rate)
         y_pred = fc_out(fc_2(fc_1(out5)))
         return y_pred
@@ -559,23 +560,25 @@ class LFCNN(Model):
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-        self.fin_fc = Dense(size=self.n_classes,
+        self.fin_fc = Dense(size=np.prod(self.y_shape),
                             nonlin=tf.identity, dropout=self.rate)
 
-        y_pred = self.fin_fc(self.tconv1(self.demix(X1)))
+        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
         return y_pred
 
-    def plot_out_weihts(self,):
+    def plot_out_weights(self, tmin=0):
         """
         Plots the weights of the output layer
 
         """
         from matplotlib import pyplot as plt
 
-        f, ax = plt.subplots(1, self.n_classes)
-        for i in range(self.n_classes):
+        f, ax = plt.subplots(1, np.prod(self.y_shape))
+        if not isinstance(ax, np.ndarray):
+            ax = [ax]
+        for i in range(len(ax)):
             F = self.out_weights[..., i]
-            times = self.specs['stride']*np.arange(F.shape[-1])/float(self.fs)
+            times = tmin+self.specs['stride']*np.arange(F.shape[-1])/float(self.fs)
             t_step = np.diff(times)[0]
             pat, t = np.where(F == np.max(F))
             ax[i].pcolor(times, np.arange(self.specs['n_ls']), F, cmap='bone_r')
@@ -621,7 +624,7 @@ class LFCNN(Model):
         self.out_weights, self.out_biases = self.sess.run([self.fin_fc.w, self.fin_fc.b], feed_dict=vis_dict)
 
         self.out_weights = np.reshape(self.out_weights,
-                                      [self.specs['n_ls'], -1, self.n_classes])
+                                      [self.specs['n_ls'], -1, np.prod(self.y_shape)])
 
     def plot_patterns(self, sensor_layout=None, sorting='l2',
                       spectra=True, fs=None, scale=False, names=False, norm_spectra='ar'):
@@ -672,7 +675,7 @@ class LFCNN(Model):
             info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
             self.fake_evoked = evoked.EvokedArray(self.patterns, info)
 
-            nfilt = min(self.n_classes, 8)
+            nfilt = min(np.prod(self.y_shape), 8)
 
         if sorting == 'l2':
             order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=2))
@@ -681,33 +684,33 @@ class LFCNN(Model):
         elif sorting == 'contribution':
             nfilt = 3
             order = []
-            for i in range(self.n_classes):
+            for i in range(np.prod(self.y_shape)):
                 inds = np.argsort(self.out_weights[..., i].sum(-1))[::-1]
                 order += list(inds[:nfilt])
             order = np.array(order)
         elif sorting == 'best_spatial':
-            nfilt = self.n_classes
+            nfilt = np.prod(self.y_shape)
             order = []
-            for i in range(self.n_classes):
+            for i in range(np.prod(self.y_shape)):
                 pat = np.argmax(self.out_weights[..., i].sum(-1))
                 order.append(pat)
             order = np.array(order)
         elif sorting == 'best':
-            nfilt = self.n_classes
+            nfilt = np.prod(self.y_shape)
             order = []
-            for i in range(self.n_classes):
+            for i in range(np.prod(self.y_shape)):
                 pat, t = np.where(self.out_weights[..., i] == np.max(self.out_weights[..., i]))
                 order.append(pat[0])
                 self.ts.append(t)
             order = np.array(order)
         elif sorting == 'best_neg':
-            nfilt = self.n_classes
+            nfilt = np.prod(self.y_shape)
             order = []
-            for i in range(self.n_classes):
+            for i in range(np.prod(self.y_shape)):
                 pat = np.argmin(self.out_weights[..., i].sum(-1))
                 order.append(pat)
         elif sorting == 'worst':
-            nfilt = self.n_classes
+            nfilt = np.prod(self.y_shape)
             order = []
             weight_sum = np.sum(np.abs(self.out_weights).sum(-1), -1)
             pat = np.argsort(weight_sum)
@@ -810,7 +813,7 @@ class VARCNN(Model):
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-        self.fin_fc = Dense(size=self.n_classes,
+        self.fin_fc = Dense(size=np.prod(self.y_shape),
                             nonlin=tf.identity, dropout=self.rate)
 
         y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
@@ -908,70 +911,8 @@ class LFCNNR(LFCNN):
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-
-
-
-
-
         self.fin_fc = Dense(size=np.prod(self.y_shape),
-                            nonlin=tf.tanh, dropout=self.rate)
+                            nonlin=tf.identity, dropout=self.rate)
 
         y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
         return y_pred
-
-
-#class LF_LSTM(LFCNN):
-#
-#    """VAR-CNN
-#
-#    For details see [1].
-#
-#    Parameters
-#    ----------
-#    n_ls : int
-#        number of latent components
-#        Defaults to 32
-#
-#    filter_length : int
-#        length of spatio-temporal kernels in the temporal
-#        convolution layer. Defaults to 7
-#
-#    stride : int
-#        stride of the max pooling layer. Defaults to 1
-#
-#    pooling : int
-#        pooling factor of the max pooling layer. Defaults to 2
-#
-#    References
-#    ----------
-#        [1]  I. Zubarev, et al., Adaptive neural network classifier for
-#        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-#        """
-#
-#    def build_graph(self):
-#        self.scope = 'var-cnn'
-#
-#        self.demix = DeMixing(n_ls=self.specs['n_ls'],axis=2)
-#
-#        self.tconv1 = LFTConv(scope="conv", #n_ls=self.specs['n_ls'],
-#                              nonlin=tf.nn.relu,
-#                              filter_length=self.specs['filter_length'],
-#                              stride=self.specs['stride'],
-#                              pooling=self.specs['pooling'],
-#                              padding=self.specs['padding'])
-#        #print(self.tconv1.shape)
-#
-#
-#
-#
-#
-#        print(self.y_shape, np.prod(self.y_shape))
-#        #self.fin_fc = Dense(size=np.prod(self.y_shape),
-#        #                    nonlin=tf.tanh, dropout=self.rate)
-#        self.fin_fc =
-#
-#        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
-#        return y_pred
-
-
-

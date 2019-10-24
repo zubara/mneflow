@@ -72,7 +72,8 @@ class Optimizer(object):
         # Define cost, and performance metric, treat prediction if needed
         if self.params['task'] == 'classification':
             prediction = tf.nn.softmax(y_pred)
-            cost_function = tf.losses.sparse_softmax_cross_entropy
+            #cost_function = tf.losses.sparse_softmax_cross_entropy
+            cost_function = tf.losses.softmax_cross_entropy
             if self.class_weights:
                 print('Adjusting for imbalanced classes')
                 class_weights = tf.constant(self.class_weights,
@@ -81,9 +82,9 @@ class Optimizer(object):
                 weights = tf.gather(class_weights,y_true)
             else:
                 weights = 1
-            loss = tf.reduce_mean(cost_function(labels=y_true, logits=y_pred,
+            loss = tf.reduce_mean(cost_function(onehot_labels=y_true, logits=y_pred,
                                                 weights=weights))
-            correct_prediction = tf.equal(tf.argmax(y_pred, 1), y_true)
+            correct_prediction = tf.equal(tf.argmax(y_pred, 1), tf.argmax(y_true,1))
             performance = tf.reduce_mean(tf.cast(correct_prediction,
                                                  tf.float32), name='accuracy')
         elif self.params['task'] == 'ae':
@@ -105,7 +106,7 @@ class Optimizer(object):
 
         elif self.params['task'] == 'regression':
             #weights = tf.maximum(.5, tf.abs(y_true)**2)
-            #loss = tf.losses.absolute_difference(labels=y_true, predictions=y_pred, weights=weights) #,, reduction='weighted_sum'
+            #loss = tf.losses.absolute_difference(labels=y_true, predictions=y_pred)#, weights=weights)  ##,, reduction='weighted_sum'
             loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred)
             #mn, var_ = tf.nn.moments(y_true)
             #var_ = tf.reduce_mean(y_true**2)

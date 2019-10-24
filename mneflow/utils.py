@@ -15,6 +15,13 @@ from mne import epochs as mnepochs, pick_types
 import csv
 from mne import filter as mnefilt
 
+def onehot(y):
+    n_classes = len(set(y))
+    out = np.zeros((len(y),n_classes))
+    for i,ii in enumerate(y):
+        out[i][ii] +=1
+    return out.astype(int)
+
 def load_meta(fname,data_id=''):
 
     """
@@ -141,7 +148,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     while X0m.ndim < X.ndim:
         X0m = np.expand_dims(X0m, -1)
         X0sd = np.expand_dims(X0sd, -1)
-    print(X0.shape)
+    #print(X0.shape)
     X -= X0m
     X /= X0sd
 
@@ -225,7 +232,7 @@ def _split_sets(X, y, val=.1):
     y_val = y[shuffle[:val_size], ...]
     X_train = X[shuffle[val_size:], ...]
     y_train = y[shuffle[val_size:], ...]
-    return X_train, y_train, X_val, y_val
+    return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
 
 def process_labels(y, scale=False, decimate=False, normalize=False,
                    transpose=False, transform=False, segment=False):
@@ -241,7 +248,7 @@ def process_labels(y, scale=False, decimate=False, normalize=False,
     if normalize:
         y = scale_to_baseline(y, baseline=None, crop_baseline=False)
     y = np.mean(y**2,axis=-1)
-    print('y', y.shape)
+    #print('y', y.shape)
 #    if isinstance(transform, callable):
 #        y = transform(y)
 
@@ -289,6 +296,7 @@ def import_continuous(inp, picks=None, target_picks=None, array_keys={'X': 'X', 
             if transpose:
                 targets = np.swapaxes(targets,-1,-2)
             print('Extracting target variables from {}'.format(array_keys['y']))
+
     if isinstance(picks, np.ndarray):
         data = data[:, picks, :]
     return data, targets
@@ -330,6 +338,7 @@ def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
             picks = pick_types(inp.info, **picks)
            #print('picks:', picks )
     elif isinstance(inp, tuple) and len(inp) == 2:
+        print('importing from tuple!')
         data, events = inp
     elif isinstance(inp, str):
         fname = inp
@@ -357,7 +366,7 @@ def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     data = data.astype(np.float32)
     if isinstance(picks, np.ndarray):
         data = data[:, picks, :]
-        #print(data.shape)
+    print('data:', data.shape)
     return data, events
 
 
@@ -493,21 +502,27 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
         os.mkdir(savepath)
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
 
-        meta = dict(train_paths=[], val_paths=[], orig_paths=[],
+        meta = dict(train_paths=[], savepath=savepath, val_paths=[], orig_paths=[],
                     data_id=out_name, val_size=val_size, target_type=target_type,
                     input_type=input_type)
         jj = 0
         i = 0
         meta['fs'] = fs
+        if not isinstance(inputs, list):
+            inputs = [inputs]
         for inp in inputs:
             if input_type=='trials':
                 data, events = import_epochs(inp, picks=picks, array_keys=array_keys)
                 if target_type == 'int':
                     events, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
+                    events = onehot(events)
+                    #print(np.unique(events))
+
                     #meta['n_classes'] = len(meta['class_proportions'])
                 x_train,  y_train, x_val, y_val = preprocess_epochs(data, events,
                                              scale=True, fs=fs, val_size=val_size,
                                              scale_interval=scale_interval,
+                                             segment=segment, augment=augment,
                                              crop_baseline=crop_baseline,
                                              decimate=decimate, bp_filter=bp_filter)
 
@@ -529,10 +544,13 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                                                                        transform_targets=transform_targets,
                                                                        bp_filter=bp_filter,
                                                                        input_type=input_type)
-            print(x_train[0].shape)
-            meta['x_shape'] = x_train[0].shape
-            n_epochs, meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
-            meta['y_shape'] = y_train[0].shape[1:]
+            print(y_train.shape)
+            #meta['x_shape'] = x_train[0].shape
+            if isinstance(x_train, list):
+                n_epochs, meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
+            else:
+                 n_epochs,  meta['n_ch'], meta['n_t'] = x_train.shape
+            meta['y_shape'] = y_train[0].shape
             print(x_train[0].shape, y_train[0].shape, meta['y_shape'])
             print('Saving TFRecord# {}'.format(jj))
 #
@@ -564,7 +582,7 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
 
 def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None, scale_interval=None,
                       crop_baseline=False, decimate=False, bp_filter=False,
-                      picks=None):
+                      picks=None, segment=False, augment=False):
     """
     scale : bool, optinal
         whether to perform scaling to baseline. Defaults to False.
@@ -588,7 +606,7 @@ def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None, scale_int
 
     if bp_filter:
         data = data.astype(np.float64)
-        print(data.shape)
+        #print(data.shape)
         data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
                                    h_freq=bp_filter[1],
                                    method='iir', verbose=False)
@@ -603,9 +621,14 @@ def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None, scale_int
     if decimate:
         data = data[..., ::decimate]
 
-    sets = _split_sets(data, events, val=.1)
+    x_train, y_train, x_val, y_val = _split_sets(data, events, val=.1)
 
-    x_train, y_train, x_val, y_val = [np.expand_dims(s, 1) for s in sets]
+
+#    x_train = np.expand_dims(x_train,-1)
+#    x_val = np.expand_dims(x_val,-1)
+    print('y_train:', y_train.shape)
+    # = [np.expand_dims(s, -1) for s in sets]
+
 
     return x_train, y_train, x_val, y_val
 
@@ -771,8 +794,8 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
 
 
         if input_type=='seq':
-            y_train = [np.mean(y_tr[...,-aug_stride:],axis=-1) for y_tr in y_train]
-            y_val = [np.mean(y_v[...,-aug_stride:], axis=-1) for y_v in y_val]
+            y_train = [np.mean(y_tr[...,0,-aug_stride:],axis=-1, keepdims=True) for y_tr in y_train]
+            y_val = [np.mean(y_v[...,0,-aug_stride:], axis=-1, keepdims=True) for y_v in y_val]
             #y_train = [np.mean(y_tr[...,-25:],axis=-1) for y_tr in y_train]
             #y_val = [np.mean(y_v[...,-25:], axis=-1) for y_v in y_val]
         else:
