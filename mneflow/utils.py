@@ -556,10 +556,11 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
             print('Saving TFRecord# {}'.format(jj))
 
             # Split val to val and test
-            x_test = [x_val[0][1::2, :, :, :]]
-            y_test = [y_val[0][1::2, :, :]]
-            x_val = [x_val[0][0::2, :, :, :]]
-            y_val = [y_val[0][0::2, :, :]]
+            idx = x_val[0].shape[0] // 2
+            x_test = [x_val[0][0:idx, :, :, :]]
+            y_test = [y_val[0][0:idx, :, :]]
+            x_val = [x_val[0][idx::, :, :, :]]
+            y_val = [y_val[0][idx::, :, :]]
 
             meta['val_size'] += y_val[0].shape[1]
             meta['train_paths'].append(''.join([savepath, out_name,
