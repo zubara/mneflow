@@ -126,7 +126,7 @@ def segment(data, labels=None, segment_length=200):
             array of labels (n_epochs,)
 
     segment_length : int or False
-                    length of segment into which to split the data in time samples
+            length of segment into which to split the data in time samples
 
     """
     x_out = []
@@ -134,16 +134,18 @@ def segment(data, labels=None, segment_length=200):
     assert data.ndim >= 2
     n_ch, n_t = data.shape[-2:]
     bins = np.arange(0, n_t+1, segment_length)[1:]
+
     for x in data:
         #  split into non-overlapping segments
         xx = np.split(x, bins, axis=-1)[:-1]
         x_out.append(xx)
+
     if np.any(labels):
         for y in labels:
-            if y.shape[-1] == data.shape[-1]:
+            if (labels.shape[-1] == data.shape[-1]):
                 y_out.append(np.split(y, bins, axis=-1)[:-1])
             else:
-                y_out.append(np.repeat(y, len(xx)))
+                y_out.append(np.repeat(y, len(bins)))
     else:
         labels = [[labels]]
 
