@@ -12,6 +12,14 @@ import numpy as np
 
 
 # %% Auxilliary functions
+def _track_metrics(orig, new):
+    new = [tf.squeeze(ii).numpy() for ii in new]
+    if len(orig):
+        return [tf.concat([a, b], axis=-1) for a, b in zip(new, orig)]
+    else:
+        return new
+
+
 def _speak(s, step, name='', n=100):
     ''' Prints dots before it quacks '''
     if s % n:
@@ -91,47 +99,78 @@ def report_results(model, train, val, test, r_batch, event_names):
 
 
 # %% Metrics
-def rmse(y_true, y_pred):
+def rmse(y_true, y_pred, axis=-1):
     # root mean squared error (rmse) for regression
     from tensorflow.keras import backend as K
-    return K.sqrt(K.mean(K.square(y_pred - y_true), axis=-1))
+    return K.sqrt(K.mean(K.square(y_pred - y_true), axis=axis))
 
 
-def mse(y_true, y_pred):
+def mse(y_true, y_pred, axis=-1):
     # mean squared error (mse) for regression
     from tensorflow.keras import backend as K
-    return K.mean(K.square(y_pred - y_true), axis=-1)
+    return K.mean(K.square(y_pred - y_true), axis=axis)
 
 
-def r_square(y_true, y_pred):
+def r_square(y_true, y_pred, axis=-1):
     # coefficient of determination (R^2) for regression
     from tensorflow.keras import backend as K
-    SS_res = K.sum(K.square(y_true - y_pred))
-    SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
+    SS_res = K.sum(K.square(y_true - y_pred), axis=axis)
+    SS_tot = K.sum(K.square(y_true - K.mean(y_true)), axis=axis)
     return (1 - SS_res/(SS_tot + K.epsilon()))
 
 
-def soft_acc(y_true, y_pred, d=2):
+def soft_acc(y_true, y_pred, axis=-1, d=2):
     from tensorflow.keras import backend as K
     decim = 10**d
     y_t = K.round(y_true*decim)/decim
     y_p = K.round(y_pred*decim)/decim
-    return K.mean(K.equal(y_t, y_p))
+    return K.mean(K.equal(y_t, y_p), axis=axis)
 
 
 # %% Plot functions
 def plot_metrics(t, title=''):
     import matplotlib.pyplot as plt
-    n_epochs = len(t)
-    idx = len(t[0])
+    n_epoch = len(t)
     fig, axes = plt.subplots(6, sharex=True, figsize=(12, 8))
     fig.suptitle(title+':Raw Metrics')
     labels = []
 
-    for ii in range(n_epochs):
+    for ii in range(n_epoch):
         labels.append('epoch %d' % ii)
-        rmse, mse, rsquare, sacc, cost, yn, y_ = np.asarray(t[ii]).T
+        rmse, mse, rsquare, sacc, cost, yn, y_ = np.asarray(t[ii])
 
+        axes[0].set_ylabel("RMSE", fontsize=14)
+        axes[0].plot(rmse)
+
+        axes[1].set_ylabel("MSE", fontsize=14)
+        axes[1].plot(mse)
+
+        axes[2].set_ylabel("R^2", fontsize=14)
+        axes[2].plot(rsquare)
+
+        axes[3].set_ylabel("Soft Accuracy", fontsize=14)
+        axes[3].plot(sacc, '+')
+
+        axes[4].set_ylabel("Cost", fontsize=14)
+        axes[4].plot(cost)
+
+        axes[5].set_ylabel("Output", fontsize=14)
+        axes[5].plot(yn, 'r*')
+        axes[5].plot(y_)
+
+        axes[5].set_xlabel("segment", fontsize=14)
+
+    axes[0].legend(labels=labels)
+    axes[5].legend(labels=['y_true'] + labels)
+    plt.show()
+
+    # Mean metrics
+    if n_epoch > 1:
+        fig, axes = plt.subplots(6, sharex=True, figsize=(12, 8))
+        fig.suptitle(title+':Mean Metrics')
+        tmp = [[np.mean(jj) for jj in ii] for ii in t]
+
+        rmse, mse, rsquare, sacc, cost, yn, y_ = np.asarray(tmp).T
         axes[0].set_ylabel("RMSE", fontsize=14)
         axes[0].plot(rmse)
 
@@ -150,43 +189,10 @@ def plot_metrics(t, title=''):
         axes[5].set_ylabel("Output", fontsize=14)
         axes[5].plot(yn, 'r*', label='y-true')
         axes[5].plot(y_, 'b+', label='y-pred')
+        axes[5].legend()
 
-        axes[5].set_xlabel("segment", fontsize=14)
-
-    axes[0].legend(labels=labels)
-    axes[5].legend()
-    plt.show()
-
-    # Mean metrics
-    fig, axes = plt.subplots(6, sharex=True, figsize=(12, 8))
-    fig.suptitle(title+':Mean Metrics')
-    conc = np.concatenate(t, axis=0)
-    tmp = np.asarray([np.mean(conc[ii*idx:(ii+1)*idx], axis=0)
-                      for ii in range(n_epochs)])
-
-    rmse, mse, rsquare, sacc, cost, yn, y_ = tmp.T
-    axes[0].set_ylabel("RMSE", fontsize=14)
-    axes[0].plot(tmp[:, 0])
-
-    axes[1].set_ylabel("MSE", fontsize=14)
-    axes[1].plot(tmp[:, 1])
-
-    axes[2].set_ylabel("R^2", fontsize=14)
-    axes[2].plot(tmp[:, 2])
-
-    axes[3].set_ylabel("Soft Accuracy", fontsize=14)
-    axes[3].plot(tmp[:, 3], '+')
-
-    axes[4].set_ylabel("Cost", fontsize=14)
-    axes[4].plot(tmp[:, 4])
-
-    axes[5].set_ylabel("Output", fontsize=14)
-    axes[5].plot(tmp[:, 5], 'r*', label='y-true')
-    axes[5].plot(tmp[:, 6], 'b+', label='y-pred')
-    axes[5].legend()
-
-    axes[5].set_xlabel("Epoch", fontsize=14)
-    plt.show()
+        axes[5].set_xlabel("Epoch", fontsize=14)
+        plt.show()
 
 
 def plot_history(history):
