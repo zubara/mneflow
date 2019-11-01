@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Custom training loop for keras_model that iterates over each sequence segment
+Custom training loop for keras_model that iterates over each sequence
 
 @author: vranoug1
 """
@@ -91,7 +91,6 @@ optim = tf.keras.optimizers.Adam(learning_rate=learn_rate)
 reg = tf.keras.regularizers.L1L2(l1=l1_lambda, l2=l2_lambda)
 model = keras_models.VARCNNLSTM(graph_specs)
 loss_f = mse
-
 # %% Training loop - per single sequence segment
 # Keep results for plotting
 train_metrics = []
@@ -108,92 +107,70 @@ for epoch in range(n_epochs):
 
     # Training loop - using batches of single sequence segments
     for x, y in dataset.train.shuffle(train_elems).take(train_elems):
-        nb = x.shape[0].value - 1
-        k = x.shape[1].value
-        nseq = x.shape[2].value
         print('step', step, 'x shape', x.shape, 'y shape', y.shape)
-        for kk in range(k):
-            for s in range(nseq):
-                _speak(s, step, 'step', n=100)
+        _speak(step, step, 'step', n=100)
+        with tf.GradientTape() as tape:
+            y_ = model(x)
+            loss_value = loss_f(y, y_)
+            r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
+            l1_l2 = tf.add_n([reg(w) for w in r_])
+            cost = loss_value + l1_l2
 
-                with tf.GradientTape() as tape:
+        # optim.minimize(cost, model.trainable_variables, name='minimize')
+        grads = tape.gradient(cost, model.trainable_variables)
+        grads_vars = zip(grads, model.trainable_variables)
+        optim.apply_gradients(grads_vars, name='minimize')
 
-                    xn = x[nb, kk, s, :, :]
-                    yn = y[nb, kk, s, :]
+        # Track progress
+        tmp = [rmse(y, y_), mse(y, y_), r_square(y, y_), soft_acc(y, y_), cost, y, y_]
+        t_metrics = _track_metrics(t_metrics, tmp)
 
-                    y_ = model(xn)
-                    loss_value = loss_f(yn, y_)
-                    r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
-                    l1_l2 = tf.add_n([reg(w) for w in r_])
-                    cost = loss_value + l1_l2
+        step += 1
 
-                # optim.minimize(cost, model.trainable_variables, name='minimize')
-                grads = tape.gradient(cost, model.trainable_variables)
-                grads_vars = zip(grads, model.trainable_variables)
-                optim.apply_gradients(grads_vars, name='minimize')
+        # test on validation after every sequence
+        print('stepping in validation after step: ', step)
+        for vx, vy in dataset.val.shuffle(val_elems).take(val_elems):
+            # print('vx shape', vx.shape, 'vy shape', vy.shape)
+            y_ = model(vx)
+            vloss_value = loss_f(vy, y_)
+            r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
+            l1_l2 = tf.add_n([reg(w) for w in r_])
+            vcost = vloss_value + l1_l2
 
-                # Track progress
-                tmp = [rmse(y, y_), mse(y, y_), r_square(y, y_), soft_acc(y, y_), cost, y, y_]
-                t_metrics = _track_metrics(t_metrics, tmp)
-
-                step += 1
-            # end of sequence segments - iterated over all segments
-
-            # test on validation after every sequence
-            print('stepping in validation after step: ', step)
-            for vx, vy in dataset.val.shuffle(val_elems).take(val_elems):
-                # print('vx shape', vx.shape, 'vy shape', vy.shape)
-                for vs in range(vx.shape[2]):
-                    _speak(vs, vs, 'vstep', n=100)
-
-                    xn = vx[0, 0, vs, :, :]
-                    yn = vy[0, 0, vs, :]
-                    y_ = model(xn)
-                    vloss_value = loss_f(yn, y_)
-                    r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
-                    l1_l2 = tf.add_n([reg(w) for w in r_])
-                    vcost = vloss_value + l1_l2
-
-                    # Track progress
-                    tmp = [rmse(vy, y_), mse(vy, y_), r_square(vy, y_), soft_acc(vy, y_), vcost, vy, y_]
-                    v_metrics = _track_metrics(v_metrics, tmp)
-
-        # End single train sequence
+            # Track progress
+            tmp = [rmse(vy, y_), mse(vy, y_), r_square(vy, y_), soft_acc(vy, y_), vcost, vy, y_]
+            v_metrics = _track_metrics(v_metrics, tmp)
 
     # end of epoch  - iterated over the whole dataset
     train_metrics.append(t_metrics)
     val_metrics.append(v_metrics)
     # end of epoch
 
-    print('Epoch %03d: Loss: %.3f, Accuracy: %.3f'
-          % (epoch, t_metrics[-1][1], t_metrics[-1][3]))
-    print('Seen so far: %s samples' % step)
+#    print('Epoch %03d: Loss: %.3f, Accuracy: %.3f'
+#          % (epoch, tf.keras.backend.sum(t_metrics[-1][1]),
+#             tf.keras.backend.mean(t_metrics[-1][3])))
+#    print('Seen so far: %s samples' % step)
 
 t = [train_metrics, val_metrics]
-
 # %% Test data
 test_elems = Dataset._get_n_samples(None, meta['test_paths'])
 test_metrics = []
-for x, y in test_dataset.shuffle(test_elems).take(test_elems):
+for vx, vy in test_dataset.shuffle(test_elems).take(test_elems):
     # print('vx shape', vx.shape, 'vy shape', vy.shape)
-    for s in range(x.shape[2]):
-        _speak(s, s, 'tstep', n=100)
+    y_ = model(vx)
+    vloss_value = loss_f(vy, y_)
+    r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
+    l1_l2 = tf.add_n([reg(w) for w in r_])
+    vcost = vloss_value + l1_l2
 
-        xn = vx[0, 0, s, :, :]
-        yn = vy[0, 0, s, :]
-        y_ = model(xn)
-        loss_value = loss_f(yn, y_)
-        r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
-        l1_l2 = tf.add_n([reg(w) for w in r_])
-        cost = loss_value + l1_l2
+    # Track progress
+    tmp = [rmse(vy, y_), mse(vy, y_), r_square(vy, y_), soft_acc(vy, y_), vcost, vy, y_]
+    test_metrics = _track_metrics(test_metrics, tmp)
 
-        # Track progress
-        tmp = [rmse(y, y_), mse(y, y_), r_square(y, y_), soft_acc(y, y_), cost, y, y_]
-        test_metrics = _track_metrics(test_metrics, tmp)
 test_metrics = [test_metrics]
 # %% Plot
 plot_metrics(train_metrics, title='Training')
 plot_metrics(val_metrics, title='Validation')
 plot_metrics(test_metrics, title='Test')
 
-print('Custom training iteration over sequence segments completed')
+print('Custom training iteration over whole sequences completed')
