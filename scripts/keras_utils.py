@@ -12,6 +12,14 @@ import numpy as np
 
 
 # %% Auxilliary functions
+def _speak(s, step, name='', n=100):
+    ''' Prints dots before it quacks '''
+    if s % n:
+        print('.', end='', flush=True)
+    else:
+        print(name, step)
+
+
 def _get_factors(n):
     "Factorise integer value"
     assert (n > 0) and not n % 1, "Cannot factor non-positive integer value"
@@ -82,18 +90,47 @@ def report_results(model, train, val, test, r_batch, event_names):
           classification_report(y_test, t_pred, target_names=event_names))
 
 
+# %% Metrics
+def rmse(y_true, y_pred):
+    # root mean squared error (rmse) for regression
+    from tensorflow.keras import backend as K
+    return K.sqrt(K.mean(K.square(y_pred - y_true), axis=-1))
+
+
+def mse(y_true, y_pred):
+    # mean squared error (mse) for regression
+    from tensorflow.keras import backend as K
+    return K.mean(K.square(y_pred - y_true), axis=-1)
+
+
+def r_square(y_true, y_pred):
+    # coefficient of determination (R^2) for regression
+    from tensorflow.keras import backend as K
+    SS_res = K.sum(K.square(y_true - y_pred))
+    SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
+    return (1 - SS_res/(SS_tot + K.epsilon()))
+
+
+def soft_acc(y_true, y_pred, d=2):
+    from tensorflow.keras import backend as K
+    decim = 10**d
+    y_t = K.round(y_true*decim)/decim
+    y_p = K.round(y_pred*decim)/decim
+    return K.mean(K.equal(y_t, y_p))
+
+
 # %% Plot functions
 def plot_metrics(t, title=''):
     import matplotlib.pyplot as plt
     n_epochs = len(t)
     idx = len(t[0])
-    fig, axes = plt.subplots(5, sharex=True, figsize=(12, 8))
+    fig, axes = plt.subplots(6, sharex=True, figsize=(12, 8))
     fig.suptitle(title+':Raw Metrics')
     labels = []
 
     for ii in range(n_epochs):
         labels.append('epoch %d' % ii)
-        rmse, mse, rsquare, sacc, cost = np.asarray(t[ii]).T
+        rmse, mse, rsquare, sacc, cost, yn, y_ = np.asarray(t[ii]).T
 
         axes[0].set_ylabel("RMSE", fontsize=14)
         axes[0].plot(rmse)
@@ -105,24 +142,29 @@ def plot_metrics(t, title=''):
         axes[2].plot(rsquare)
 
         axes[3].set_ylabel("Soft Accuracy", fontsize=14)
-        axes[3].plot(sacc)
+        axes[3].plot(sacc, '+')
 
         axes[4].set_ylabel("Cost", fontsize=14)
         axes[4].plot(cost)
 
-        axes[4].set_xlabel("segment", fontsize=14)
+        axes[5].set_ylabel("Output", fontsize=14)
+        axes[5].plot(yn, 'r*', label='y-true')
+        axes[5].plot(y_, 'b+', label='y-pred')
+
+        axes[5].set_xlabel("segment", fontsize=14)
 
     axes[0].legend(labels=labels)
+    axes[5].legend()
     plt.show()
 
     # Mean metrics
-    fig, axes = plt.subplots(5, sharex=True, figsize=(12, 8))
+    fig, axes = plt.subplots(6, sharex=True, figsize=(12, 8))
     fig.suptitle(title+':Mean Metrics')
     conc = np.concatenate(t, axis=0)
-    tmp = np.asarray([np.mean(conc[i*idx:(i+1)*idx], axis=0)
-                      for i in range(n_epochs)])
+    tmp = np.asarray([np.mean(conc[ii*idx:(ii+1)*idx], axis=0)
+                      for ii in range(n_epochs)])
 
-    rmse, mse, rsquare, sacc, cost = np.mean(np.asarray(t[ii]), axis=0)
+    rmse, mse, rsquare, sacc, cost, yn, y_ = tmp.T
     axes[0].set_ylabel("RMSE", fontsize=14)
     axes[0].plot(tmp[:, 0])
 
@@ -133,12 +175,17 @@ def plot_metrics(t, title=''):
     axes[2].plot(tmp[:, 2])
 
     axes[3].set_ylabel("Soft Accuracy", fontsize=14)
-    axes[3].plot(tmp[:, 3])
+    axes[3].plot(tmp[:, 3], '+')
 
     axes[4].set_ylabel("Cost", fontsize=14)
     axes[4].plot(tmp[:, 4])
 
-    axes[4].set_xlabel("Epoch", fontsize=14)
+    axes[5].set_ylabel("Output", fontsize=14)
+    axes[5].plot(tmp[:, 5], 'r*', label='y-true')
+    axes[5].plot(tmp[:, 6], 'b+', label='y-pred')
+    axes[5].legend()
+
+    axes[5].set_xlabel("Epoch", fontsize=14)
     plt.show()
 
 
