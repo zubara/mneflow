@@ -299,6 +299,7 @@ def import_continuous(inp, picks=None, target_picks=None, array_keys={'X': 'X', 
 
     if isinstance(picks, np.ndarray):
         data = data[:, picks, :]
+    print('input shape:', data.shape)
     return data, targets
 
 
@@ -338,7 +339,7 @@ def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
             picks = pick_types(inp.info, **picks)
            #print('picks:', picks )
     elif isinstance(inp, tuple) and len(inp) == 2:
-        print('importing from tuple!')
+        print('importing from tuple')
         data, events = inp
     elif isinstance(inp, str):
         fname = inp
@@ -366,7 +367,7 @@ def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     data = data.astype(np.float32)
     if isinstance(picks, np.ndarray):
         data = data[:, picks, :]
-    print('data:', data.shape)
+    print('input shape:', data.shape)
     return data, events
 
 
@@ -514,6 +515,11 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
             if input_type=='trials':
                 data, events = import_epochs(inp, picks=picks, array_keys=array_keys)
                 if target_type == 'int':
+                    if combine_events:
+                        events, keep_ind = _combine_labels(events, combine_events)
+                        data = data[keep_ind, ...]
+                        events = events[keep_ind]
+
                     events, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
                     events = onehot(events)
                     #print(np.unique(events))
@@ -544,14 +550,15 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                                                                        transform_targets=transform_targets,
                                                                        bp_filter=bp_filter,
                                                                        input_type=input_type)
-            print(y_train.shape)
-            #meta['x_shape'] = x_train[0].shape
+
             if isinstance(x_train, list):
                 n_epochs, meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
+                meta['y_shape'] = y_train[0].shape[-1]
             else:
                  n_epochs,  meta['n_ch'], meta['n_t'] = x_train.shape
-            meta['y_shape'] = y_train[0].shape
-            print(x_train[0].shape, y_train[0].shape, meta['y_shape'])
+                 meta['y_shape'] = y_train.shape[-1]
+            print('Prepocessed sample shape:', x_train[0].shape)
+            print('Target shape actual/metadata: ', y_train[0].shape, meta['y_shape'])
             print('Saving TFRecord# {}'.format(jj))
 #
 
@@ -622,6 +629,10 @@ def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None, scale_int
         data = data[..., ::decimate]
 
     x_train, y_train, x_val, y_val = _split_sets(data, events, val=.1)
+    if y_train.ndim == 1 and y_val.ndim == 1:
+        #print(e)
+        y_train = np.expand_dims(y_train,-1)
+        y_val = np.expand_dims(y_val,-1)
 
 
 #    x_train = np.expand_dims(x_train,-1)
@@ -679,13 +690,13 @@ def _segment(data, segment_length=200, augment=False, stride=25, input_type='iid
             x4D = np.swapaxes(x4D, 2, 1)
             if input_type != 'seq':
                 x4D = x4D.reshape([n_epochs * x4D.shape[1], 1, n_ch, segment_length], order='C')
-            print('x4d:',x4D.shape)
+            #print('x4d:',x4D.shape)
             x_out.append(x4D)
         else:
             bins = np.arange(0, n_t+1, segment_length)[1:]
             xb = np.split(xx, bins, axis=-1)[:-1]
             x_out.append(np.concatenate(xb))
-    #print([xxx.shape for xxx in x_out])
+    print([xxx.shape for xxx in x_out])
     if input_type != 'seq':
         return np.concatenate(x_out,0)
     else:
@@ -755,7 +766,7 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
         targets_new = [np.convolve(targets[0,i,...], poles, mode='same') for i in range(5)]
         #print(targets_new[0].shape)
         targets = np.stack(targets_new)[None,...]
-
+        print('targets:', targets.shape)
         targets = mnefilt.filter_data(targets, sfreq=fs, l_freq=.05, h_freq=None,
                                       method='iir', verbose=False)
 
@@ -790,12 +801,14 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
                            stride=aug_stride, input_type=input_type)
         y_val = _segment(y_val, segment_length=segment, augment=augment,
                          stride=aug_stride, input_type=input_type)
+        print('segment:', y_val[0].shape)
     if transform_targets:
 
 
         if input_type=='seq':
-            y_train = [np.mean(y_tr[...,0,-aug_stride:],axis=-1, keepdims=True) for y_tr in y_train]
-            y_val = [np.mean(y_v[...,0,-aug_stride:], axis=-1, keepdims=True) for y_v in y_val]
+            y_train = [np.mean(np.squeeze(y_tr[...,0,-aug_stride:]),axis=-1, keepdims=True) for y_tr in y_train]
+            y_val = [np.mean(np.squeeze(y_v[...,0,-aug_stride:]), axis=-1, keepdims=True) for y_v in y_val]
+            print('transf y:', y_val[0].shape)
             #y_train = [np.mean(y_tr[...,-25:],axis=-1) for y_tr in y_train]
             #y_val = [np.mean(y_v[...,-25:], axis=-1) for y_v in y_val]
         else:
@@ -805,6 +818,7 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
             y_val -= y_median[None, None, :]
             y_train /= qrange[None, None, :]
             y_val /= qrange[None, None, :]
+            #print()
 #            y_train = np.squeeze(y_train)
 #            y_val = np.squeeze(y_val)
 
@@ -813,4 +827,6 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
 
 
         #y_train = np.max(y_train, -1, keepdims=True) - np.min()
+    print('preproc cont', y_train[0].shape, y_val[0].shape)
     return x_train, y_train, x_val, y_val
+

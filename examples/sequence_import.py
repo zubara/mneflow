@@ -13,7 +13,7 @@ import scipy.io as sio
 dpath = '/m/nbe/work/zubarei1/collabs/bcicomp_ecog/sub1/'
 fname = 'sub1_comp.mat'
 
-import_opt = dict(fs=1000, savepath='../tfr', out_name='bcig_ecog5', input_type='seq',
+import_opt = dict(fs=1000, savepath='../tfr', out_name='bcig_ecog_test', input_type='seq',
                       overwrite=True, val_size=0.1,
                       array_keys={'X':'train_data', 'y':'train_dg'},
                       picks=None, target_picks=None,
@@ -37,16 +37,16 @@ dataset = mneflow.Dataset(meta, train_batch = 1, class_subset=None,
                           pick_channels=None, decim=None)
 
 
-lf_params = dict(n_ls=32, #number of latent factors
-              filter_length=16, #convolutional filter length in time samples
-              pooling = 8, #pooling factor
-              stride = 4, #stride parameter for pooling layer
-              padding = 'SAME',
-              dropout = .5,
-              model_path = import_opt['savepath']) #path for storing the saved model
+#lf_params = dict(n_ls=32, #number of latent factors
+#              filter_length=16, #convolutional filter length in time samples
+#              pooling = 8, #pooling factor
+#              stride = 4, #stride parameter for pooling layer
+#              padding = 'SAME',
+#              dropout = .5,
+#              model_path = import_opt['savepath']) #path for storing the saved model
 #%%
 #initialize the model using the dataset and optimizer objects, and the hyper-parameter dictionary
-#model = mneflow.models.LF_LSTM(dataset, optimizer, lf_params)
+#model = mneflow.models.LFCNNR(dataset, optimizer, lf_params)
 
 #this will initialize the iterators over the dataset,the computational graph and the optimizer
 #model.build()
