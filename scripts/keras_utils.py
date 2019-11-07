@@ -13,9 +13,10 @@ import numpy as np
 
 # %% Auxilliary functions
 def _track_metrics(orig, new):
-    new = [tf.squeeze(ii).numpy() for ii in new]
+    m = len(new)
+    new = np.asarray([tf.squeeze(ii).numpy() for ii in new]).reshape(m, -1)
     if len(orig):
-        return [tf.concat([a, b], axis=-1) for a, b in zip(new, orig)]
+        return np.concatenate((orig, new), axis=1)
     else:
         return new
 
@@ -137,7 +138,7 @@ def plot_metrics(t, title=''):
 
     for ii in range(n_epoch):
         labels.append('epoch %d' % ii)
-        rmse, mse, rsquare, sacc, cost, yn, y_ = np.asarray(t[ii])
+        rmse, mse, rsquare, sacc, cost, yn, y_ = t[ii]
 
         axes[0].set_ylabel("RMSE", fontsize=14)
         axes[0].plot(rmse)
@@ -155,22 +156,22 @@ def plot_metrics(t, title=''):
         axes[4].plot(cost)
 
         axes[5].set_ylabel("Output", fontsize=14)
-        axes[5].plot(yn, 'r*')
-        axes[5].plot(y_)
+        axes[5].plot(y_, '+')
 
         axes[5].set_xlabel("segment", fontsize=14)
 
     axes[0].legend(labels=labels)
-    axes[5].legend(labels=['y_true'] + labels)
+    axes[5].plot(yn, 'r*')
+    axes[5].legend(labels=labels+['y_true'])
     plt.show()
 
     # Mean metrics
     if n_epoch > 1:
         fig, axes = plt.subplots(6, sharex=True, figsize=(12, 8))
         fig.suptitle(title+':Mean Metrics')
-        tmp = [[np.mean(jj) for jj in ii] for ii in t]
+        tmp = np.asarray([[np.mean(jj) for jj in ii] for ii in t])
 
-        rmse, mse, rsquare, sacc, cost, yn, y_ = np.asarray(tmp).T
+        rmse, mse, rsquare, sacc, cost, yn, y_ = tmp.T
         axes[0].set_ylabel("RMSE", fontsize=14)
         axes[0].plot(rmse)
 
