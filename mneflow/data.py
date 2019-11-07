@@ -49,26 +49,29 @@ class Dataset(object):
         self.channel_subset = pick_channels
         self.class_subset = class_subset
         self.decim = decim
+
         self.train = self._build_dataset(self.h_params['train_paths'],
-                                        n_batch=train_batch)
+                                         n_batch=train_batch)
         self.val = self._build_dataset(self.h_params['val_paths'],
-                                      n_batch=None)
+                                       n_batch=None)
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
-    def _upack_seq(self, sample):
-        return sample['length'], sample['features']
 
     def _build_dataset(self, path, n_batch=None):
         """
         Produce a tf.Dataset object and apply preprocessing functions
         if specified.
         """
+        if not n_batch:
+            if self.h_params['input_type'] in ['seq']:
+                n_batch = 1  # each batch contains a single sequence
+            else:
+                n_batch = self._get_n_samples(path)
+
         dataset = tf.data.TFRecordDataset(path)
-        if self.h_params['input_type'] == 'seq':
-            dataset = dataset.map(self._parse_seq_function)
-        else:
-            dataset = dataset.map(self._parse_function)
+
+        dataset = dataset.map(self._parse_function)
             if not self.channel_subset is None:
                 dataset = dataset.map(self._select_channels)
             if not self.class_subset is None:
@@ -129,37 +132,40 @@ class Dataset(object):
         keys_to_features = {}
         if self.h_params['input_type'] in ['trials', 'iid']:
             keys_to_features['X'] = tf.io.FixedLenFeature((self.h_params['n_ch'],
-                                                        self.h_params['n_t']),
-                                                        tf.float32)
+                                                           self.h_params['n_t']),
+                                                          tf.float32)
             if self.h_params['target_type'] == 'int':
                 # TODO onehot encoding to utils for classification
                 keys_to_features['y'] =  tf.io.FixedLenFeature(self.h_params['y_shape'],
-                                                            tf.int64)
+                                                               tf.int64)
             elif self.h_params['target_type'] == 'float':
                 keys_to_features['y']  =  tf.io.FixedLenFeature(self.h_params['y_shape'],
-                                                            tf.float32)
+                                                                tf.float32)
 
             parsed_features = tf.parse_single_example(example_proto, keys_to_features)
-        return parsed_features
+            print(parsed_features)
 
+        elif self.h_params['input_type'] in ['seq']:
 
-    def _parse_seq_function(self, example_proto):
-        """Restore data shape from serialized records"""
-        keys_to_features = {}
-        context_features = {'length': tf.io.FixedLenFeature((), tf.int64, default_value=0)}
-        keys_to_features['X'] = tf.io.FixedLenSequenceFeature((self.h_params['n_ch'],
-                                                        self.h_params['n_t']), tf.float32)
-        if self.h_params['target_type'] == 'int':
-            # TODO onehot encoding to utils for classification
-            keys_to_features['y'] =  tf.io.FixedLenSequenceFeature(self.h_params['y_shape'], tf.int64)
-        elif self.h_params['target_type'] == 'float':
-            keys_to_features['y'] =  tf.io.FixedLenSequenceFeature(self.h_params['y_shape'], tf.float32)
-
+            context_features = {'length': tf.io.FixedLenFeature((), tf.int64, default_value=0)}
+            keys_to_features['X'] = tf.io.FixedLenSequenceFeature((self.h_params['n_ch'],
+                                                                   self.h_params['n_t'], 1), tf.float32)
+            if self.h_params['target_type'] == 'int':
+                # TODO onehot encoding to utils for classification
+                keys_to_features['y'] =  tf.io.FixedLenSequenceFeature(self.h_params['y_shape'], tf.int64)
+            elif self.h_params['target_type'] == 'float':
+                keys_to_features['y'] =  tf.io.FixedLenSequenceFeature((self.h_params['y_shape'], 1), tf.float32)
             c, parsed_features = tf.parse_single_sequence_example(example_proto,
                                                                   context_features=context_features,
                                                                   sequence_features=keys_to_features)
-        return c, parsed_features
+            print('------------------------------------')
+            # Return back to shape [k, n_seq, n_ch, time]
+            parsed_features['X'] = tf.transpose(parsed_features['X'], [3, 0, 1, 2], name='X')
+            parsed_features['y'] = tf.transpose(parsed_features['y'], [2, 0, 1], name='y')
+            print(parsed_features['X'])
+            print(parsed_features['y'])
 
+        return parsed_features
 
     def _select_classes(self, sample):
         """Picks a subset of classes specified in self.class_subset"""
