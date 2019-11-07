@@ -56,6 +56,8 @@ class Dataset(object):
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
+    def _upack_seq(self, sample):
+        return sample['length'], sample['features']
 
     def _build_dataset(self, path, n_batch=None):
         """
@@ -63,20 +65,23 @@ class Dataset(object):
         if specified.
         """
         dataset = tf.data.TFRecordDataset(path)
-        dataset = dataset.map(self._parse_function)
-        if not self.channel_subset is None:
-            dataset = dataset.map(self._select_channels)
-        if not self.class_subset is None:
-            dataset = dataset.filter(self._select_classes)
-        if not self.decim is None:
-            print('decimating')
-            self.timepoints = tf.constant(np.arange(0, self.h_params['n_t'], self.decim))
-            dataset = dataset.map(self._decimate)
-        if n_batch:
-            dataset = dataset.batch(n_batch).repeat()
+        if self.h_params['input_type'] == 'seq':
+            dataset = dataset.map(self._parse_seq_function)
         else:
-            ds_size = self._get_n_samples(path)
-            dataset = dataset.batch(ds_size).repeat()
+            dataset = dataset.map(self._parse_function)
+            if not self.channel_subset is None:
+                dataset = dataset.map(self._select_channels)
+            if not self.class_subset is None:
+                dataset = dataset.filter(self._select_classes)
+            if not self.decim is None:
+                print('decimating')
+                self.timepoints = tf.constant(np.arange(0, self.h_params['n_t'], self.decim))
+                dataset = dataset.map(self._decimate)
+            if n_batch:
+                dataset = dataset.batch(batch_size=n_batch).repeat()
+            else:
+                ds_size = self._get_n_samples(path)
+                dataset = dataset.batch(ds_size).repeat()
         dataset = dataset.map(self._unpack)
         return dataset
 
@@ -135,20 +140,26 @@ class Dataset(object):
                                                             tf.float32)
 
             parsed_features = tf.parse_single_example(example_proto, keys_to_features)
-
-        elif self.h_params['input_type'] in ['seq']:
-            context_features = {'length': tf.io.FixedLenFeature((), tf.int64, default_value=0)}
-            keys_to_features['X'] = tf.io.FixedLenSequenceFeature((self.h_params['n_ch'],
-                                                        self.h_params['n_t']), tf.float32)
-            if self.h_params['target_type'] == 'int':
-                # TODO onehot encoding to utils for classification
-                keys_to_features['y'] =  tf.io.FixedLenSequenceFeature(self.h_params['y_shape'], tf.int64)
-            elif self.h_params['target_type'] == 'float':
-                keys_to_features['y'] =  tf.io.FixedLenSequenceFeature(self.h_params['y_shape'], tf.float32)
-
-            c, parsed_features = tf.parse_single_sequence_example(example_proto, context_features=context_features,
-                                                  sequence_features=keys_to_features)
         return parsed_features
+
+
+    def _parse_seq_function(self, example_proto):
+        """Restore data shape from serialized records"""
+        keys_to_features = {}
+        context_features = {'length': tf.io.FixedLenFeature((), tf.int64, default_value=0)}
+        keys_to_features['X'] = tf.io.FixedLenSequenceFeature((self.h_params['n_ch'],
+                                                        self.h_params['n_t']), tf.float32)
+        if self.h_params['target_type'] == 'int':
+            # TODO onehot encoding to utils for classification
+            keys_to_features['y'] =  tf.io.FixedLenSequenceFeature(self.h_params['y_shape'], tf.int64)
+        elif self.h_params['target_type'] == 'float':
+            keys_to_features['y'] =  tf.io.FixedLenSequenceFeature(self.h_params['y_shape'], tf.float32)
+
+            c, parsed_features = tf.parse_single_sequence_example(example_proto,
+                                                                  context_features=context_features,
+                                                                  sequence_features=keys_to_features)
+        return c, parsed_features
+
 
     def _select_classes(self, sample):
         """Picks a subset of classes specified in self.class_subset"""

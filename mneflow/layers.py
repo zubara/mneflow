@@ -36,25 +36,27 @@ class Dense():
                  nonlin=tf.identity):
         assert size, "Must specify layer size (num nodes)"
         self.scope = scope
-        self.size = size
+        self.size = int(size)
         self.dropout = dropout
         self.nonlin = nonlin
 
     def __call__(self, x):
         """Dense layer currying, to apply layer to any input tensor `x`"""
         with tf.name_scope(self.scope):
+            #print(int(prod(x.get_shape().as_list()[1:])), type(int(prod(x.get_shape().as_list()[1:]))))
             while True:
                 try:  # reuse weights if already initialized
                     if len(x.shape) > 2:  # flatten if input is not 2d array
+                        #print(self.flatsize)
                         x = tf.reshape(x, [-1, self.flatsize])
                     return self.nonlin(tf.matmul(x, self.w) + self.b,
                                        name='out')
                 except(AttributeError):
                     if len(x.shape) > 2:
-                        self.flatsize = prod(x.shape[1:]).value
+                        self.flatsize = int(prod(x.get_shape().as_list()[1:]))
                     else:
-                        self.flatsize = x.shape[1].value
-                    print(self.scope, self.flatsize)
+                        self.flatsize = x.get_shape().as_list()[1]
+                    print(self.scope,':::', self.flatsize, self.size)
                     self.w = weight_variable((self.flatsize, self.size),
                                              name='fc_')
                     self.b = bias_variable([self.size])
@@ -89,9 +91,10 @@ class LFTConv():
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-                    conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
-                                          strides=[1, self.stride, 1, 1],
-                                          padding=self.padding)
+                    conv = tf.nn.max_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
+                                          strides=[ 1, self.stride, 1, 1],
+                                          padding=self.padding,
+                                          data_format='NHWC')
                     print('f:',self.filters.shape)
                     print('lf-out',conv.shape)
                     return conv
@@ -127,7 +130,7 @@ class VARConv():
 #                    conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
 #                                          strides=[1, self.stride, 1, 1],
 #                                          padding=self.padding)
-                    conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
+                    conv = tf.nn.max_pool2d(conv, ksize=[1, self.pooling, 1, 1],
                                           strides=[1, self.stride, 1, 1],
                                           padding='VALID')
                     print(conv.shape)
@@ -145,7 +148,7 @@ class DeMixing():
     """
     Reducing dimensions across one domain
     """
-    def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity, axis=1):
+    def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity, axis=2):
         self.scope = scope
         self.size = n_ls
         self.nonlin = nonlin
@@ -159,8 +162,9 @@ class DeMixing():
                                                          axes=[[self.axis], [0]],
                                                          name='de-mix') +
                                             self.b_in)
+#                    if self.axis == 2:
+#                        x_reduced = tf.transpose(x_reduced, perm = [0,1,3,2])
 
-                    #x_reduced = tf.transpose(x_reduced, perm = [0,3,2,1])
                     print('dmx', x_reduced.shape)
                     return x_reduced
                 except(AttributeError):
@@ -255,7 +259,7 @@ class ConvDSV():
 def weight_variable(shape, name='', method='he'):
     #    """Initialize weight variable"""
     if method == 'xavier':
-        xavf = 2/sum(prod(shape[:-1]))
+        xavf = 2./sum(prod(shape[:-1]))
         initial = xavf*tf.random_uniform(shape, minval=-.5, maxval=.5)
     elif method == 'he':
         hef = sqrt(6. / prod(shape[:-1]))
