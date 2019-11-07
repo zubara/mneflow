@@ -146,12 +146,7 @@ for epoch in range(n_epochs):
     val_metrics.append(v_metrics)
     # end of epoch
 
-#    print('Epoch %03d: Loss: %.3f, Accuracy: %.3f'
-#          % (epoch, tf.keras.backend.sum(t_metrics[-1][1]),
-#             tf.keras.backend.mean(t_metrics[-1][3])))
-#    print('Seen so far: %s samples' % step)
 
-t = [train_metrics, val_metrics]
 # %% Test data
 test_elems = Dataset._get_n_samples(None, meta['test_paths'])
 test_metrics = []
