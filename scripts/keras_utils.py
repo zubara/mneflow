@@ -12,6 +12,12 @@ import numpy as np
 
 
 # %% Auxilliary functions
+def _get_metrics(vy, y_, vcost):
+    tmp = [rmse(vy, y_), mse(vy, y_), r_square(vy, y_), soft_acc(vy, y_),
+           vcost, vy, y_]
+    return tmp
+
+
 def _track_metrics(orig, new):
     m = len(new)
     new = np.asarray([tf.squeeze(ii).numpy() for ii in new]).reshape(m, -1)
@@ -21,10 +27,10 @@ def _track_metrics(orig, new):
         return new
 
 
-def _speak(s, step, name='', n=100):
+def _speak(s, step, name='', n=100, t='.'):
     ''' Prints dots before it quacks '''
     if s % n:
-        print('.', end='', flush=True)
+        print(t, end='', flush=True)
     else:
         print(name, step)
 
@@ -129,15 +135,24 @@ def soft_acc(y_true, y_pred, axis=-1, d=2):
 
 
 # %% Plot functions
-def plot_metrics(t, title=''):
+def plot_metrics(t, title='', epochs=None):
     import matplotlib.pyplot as plt
     n_epoch = len(t)
     fig, axes = plt.subplots(6, sharex=True, figsize=(12, 8))
     fig.suptitle(title+':Raw Metrics')
     labels = []
 
-    for ii in range(n_epoch):
-        labels.append('epoch %d' % ii)
+    if not epochs:
+        toprint = range(n_epoch)
+    else:
+        if isinstance(epochs, (list, tuple)):
+            toprint = epochs
+        elif isinstance(epochs, int):
+            toprint = [epochs]
+
+    for ii in toprint:
+        eid = ii if ii >= 0 else (n_epoch+ii)
+        labels.append('epoch %d' % eid)
         rmse, mse, rsquare, sacc, cost, yn, y_ = t[ii]
 
         axes[0].set_ylabel("RMSE", fontsize=14)
@@ -156,43 +171,53 @@ def plot_metrics(t, title=''):
         axes[4].plot(cost)
 
         axes[5].set_ylabel("Output", fontsize=14)
+        if len(labels) == 1:
+            axes[5].plot(yn, 'r*')
         axes[5].plot(y_, '+')
 
         axes[5].set_xlabel("segment", fontsize=14)
 
-    axes[0].legend(labels=labels)
-    axes[5].plot(yn, 'r*')
-    axes[5].legend(labels=labels+['y_true'])
+    axes[0].legend(labels=labels, loc='upper left')
+    axes[5].legend(labels=['y_true']+labels)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
     plt.show()
 
     # Mean metrics
     if n_epoch > 1:
-        fig, axes = plt.subplots(6, sharex=True, figsize=(12, 8))
+        fig, axes = plt.subplots(5, sharex=False, figsize=(12, 8))
         fig.suptitle(title+':Mean Metrics')
-        tmp = np.asarray([[np.mean(jj) for jj in ii] for ii in t])
+        tmp = np.asarray([np.mean(ii, axis=1) for ii in t])
 
-        rmse, mse, rsquare, sacc, cost, yn, y_ = tmp.T
+        rmse, mse, rsquare, sacc, cost, _, _ = tmp.T
         axes[0].set_ylabel("RMSE", fontsize=14)
-        axes[0].plot(rmse)
+        axes[0].plot(range(n_epoch), rmse)
 
         axes[1].set_ylabel("MSE", fontsize=14)
-        axes[1].plot(mse)
+        axes[1].plot(range(n_epoch), mse)
 
         axes[2].set_ylabel("R^2", fontsize=14)
-        axes[2].plot(rsquare)
+        axes[2].plot(range(n_epoch), rsquare)
 
         axes[3].set_ylabel("Soft Accuracy", fontsize=14)
-        axes[3].plot(sacc, '+')
+        axes[3].plot(range(n_epoch), sacc, '+')
 
         axes[4].set_ylabel("Cost", fontsize=14)
-        axes[4].plot(cost)
+        axes[4].plot(range(n_epoch), cost)
+        axes[4].set_xlabel("Epoch", fontsize=14)
 
-        axes[5].set_ylabel("Output", fontsize=14)
-        axes[5].plot(yn, 'r*', label='y-true')
-        axes[5].plot(y_, 'b+', label='y-pred')
-        axes[5].legend()
+        # n_seg = len(t[0][-1])
+        # y_ = np.zeros(n_seg)
+        # for ii in t:
+        #     y_ += np.asarray(ii[-1])
+        # y_ = y_/n_epoch
+        # yn = t[0][-2]
+        # axes[5].set_ylabel("Output", fontsize=14)
+        # axes[5].plot(range(n_seg), yn, 'r*', label='y-true')
+        # axes[5].plot(range(n_seg), y_, 'b+', label='y-pred')
+        # axes[5].legend()
+        # axes[5].set_xlabel("Segments", fontsize=14)
 
-        axes[5].set_xlabel("Epoch", fontsize=14)
+        fig.tight_layout(rect=[0, 0, 1, 0.97])
         plt.show()
 
 
