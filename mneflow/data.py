@@ -54,6 +54,8 @@ class Dataset(object):
                                          n_batch=train_batch)
         self.val = self._build_dataset(self.h_params['val_paths'],
                                        n_batch=None)
+        self.test = self._build_dataset(self.h_params['test_paths'],
+                                        n_batch=None)
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
