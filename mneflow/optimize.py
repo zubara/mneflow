@@ -105,14 +105,18 @@ class Optimizer(object):
             print(loss.shape, performance.shape)
 
         elif self.params['task'] == 'regression':
-            weights = tf.maximum(.5, tf.abs(y_true)**2)
-            #loss = tf.losses.absolute_difference(labels=y_true, predictions=y_pred)#, weights=weights)  ##,, reduction='weighted_sum'
-            loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred)
+            #weights = tf.maximum(.5, 2*tf.abs(y_true))
+            #loss = tf.losses.absolute_difference(labels=y_true, predictions=y_pred, weights=weights)  ##,, reduction='weighted_sum'
+            loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred)#, weights=weights
             #mn, var_ = tf.nn.moments(y_true)
             #var_ = tf.reduce_mean(y_true**2)
 
-            #print(var_)
-            performance = tf.reduce_sum((y_true-y_pred)**2)/tf.reduce_sum(y_true**2)#loss/tf.reduce_mean(var_)
+            # R^2
+            total_error = tf.reduce_sum(tf.square(tf.subtract(y_true, tf.reduce_mean(y_true))), axis=0)
+            unexplained_error = tf.reduce_sum(tf.square(tf.subtract(y_true, y_pred)), axis=0)
+            print(unexplained_error.shape)
+            performance = tf.subtract(1., tf.reduce_mean(tf.div(unexplained_error, total_error)))
+
             prediction = y_pred
 
         #  Regularization

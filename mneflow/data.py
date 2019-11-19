@@ -52,8 +52,10 @@ class Dataset(object):
 
         self.train = self._build_dataset(self.h_params['train_paths'],
                                          n_batch=train_batch)
+        #print(self.train)
         self.val = self._build_dataset(self.h_params['val_paths'],
                                        n_batch=None)
+        #print(self.val)
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
@@ -64,27 +66,28 @@ class Dataset(object):
         if specified.
         """
         if not n_batch:
-            if self.h_params['input_type'] in ['seq']:
-                n_batch = 1  # each batch contains a single sequence
-            else:
+#            if self.h_params['input_type'] in ['seq']:
+#                n_batch = 1  # each batch contains a single sequence
+#            else:
                 n_batch = self._get_n_samples(path)
 
         dataset = tf.data.TFRecordDataset(path)
 
         dataset = dataset.map(self._parse_function)
-            if not self.channel_subset is None:
-                dataset = dataset.map(self._select_channels)
-            if not self.class_subset is None:
-                dataset = dataset.filter(self._select_classes)
-            if not self.decim is None:
-                print('decimating')
-                self.timepoints = tf.constant(np.arange(0, self.h_params['n_t'], self.decim))
-                dataset = dataset.map(self._decimate)
-            if n_batch:
-                dataset = dataset.batch(batch_size=n_batch).repeat()
-            else:
-                ds_size = self._get_n_samples(path)
-                dataset = dataset.batch(ds_size).repeat()
+        if not self.channel_subset is None:
+            dataset = dataset.map(self._select_channels)
+        if not self.class_subset is None:
+            dataset = dataset.filter(self._select_classes)
+        if not self.decim is None:
+            print('decimating')
+            self.timepoints = tf.constant(np.arange(0, self.h_params['n_t'], self.decim))
+            dataset = dataset.map(self._decimate)
+        if n_batch:
+            dataset = dataset.batch(batch_size=n_batch).repeat()
+        else:
+            ds_size = self._get_n_samples(path)
+            dataset = dataset.batch(ds_size).repeat()
+        #print(dataset)
         dataset = dataset.map(self._unpack)
         return dataset
 
@@ -147,21 +150,24 @@ class Dataset(object):
 
         elif self.h_params['input_type'] in ['seq']:
 
-            context_features = {'length': tf.io.FixedLenFeature((), tf.int64, default_value=0)}
-            keys_to_features['X'] = tf.io.FixedLenSequenceFeature((self.h_params['n_ch'],
-                                                                   self.h_params['n_t'], 1), tf.float32)
+            #context_features = {'length': tf.io.FixedLenFeature((), tf.int64, default_value=0)}
+            keys_to_features['X'] = tf.io.FixedLenFeature((self.h_params['n_seq'], self.h_params['n_ch'],
+                                                                   self.h_params['n_t']), tf.float32)
             if self.h_params['target_type'] == 'int':
                 # TODO onehot encoding to utils for classification
-                keys_to_features['y'] =  tf.io.FixedLenSequenceFeature(self.h_params['y_shape'], tf.int64)
+                keys_to_features['y'] =  tf.io.FixedLenFeature((self.h_params['n_seq'],self.h_params['y_shape']), tf.int64)
             elif self.h_params['target_type'] == 'float':
-                keys_to_features['y'] =  tf.io.FixedLenSequenceFeature((self.h_params['y_shape'], 1), tf.float32)
-            c, parsed_features = tf.parse_single_sequence_example(example_proto,
-                                                                  context_features=context_features,
-                                                                  sequence_features=keys_to_features)
-            print('------------------------------------')
+                keys_to_features['y'] =  tf.io.FixedLenFeature((self.h_params['n_seq'],self.h_params['y_shape']), tf.float32)
+            #c, parsed_features = tf.parse_single_sequence_example(example_proto,
+            #                                                      context_features=context_features,
+            #                                                      sequence_features=keys_to_features)
+            parsed_features = tf.parse_single_example(example_proto, keys_to_features)
+#            print(parsed_features['X'])
+#            print(parsed_features['y'])
+#            print('------------------------------------')
             # Return back to shape [k, n_seq, n_ch, time]
-            parsed_features['X'] = tf.transpose(parsed_features['X'], [3, 0, 1, 2], name='X')
-            parsed_features['y'] = tf.transpose(parsed_features['y'], [2, 0, 1], name='y')
+            #parsed_features['X'] = tf.transpose(parsed_features['X'], [3, 0, 1, 2], name='X')
+            #parsed_features['y'] = tf.transpose(parsed_features['y'], [2, 0, 1], name='y')
             print(parsed_features['X'])
             print(parsed_features['y'])
 
