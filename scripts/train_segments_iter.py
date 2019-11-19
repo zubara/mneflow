@@ -133,7 +133,7 @@ for epoch in range(n_epochs):
                 optim.apply_gradients(grads_vars, name='minimize')
 
                 # Track progress
-                tmp = [rmse(y, y_), mse(y, y_), r_square(y, y_), soft_acc(y, y_), cost, y, y_]
+                tmp = [rmse(yn, y_), mse(yn, y_), r_square(yn, y_), soft_acc(yn, y_), cost, yn, y_]
                 t_metrics = _track_metrics(t_metrics, tmp)
 
                 step += 1
@@ -155,7 +155,7 @@ for epoch in range(n_epochs):
                     vcost = vloss_value + l1_l2
 
                     # Track progress
-                    tmp = [rmse(vy, y_), mse(vy, y_), r_square(vy, y_), soft_acc(vy, y_), vcost, vy, y_]
+                    tmp = [rmse(yn, y_), mse(yn, y_), r_square(yn, y_), soft_acc(yn, y_), vcost, yn, y_]
                     v_metrics = _track_metrics(v_metrics, tmp)
 
         # End single train sequence
@@ -164,12 +164,6 @@ for epoch in range(n_epochs):
     train_metrics.append(t_metrics)
     val_metrics.append(v_metrics)
     # end of epoch
-
-    print('Epoch %03d: Loss: %.3f, Accuracy: %.3f'
-          % (epoch, t_metrics[-1][1], t_metrics[-1][3]))
-    print('Seen so far: %s samples' % step)
-
-t = [train_metrics, val_metrics]
 
 # %% Test data
 test_elems = Dataset._get_n_samples(None, meta['test_paths'])
@@ -188,7 +182,7 @@ for x, y in test_dataset.shuffle(test_elems).take(test_elems):
         cost = loss_value + l1_l2
 
         # Track progress
-        tmp = [rmse(y, y_), mse(y, y_), r_square(y, y_), soft_acc(y, y_), cost, y, y_]
+        tmp = [rmse(yn, y_), mse(yn, y_), r_square(yn, y_), soft_acc(yn, y_), vcost, yn, y_]
         test_metrics = _track_metrics(test_metrics, tmp)
 test_metrics = [test_metrics]
 # %% Plot
