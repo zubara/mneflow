@@ -9,7 +9,7 @@ import tensorflow as tf
 # tf.enable_eager_execution()
 
 import numpy as np
-from keras_layers import DeMixing, VARConv, LSTMv1, Dense, DeConvLayer
+from mneflow.keras_layers import DeMixing, VARConv, LSTMv1, Dense, DeConvLayer, LFTConv
 
 
 class VARCNNLSTM(tf.keras.Model):
@@ -86,9 +86,6 @@ class VARCNNLSTM(tf.keras.Model):
                            size=self.specs['rnn_units'],
                            dropout=self.specs['rnn_dropout'],
                            nonlin=self.specs['rnn_nonlin'],
-                           unit_forget_bias=self.specs['rnn_forget_bias'],
-                           kernel_regularizer=self.l1_l2,
-                           bias_regularizer=self.l1_l2,
                            return_sequences=self.specs['rnn_seq'])
 
         # self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
@@ -134,6 +131,126 @@ class VARCNNLSTM(tf.keras.Model):
         elif orig_dim == 2:
             y_ = tf.reshape(y_, [-1])
         # print('final output y_', y_.shape)
+        return y_
+
+
+
+class LFLSTM(tf.keras.Model):
+    """VAR-CNN-LSTM
+
+    For details see [1].
+
+    Parameters
+    ----------
+    n_ls : int
+        number of latent components
+        Defaults to 32
+
+    filter_length : int
+        length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7
+
+    stride : int
+        stride of the max pooling layer. Defaults to 1
+
+    pooling : int
+        pooling factor of the max pooling layer. Defaults to 2
+
+    rnn_units : int
+        number of nodes in the LSTM layer
+
+    rnn_dropout : float
+        dropout for the LSTM layer
+
+    rnn_nonlin : tf.activation
+        activation function for the LSTM layer
+
+    rnn_forget_bias : bool
+        whether units forget bias
+
+    References
+    ----------
+        [1]  I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+        """
+    def __init__(self, specs, name='varcnn-lstm', **kwargs):
+        """
+        Parameters
+        -----------
+        specs : dict
+                dictionary of model-specific hyperparameters.
+
+        """
+        super(LFLSTM, self).__init__(name=name, **kwargs)
+        self.scope = name
+        self.specs = specs
+        self._layers.remove(self.specs)  # Weirdly it's considered as a layer
+        self.model_path = specs['model_path']
+        self.rate = specs['dropout']
+        self.out_dim = specs['out_dim']
+        self.l1_l2 = tf.keras.regularizers.l1_l2(l1=self.specs['l1'],
+                                                 l2=self.specs['l2'])
+
+        self.demix = DeMixing(n_ls=self.specs['n_ls'],
+                              axis=specs['axis'],
+                              kernel_regularizer=self.l1_l2,
+                              bias_regularizer=self.l1_l2)
+
+        self.tconv1 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
+                              nonlin=tf.nn.relu,
+                              filter_length=self.specs['filter_length'],
+                              stride=self.specs['stride'],
+                              pooling=self.specs['pooling'],
+                              padding=self.specs['padding'],
+                              kernel_regularizer=self.l1_l2,
+                              bias_regularizer=self.l1_l2)
+
+        self.lstm = LSTMv1(scope="lstm",
+                           size=self.specs['rnn_units'],
+                           dropout=self.specs['rnn_dropout'],
+                           nonlin=self.specs['rnn_nonlin'],
+                           unit_forget_bias=self.specs['rnn_forget_bias'],
+                           kernel_regularizer=self.l1_l2,
+                           bias_regularizer=self.l1_l2,
+                           return_sequences=self.specs['rnn_seq'])
+
+
+
+    def call(self, X):
+        orig_dim = len(X.shape)
+        # print(orig_dim)
+        x0 = X
+        if orig_dim > 4:
+            # Input shape: [batch_index, k, n_seq, n_ch, time]
+            x0 = tf.squeeze(X, axis=0)
+        elif orig_dim == 4:
+            k, n_seq, n_ch, time = X.shape    # [k, n_seq, n_ch, time]
+            x0 = X
+        elif orig_dim == 2:
+            n_ch, time = X.shape
+            x0 = tf.reshape(X, [1, 1, n_ch, time])  # [1, 1, n_ch, time]
+
+        print('input x0', x0.shape)
+        x1 = self.demix(x0)                # [k, n_seq, time, 1, demix.size]
+        print('demix x1', x1.shape)
+        x1a = tf.squeeze(x1, axis=0)       # [n_seq, time, 1, demix.size]
+        print('squeezed x1a', x1a.shape)
+        x2 = self.tconv1(x1a)              # [n_seq, maxpool, tconv1.size]
+        print('varconv x2', x2.shape)
+        col = tf.multiply(x2.shape[-1], x2.shape[-2])
+        x2a = tf.reshape(x2, [-1, col])  # [n_seq, maxpool*tconv1.size]
+        print('reshaped x2a', x2a.shape)
+        x2b = tf.expand_dims(x2a, axis=0)  # [k, n_seq, maxpool*tconv1.size]
+        print('expanded x2b', x2b.shape)
+        y_ = self.lstm(x2b)                # [k, n_seq, y_shape]
+        print('lstm output y_', y_.shape)
+
+        if orig_dim > 4:
+            y_ = tf.expand_dims(y_, axis=0)  # [batch_index, k, n_seq, y_shape]
+            # print('expanded y_', y_.shape)
+        elif orig_dim == 2:
+            y_ = tf.reshape(y_, [-1])
+#        print('final output y_', y_.shape)
         return y_
 
 

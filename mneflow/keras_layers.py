@@ -127,6 +127,8 @@ class LFTConv(layers.Layer):
                                   ksize=[1, self.pooling, 1, 1],
                                   strides=[1, self.stride, 1, 1],
                                   padding=self.padding)
+            conv = tf.squeeze(conv, axis=2)
+            #print(self.scope, conv.shape)
             return conv
 
 
@@ -190,7 +192,7 @@ class VARConv(layers.Layer):
                                   strides=[1, self.stride, 1, 1],
                                   padding='VALID')
             conv = tf.squeeze(conv, axis=2)
-            # print(conv.shape)
+            #print(self.scope, conv.shape)
             # # print(self.scope, 'call : OK')
             return conv
 
@@ -240,7 +242,7 @@ class DeMixing(layers.Layer):
             demix = self.nonlin(demix + self.b_in)
             x_reduced = tf.expand_dims(demix, -2)
 
-            # print(self.scope, 'call : OK')
+            #print(self.scope, x_reduced.shape)
             return x_reduced
 
 
@@ -428,12 +430,12 @@ class DeConvLayer(layers.Layer):
         tmp = tf.tensordot(x, self.W, axes=[[1], [0]])
         latent = tf.nn.relu(tmp + self.b_in)
 
-        print('x_reduced', latent.shape)
+        #print('x_reduced', latent.shape)
         x_perm = tf.expand_dims(latent, 1)
         print('x_perm', x_perm.shape)
 
         conv_ = tf.einsum('lij, ki -> lkj', x_perm, self.filters)
-        print('deconv:', conv_.shape)
+        #print('deconv:', conv_.shape)
         out = tf.einsum('lkj, jm -> lmk', conv_, self.demixing)
         out = out
         if self.flat_out:
@@ -444,11 +446,12 @@ class DeConvLayer(layers.Layer):
 
 
 class LSTMv1(layers.LSTM):
-    def __init__(self, scope="lstm", size=32, dropout=0.0, nonlin='tanh',
+    def __init__(self, scope="lstm", size=32, dropout=0.5, nonlin='tanh',
                  unit_forget_bias=True, kernel_regularizer=None,
                  bias_regularizer=None, return_sequences=True, **args):
         super(LSTMv1, self).__init__(name=scope, units=size,
                                      activation=nonlin,
+                                     recurrent_activation=tf.nn.sigmoid,
                                      unit_forget_bias=unit_forget_bias,
                                      kernel_regularizer=kernel_regularizer,
                                      bias_regularizer=bias_regularizer,
@@ -465,11 +468,11 @@ class LSTMv1(layers.LSTM):
         return config
 
     def build(self, input_shape):
-        print(self.scope, 'build : OK')
+        #print(self.scope, 'build : OK')
         super(LSTMv1, self).build(input_shape)
 
     def call(self, inputs, mask=None, training=None, initial_state=None):
-        # print(self.scope, 'call : OK')
+        #print(self.scope, inputs.shape)
         return super(LSTMv1, self).call(inputs, mask=mask, training=training,
                                         initial_state=initial_state)
 
