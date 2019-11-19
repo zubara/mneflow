@@ -158,24 +158,24 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
 
 
 def make_example(X, y, input_type='iid', target_type='int'):
-    if input_type in ['iid', 'trials']:
-        feature = {}
-        feature['X'] = tf.train.Feature(float_list=tf.train.FloatList(value=X.flatten()))
-        if target_type == 'int':
-            feature['y'] = tf.train.Feature(int64_list=tf.train.Int64List(value=y.flatten()))
-        else:
-            y = y.astype(np.float32)
-            feature['y'] = tf.train.Feature(float_list=tf.train.FloatList(value=y.flatten()))
-        # Construct the Example proto object
-        example = tf.train.Example(features=tf.train.Features(feature=feature))
-    elif input_type == 'seq':
-        sequence_length = len(X)
-        # print('len x', sequence_length, 'shape x', X.shape)
-        X_ = tf.train.FeatureList(feature=[tf.train.Feature(float_list=tf.train.FloatList(value=s.flatten())) for s in X])
-        y_ = tf.train.FeatureList(feature=[tf.train.Feature(float_list=tf.train.FloatList(value=l.flatten())) for l in y])
-        example = tf.train.SequenceExample(context={},
-                                      feature_lists=tf.train.FeatureLists(feature_list={'X': X_, 'y':y_}))
-        example.context.feature["length"].int64_list.value.append(sequence_length)
+    #if input_type in ['iid', 'trials']:
+    feature = {}
+    feature['X'] = tf.train.Feature(float_list=tf.train.FloatList(value=X.flatten()))
+    if target_type == 'int':
+        feature['y'] = tf.train.Feature(int64_list=tf.train.Int64List(value=y.flatten()))
+    else:
+        y = y.astype(np.float32)
+        feature['y'] = tf.train.Feature(float_list=tf.train.FloatList(value=y.flatten()))
+    # Construct the Example proto object
+    example = tf.train.Example(features=tf.train.Features(feature=feature))
+#    elif input_type == 'seq':
+#        sequence_length = X.shape[0]
+#        #print('make_example_shape x', X.shape, sequence_length)
+#        X_ = tf.train.FeatureList(feature=[tf.train.Feature(float_list=tf.train.FloatList(value=s.flatten())) for s in X])
+#        y_ = tf.train.FeatureList(feature=[tf.train.Feature(float_list=tf.train.FloatList(value=l.flatten())) for l in y])
+#        example = tf.train.SequenceExample(context={},
+#                                      feature_lists=tf.train.FeatureLists(feature_list={'X': X_, 'y':y_}))
+#        example.context.feature["length"].int64_list.value.append(sequence_length)
     #print(token.shape)
     return example
 
@@ -354,10 +354,13 @@ def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
                 datafile = sio.loadmat(fname)
 
             if fname[-3:] == 'npz':
+                print('Importing from npz')
                 datafile = np.load(fname)
 
             data = datafile[array_keys['X']]
+            print(data.shape)
             events = datafile[array_keys['y']]
+            print(events.shape)
 #        if not fs:
 #            print('Specify sampling frequency')
         # return
@@ -400,6 +403,7 @@ def produce_labels(y, return_stats=True):
         return inv
 
 
+
 def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                       overwrite=True, savebatch=1, save_origs=False, val_size=0.2,
                       array_keys={'X': 'X', 'y': 'y'},
@@ -408,7 +412,7 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                       segment=False, augment=False, aug_stride=50, transpose=False,
                       scale=False, scale_interval=None,
                       crop_baseline=False, decimate=False, bp_filter=False,
-                      transform_targets=False):
+                      transform_targets=False, seq_length=None):
 
     r"""
     Produces TFRecord files from input, applies (optional) preprocessing
@@ -529,6 +533,7 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                                              decimate=decimate, bp_filter=bp_filter)
 
                 meta['y_shape'] = y_train[0].shape
+                print(x_train.shape)
             else:
                 # TODO: continous classification
                 data, events = import_continuous(inp, picks=picks,
@@ -546,34 +551,35 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                                                                        fs=fs,
                                                                        transform_targets=transform_targets,
                                                                        bp_filter=bp_filter,
-                                                                       input_type=input_type)
+                                                                       input_type=input_type,
+                                                                       seq_length=seq_length)
 
-                x_train = [np.moveaxis(ii, 0, -1) for ii in x_train]
-                y_train = [np.moveaxis(ii, 0, -1) for ii in y_train]
-                x_val = [np.moveaxis(ii, 0, -1) for ii in x_val]
-                y_val = [np.moveaxis(ii, 0, -1) for ii in y_val]
-                meta['y_shape'] = y_train[0].shape[-2]
+#                x_train = [np.moveaxis(ii, 0, -1) for ii in x_train]
+#                y_train = [np.moveaxis(ii, 0, -1) for ii in y_train]
+#                x_val = [np.moveaxis(ii, 0, -1) for ii in x_val]
+#                y_val = [np.moveaxis(ii, 0, -1) for ii in y_val]
+                meta['y_shape'] = y_train[0].shape[-1]
 
-            if isinstance(x_train, list):
-                meta['n_seq'], meta['n_ch'], meta['n_t'], n_epochs = x_train[0].shape
+            if input_type == 'seq':
+                n_epochs, meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
                 #n_epochs, meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
                 #meta['y_shape'] = y_train[0].shape[-1]
             else:
-                 n_epochs,  meta['n_ch'], meta['n_t'] = x_train.shape
+                 n_epochs, meta['n_ch'], meta['n_t'] = x_train.shape
                  #meta['y_shape'] = y_train.shape[-1]
 
             print('Prepocessed sample shape:', x_train[0].shape)
             print('Target shape actual/metadata: ', y_train[0].shape, meta['y_shape'])
             print('Saving TFRecord# {}'.format(jj))
 
-            # Split val to val and test
-            idx = x_val[0].shape[0] // 2
-            x_test = [x_val[0][0:idx, :, :, :]]
-            y_test = [y_val[0][0:idx, :, :]]
-            x_val = [x_val[0][idx::, :, :, :]]
-            y_val = [y_val[0][idx::, :, :]]
+#            # Split val to val and test
+#            idx = x_val[0].shape[0] // 2
+#            x_test = [x_val[0][0:idx, :, :, :]]
+#            y_test = [y_val[0][0:idx, :, :]]
+#            x_val = [x_val[0][idx::, :, :, :]]
+#            y_val = [y_val[0][idx::, :, :]]
 
-            meta['val_size'] += y_val[0].shape[1]
+            meta['val_size'] += y_val.shape[0]
             meta['train_paths'].append(''.join([savepath, out_name,
                                                 '_train_', str(jj),
                                                 '.tfrecord']))
@@ -585,11 +591,11 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
             _write_tfrecords(x_val, y_val, meta['val_paths'][-1],
                              input_type=input_type, target_type=target_type)
 
-            meta['test_paths'].append(''.join([savepath, out_name,
-                                               '_test_', str(jj),
-                                               '.tfrecord']))
-            _write_tfrecords(x_test, y_test, meta['test_paths'][-1],
-                             input_type=input_type, target_type=target_type)
+#            meta['test_paths'].append(''.join([savepath, out_name,
+#                                               '_test_', str(jj),
+#                                               '.tfrecord']))
+#            _write_tfrecords(x_test, y_test, meta['test_paths'][-1],
+#                             input_type=input_type, target_type=target_type)
 
 #                if save_origs:
 #                    meta['orig_paths'].append(''.join([savepath, out_name,
@@ -679,7 +685,7 @@ def _combine_labels(labels, new_mapping):
     return new_labels, keep_ind
 
 
-def _segment(data, segment_length=200, augment=False, stride=25, input_type='iid'):
+def _segment(data, segment_length=200, seq_length=None, augment=False, stride=25, input_type='iid'):
     """
     Parameters:
     -----------
@@ -704,15 +710,28 @@ def _segment(data, segment_length=200, augment=False, stride=25, input_type='iid
                                                   shape=(n_epochs, n_ch, nrows, segment_length),
                                                   strides=(a, b, c, c))
             x4D = x4D[:, :, ::stride, :]
+            # [n_epochs,n_ch, n_rows, n_t]
             x4D = np.swapaxes(x4D, 2, 1)
+            # [n_epochs, n_rows, n_ch, n_t]
+            n_seqs = x4D.shape[1]
+            #print(n_seqs)
             if input_type != 'seq':
-                x4D = x4D.reshape([n_epochs * x4D.shape[1], 1, n_ch, segment_length], order='C')
+                x4D = x4D.reshape([n_epochs * n_seqs, 1, n_ch, segment_length], order='C')
+            elif seq_length:
+                #seqs_ = min(n_seq//segment_length
+                seq_bins = np.arange(0, n_seqs+1, seq_length)[1:]
+                x4D = np.split(x4D, seq_bins, axis=1)[:-1]
+                x4D = np.concatenate(x4D)
+                print('n_seq:', n_seqs, 'shape:', x4D.shape, 'dropped:', n_seqs%x4D.shape[1])
+                #x4D = x4D.reshape([n_epochs * x4D.shape[1], 1, n_ch, segment_length], order='C')
+
             x_out.append(x4D)
+            #[n_epochs * n_rows, 1, n_ch, n_t]
         else:
             bins = np.arange(0, n_t+1, segment_length)[1:]
-            xb = np.split(xx, bins, axis=-1)[:-1]
-            x_out.append(np.concatenate(xb))
-    if input_type != 'seq':
+            xb = np.concatenate(np.split(xx, bins, axis=-1)[:-1])
+            x_out.append(np.expand_dims(xb,1))
+    if input_type != 'seq' or seq_length:
         return np.concatenate(x_out, 0)
     else:
         return(x_out)
@@ -757,7 +776,8 @@ def partition(data, test_indices):
 
 def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
                           val_size=0.1, aug_stride=10, transform_targets=True,
-                          bp_filter=False, fs=None, decimate=None, input_type='iid'):
+                          bp_filter=False, fs=None, decimate=None, input_type='iid',
+                          seq_length=None):
     """
     Returns
     -------
@@ -772,7 +792,7 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
                                    h_freq=bp_filter[1],
                                    method='iir', verbose=False)
     if transform_targets:
-        poles = .02*np.ones(50)
+        poles = 1./aug_stride*np.ones(aug_stride)
         # print(targets.shape)
         targets_new = [np.convolve(targets[0,i,...], poles, mode='same') for i in range(5)]
         targets = np.stack(targets_new)[None,...]
@@ -783,11 +803,13 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
     if scale:
         data -= data.mean(-1, keepdims=True)
         data /= data.std()
-        y_median = np.median(targets[0, :, :], axis=-1)
+        y_median = np.median(targets[0, :, :], axis=-1, keepdims=True)
         # print(y_median.shape)
         # y_max = np.max(targets[0,0,...])
-        q1, q5 = np.percentile(targets[0, ...], [5, 95], axis=-1)
+        q1, q5 = np.percentile(targets[0, ...], [2.5, 97.5], axis=-1, keepdims=True)
         qrange = np.array(q5) - np.array(q1)
+        targets -= y_median[None,...]
+        targets /= qrange[None,...]
         # print(qrange.shape)
 
     if decimate:
@@ -802,29 +824,30 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
     if segment:
         # return
         x_train = _segment(x_train, segment_length=segment, augment=augment,
-                           stride=aug_stride, input_type=input_type)
+                           stride=aug_stride, input_type=input_type, seq_length=seq_length)
 
         x_val = _segment(x_val, segment_length=segment, augment=augment,
-                         stride=aug_stride, input_type=input_type)
+                         stride=aug_stride, input_type=input_type, seq_length=seq_length)
         y_train = _segment(y_train, segment_length=segment, augment=augment,
-                           stride=aug_stride, input_type=input_type)
+                           stride=aug_stride, input_type=input_type, seq_length=seq_length)
         y_val = _segment(y_val, segment_length=segment, augment=augment,
-                         stride=aug_stride, input_type=input_type)
+                         stride=aug_stride, input_type=input_type, seq_length=seq_length)
         print('segment:', y_val[0].shape)
     if transform_targets:
 
         if input_type == 'seq':
             y_train = [np.mean(y_tr[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_tr in y_train]
             y_val = [np.mean(y_v[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_v in y_val]
-            # y_train = [np.mean(y_tr[...,-25:],axis=-1) for y_tr in y_train]
-            # y_val = [np.mean(y_v[...,-25:], axis=-1) for y_v in y_val]
+#            y_train = [np.mean(y_tr[..., -aug_stride:], axis=-1) for y_tr in y_train]
+#            y_val = [np.mean(y_v[..., -aug_stride:], axis=-1) for y_v in y_val]
+            print('preproc cont', len(x_train), x_train[0].shape, y_train[0].shape)
         else:
-            y_train = np.mean(y_train[..., -aug_stride:], axis=-1)
-            y_val = np.mean(y_val[..., -aug_stride:], axis=-1)
-            y_train -= y_median[None, None, :]
-            y_val -= y_median[None, None, :]
-            y_train /= qrange[None, None, :]
-            y_val /= qrange[None, None, :]
-    print('preproc cont', y_train[0].shape, y_val[0].shape)
+            y_train = np.mean(y_train[...,0, -aug_stride:], axis=-1, keepdims=True)
+            y_val = np.mean(y_val[...,0, -aug_stride:], axis=-1, keepdims=True)
+#            y_train -= y_median[None,0, :]
+#            y_val -= y_median[None,0,  :]
+#            y_train /= qrange[None,0, :]
+#            y_val /= qrange[None, 0, :]
+            print('preproc cont', x_train.shape, y_train.shape)
     return x_train, y_train, x_val, y_val
 

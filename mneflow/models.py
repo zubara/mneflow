@@ -4,12 +4,23 @@ Defines mneflow.models.Model parent class and the implemented models as its
 subclasses. Implemented models inherit basic methods from the parent class.
 
 """
-from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing, DeConvLayer
+from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing
+import itertools
 import tensorflow as tf
 import numpy as np
+
+from mne import channels, evoked, create_info
+from scipy.signal import freqz  # , welch
+from scipy.stats import spearmanr
+
 from sklearn.covariance import ledoit_wolf
+from sklearn.metrics import confusion_matrix
+
+from matplotlib import pyplot as plt, patches as ptch, collections
 import csv
 import os
+from .keras_layers import LSTMv1
+
 
 class Model(object):
     """
@@ -52,8 +63,11 @@ class Model(object):
         #print(len(self.X0.shape))
         if len(self.X0.shape) == 3:
             self.X = tf.expand_dims(self.X0, -1)
+#        elif len(self.X0.shape) > 4:
+#            self.X = tf.squeeze(self.X0, axis=0)
         else:
             self.X = self.X0
+        #print('X:', self.X.shape)
         self.rate = tf.placeholder(tf.float32, name='rate')
         self.dataset = Dataset
         self.optimizer = Optimizer
@@ -134,6 +148,7 @@ class Model(object):
         if not self.trained:
             self.sess.run(tf.global_variables_initializer())
             self.min_val_loss = np.inf
+            self.t_hist = []
 
         patience_cnt = 0
         for i in range(n_iter+1):
@@ -148,6 +163,7 @@ class Model(object):
                 self.v_acc, v_loss = self.sess.run([self.accuracy, self.cost],
                                                    feed_dict={self.handle: self.val_handle,
                                                               self.rate: 1.})
+                self.t_hist.append([t_loss, v_loss])
 
                 if self.min_val_loss >= v_loss + min_delta:
                     self.min_val_loss = v_loss
@@ -158,6 +174,10 @@ class Model(object):
                 else:
                     patience_cnt += 1
                     print('* Patience count {}'.format(patience_cnt))
+                    if  patience_cnt >= early_stopping//2 and self.specs['dropout'] != 1:
+                        print('Setting dropout to 1.')
+                        self.specs['dropout'] = 1.
+                        #self.optimizer.params['l1_lambda'] *= 10.
                 if patience_cnt >= early_stopping:
                     print("early stopping...")
                     self.saver.restore(self.sess, ''.join([self.model_path,
@@ -171,6 +191,9 @@ class Model(object):
                       % (i, t_loss, acc, v_loss, self.v_acc))
         self.train_params = (eval_step, early_stopping, i)
         self.trained = True
+
+    def plot_hist(self):
+        plt.plot(np.array(self.t_hist.T))
 
 
     def load(self):
@@ -187,8 +210,16 @@ class Model(object):
         self.v_acc = self.sess.run([self.accuracy],
                                    feed_dict={self.handle: self.val_handle,
                                               self.rate: 1.})
+        self.trained = True
 
-    def evaluate_performance(self, data_path, batch_size=None):
+
+    def add_dataset(self, data_path):
+        self.dataset.test = self.dataset._build_dataset(data_path,
+                                                   n_batch=None)
+        self.test_iter, self.test_handle = self._start_iterator(self.dataset.test)
+
+
+    def evaluate_performance(self, data_path=None, batch_size=None):
         """
         Compute performance metric on a TFR dataset specified by path
 
@@ -196,20 +227,20 @@ class Model(object):
         ----------
         data_path : str, list of str
                     path to .tfrecords file(s).
-
-        batch_size : NoneType, int
-                    whether to split the dataset into batches.
         """
-        test_dataset = self.dataset._build_dataset(data_path,
-                                                   n_batch=batch_size)
-        test_iter, self.test_handle = self._start_iterator(test_dataset)
-        acc = self.sess.run(self.accuracy,
-                            feed_dict={self.handle: self.test_handle,
+        if not data_path:
+            print('Specify data_path!')
+            return
+
+        elif not hasattr(self.dataset, 'test'):
+            self.add_dataset(data_path)
+
+        acc = self.sess.run(self.accuracy, feed_dict={self.handle: self.test_handle,
                                        self.rate: 1.})
         print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
         return np.mean(acc)
 
-    def predict(self, data_path=None, batch_size=None):
+    def predict(self, data_path):
         """
         Compute performance metric on a TFR dataset specified by path
 
@@ -221,16 +252,17 @@ class Model(object):
         batch_size : NoneType, int
                     whether to split the dataset into batches.
         """
-        if data_path:
-            test_dataset = self.dataset._build_dataset(data_path,
-                                                       n_batch=batch_size)
-            test_iter, test_handle = self._start_iterator(test_dataset)
+        if not data_path:
+            print('Specify data_path!')
+            return
         else:
-            test_iter, test_handle = self._start_iterator(self.dataset.val)
-        pred, true = self.sess.run([self.y_pred, self.y_],
-                                   feed_dict={self.handle: test_handle,
+
+            self.add_dataset(data_path)
+
+            pred, true = self.sess.run([self.y_pred, self.y_],
+                                   feed_dict={self.handle: self.test_handle,
                                               self.rate: 1.})
-        return pred, true
+            return pred, true
 
     def update_log(self):
         appending = os.path.exists(self.model_path + self.scope + '_log.csv')
@@ -330,9 +362,8 @@ class Model(object):
                 whether to return percentages (if True) or counts (False)
         """
 
-        from matplotlib import pyplot as plt
-        from sklearn.metrics import confusion_matrix
-        import itertools
+
+
         if dataset == 'validation':
             feed_dict = {self.handle: self.val_handle, self.rate: 1.}
         elif dataset == 'training':
@@ -549,9 +580,9 @@ class LFCNN(Model):
                 prediction of the target variable
 
         """
-        self.scope = 'var-cnn'
+        self.scope = 'lf-cnn'
 
-        self.demix = DeMixing(n_ls=self.specs['n_ls'])
+        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
 
         self.tconv1 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
@@ -559,75 +590,273 @@ class LFCNN(Model):
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
+        self.tconv_out = self.tconv1(self.demix(self.X))
 
         self.fin_fc = Dense(size=np.prod(self.y_shape),
                             nonlin=tf.identity, dropout=self.rate)
 
-        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
+        y_pred = self.fin_fc(self.tconv_out)
+
         return y_pred
 
-    def plot_out_weights(self, tmin=0):
-        """
-        Plots the weights of the output layer
 
-        """
-        from matplotlib import pyplot as plt
 
-        f, ax = plt.subplots(1, np.prod(self.y_shape))
-        if not isinstance(ax, np.ndarray):
-            ax = [ax]
-        for i in range(len(ax)):
-            F = self.out_weights[..., i]
-            times = tmin+self.specs['stride']*np.arange(F.shape[-1])/float(self.fs)
-            t_step = np.diff(times)[0]
-            pat, t = np.where(F == np.max(F))
-            ax[i].pcolor(times, np.arange(self.specs['n_ls']), F, cmap='bone_r')
-            ax[i].plot(times[t]+.5*t_step, pat+.5, markeredgecolor='red',
-                       markerfacecolor='none', marker='s', markersize=10,
-                       markeredgewidth=2)
-        plt.show()
-
-    def compute_patterns(self, megdata=None, output='patterns', norm_spect=True):
+    def compute_patterns(self, data_path=None, output='patterns'):
         """
         Computes spatial patterns from filter weights.
 
         Required for visualization.
         """
 
-        vis_dict = {self.handle: self.train_handle, self.rate: 1}
-        spatial = self.sess.run(self.demix.W, feed_dict=vis_dict)
-        self.filters = np.squeeze(self.sess.run(self.tconv1.filters,
-                                                feed_dict=vis_dict))
-        self.patterns = spatial
-        data = self.sess.run(self.X, feed_dict=vis_dict)
-        data = np.squeeze(data.transpose([0, 2, 1, 3]))
-        data = data.reshape([-1, data.shape[-1]])
-        self.lat_tcs = np.dot(data,spatial).T
+        if data_path:
+            self.add_dataset(data_path)
+        elif not hasattr(self.dataset, 'test') and not data_path:
+            print('Specify data path')
+            return
+
+        vis_dict = {self.handle: self.test_handle, self.rate: 1}
+        # Spatial stuff
+        data, demx = self.sess.run([self.X,self.demix.W], feed_dict=vis_dict)
+        #print('data:', data.shape)
+#        d = data[0, :, :2, 0].copy()
+#        d1 = data[1, :, :2, 0].copy()
+#        d2 = data[-1, :, -2:, 0].copy()
+#        d3 = data[-1, :, :2, 0].copy()
+        data = np.squeeze(data.transpose([1, 2, 3, 0]))
+        data = data.reshape([data.shape[0],-1], order='F')
+#        print(np.all(d == data[:, 0:2]))
+#        print(np.all(d1 == data[:, 101:103]))
+#        print(np.all(d2 == data[:, -2:]))
+#        print(np.all(d3 == data[:, -101:-99]))
+
+        self.dcov, _ = ledoit_wolf(data.T)
+        self.lat_tcs = np.dot(demx.T, data)
+        del data
+
         if 'patterns' in output:
-            self.dcov, _ = ledoit_wolf(data)
-            self.patterns = np.dot(self.dcov, self.patterns)
-        if 'full' in output:
-            lat_cov, _ = ledoit_wolf(np.dot(data, spatial))
-            self.lat_prec = np.linalg.inv(lat_cov)
-            self.patterns = np.dot(self.patterns, self.lat_prec)
+            self.patterns = np.dot(self.dcov, demx)
+            if 'full' in output:
+                self.lat_cov = ledoit_wolf(self.lat_tcs)
+                self.lat_prec = np.linalg.inv(self.lat_cov)
+                self.patterns = np.dot(self.patterns, self.lat_prec)
+        else:
+            self.patterns = demx
 
-        if norm_spect:
-            from scipy.signal import welch
-            from spectrum import aryule
-            f, psd = welch(self.lat_tcs,fs=1000,nperseg=256)
-            self.d_psds = psd[:,:-1]
-            ar = []
-            for i, ltc in enumerate(self.lat_tcs):
-                coef, _, _ = aryule(ltc, self.specs['filter_length'])
-                ar.append(coef[None,:])
-            self.ar = np.concatenate(ar)
-        self.out_weights, self.out_biases = self.sess.run([self.fin_fc.w, self.fin_fc.b], feed_dict=vis_dict)
+        #
+        kern, tc_out, out_w = self.sess.run([self.tconv1.filters, self.tconv_out,
+                                       self.fin_fc.w], feed_dict=vis_dict)
+        print('out_w:', out_w.shape)
+        #Temporal conv stuff
+        self.filters = np.squeeze(kern)
+        self.tc_out = np.squeeze(tc_out)
+        self.out_weights  = np.reshape(out_w, [-1, self.specs['n_ls'],
+                                        np.prod(self.y_shape)])
 
-        self.out_weights = np.reshape(self.out_weights,
-                                      [self.specs['n_ls'], -1, np.prod(self.y_shape)])
+        print('demx:', demx.shape, 'kern:', self.filters.shape,
+              'tc_out:', self.tc_out.shape, 'out_w:', self.out_weights.shape)
 
-    def plot_patterns(self, sensor_layout=None, sorting='l2',
-                      spectra=True, fs=None, scale=False, names=False, norm_spectra='ar'):
+        self.get_output_correlations()
+
+        #order, ts = self.spearman_features(percentile=90)
+
+
+        self.out_biases = self.sess.run(self.fin_fc.b, feed_dict=vis_dict)
+        #self.out_weights += self.out_biases[None,None,:]
+
+#        self.out_weights = np.reshape(self.out_weights,
+#                                      [self.specs['n_ls'], -1, np.prod(self.y_shape)])
+
+
+    def plot_out_weights(self, pat=None, t=None, tmin=-0.1, sorting='weights'):
+        """
+        Plots the weights of the output layer
+
+        """
+        vmin = np.min(self.out_weights)
+        vmax = np.max(self.out_weights)
+
+        f, ax = plt.subplots(1, np.prod(self.y_shape))
+        if not isinstance(ax, np.ndarray):
+            ax = [ax]
+        for i in range(len(ax)):
+            if 'weight' in sorting:
+                F = self.out_weights[..., i].T
+            elif 'spear' in sorting:
+                F = self.rfocs[..., i].T
+            else:
+                F = self.rfocs[..., i].T * self.out_weights[..., i].T
+            tstep = self.specs['stride']/float(self.fs)
+            times = tmin+tstep*np.arange(F.shape[-1])
+
+            im = ax[i].pcolor(times, np.arange(self.specs['n_ls']+1), F, cmap='bone_r', vmin=vmin, vmax=vmax)
+            r = []
+            if np.any(pat) and np.any(t):
+                r = [ptch.Rectangle((times[t], p), width=tstep, height=1, angle=0.0) for p, t in zip(pat[i], t[i])]
+                pc = collections.PatchCollection(r, facecolor='red', alpha=.5,
+                             edgecolor='red')
+                ax[i].add_collection(pc)
+        f.colorbar(im, ax=ax[-1])
+        plt.show()
+
+    def get_output_correlations(self):
+        self.rfocs=[]
+        flat_feats = self.tc_out.reshape(self.tc_out.shape[0],-1)
+        y_true = self.sess.run(self.y_,
+                               feed_dict={self.handle: self.test_handle, self.rate: 1.})
+        for y_ in y_true.T:
+            rfocs = np.array([spearmanr(y_, f)[0] for f in flat_feats.T])
+            self.rfocs.append(rfocs.reshape(self.out_weights.shape[:-1]))
+        self.rfocs = np.dstack(self.rfocs)
+
+        if np.any(np.isnan(self.rfocs)):
+            self.rfocs[np.isnan(self.rfocs)] = 0
+
+
+
+
+#        comp_weights = np.nansum(self.rfocs,1)
+#        comp_inds = np.where(comp_weights>=np.percentile(comp_weights,percentile))[0]
+#        sorting = np.argsort(comp_weights[comp_inds])[::-1]
+#        print(comp_inds[sorting], comp_weights[comp_inds[sorting]])
+#        comp_inds = np.where(self.rfocs>=np.percentile(self.rfocs,percentile))
+#        sorting = np.argsort(self.rfocs[comp_inds])[::-1]
+#        print(self.rfocs[comp_inds[0][sorting],comp_inds[1][sorting]])
+#        return np.unique(comp_inds[0][sorting[::-1]])
+#        return comp_inds[0][sorting], comp_inds[1][sorting]
+
+#    def pc_features(self):
+#        from sklearn.decomposition import pca
+#        pc = pca.PCA(3)
+#        flat_feats = self.tc_out.reshape(self.tc_out.shape[0],-1)
+#        pcf = pc.fit_transform(flat_feats)
+##        y_true = self.sess.run(self.y_,
+##                               feed_dict={self.handle: self.test_handle, self.rate: 1.})
+##
+##        rfocs = [spearmanr(y_true, f)[0] for f in flat_feats.T]
+##        self.rfocs = np.array(rfocs).reshape(self.tc_out.shape[1:]).T
+##        if np.any(np.isnan(self.rfocs)):
+##            self.rfocs[np.isnan(self.rfocs)] = 0
+##
+##        comp_weights = np.nansum(self.rfocs,1)
+##        comp_inds = np.where(comp_weights>=np.percentile(comp_weights,percentile))[0]
+##        sorting = np.argsort(comp_weights[comp_inds])[::-1]
+##        print(comp_inds[sorting], comp_weights[comp_inds[sorting]])
+##        comp_inds = np.where(self.rfocs>=np.percentile(self.rfocs,99))
+##        sorting = np.argsort(self.rfocs[comp_inds])[::-1]
+##        print(self.rfocs[comp_inds[0][sorting],comp_inds[1][sorting]])
+##
+##        return np.unique(comp_inds[0][sorting[::-1]])
+#        return comp_inds[sorting]
+
+    def plot_waveforms(self, tmin=-.1):
+        f, ax = plt.subplots(2,2)
+        nt = self.dataset.h_params['n_t']
+        self.waveforms = np.squeeze(self.lat_tcs.reshape([self.specs['n_ls'],  -1, nt]).mean(1))
+        tstep = 1/float(self.fs)
+        times = tmin+tstep*np.arange(nt)
+        [ax[0,0].plot(times,wf+1e-1*i) for i, wf in enumerate(self.waveforms) if i not in self.uorder]
+        ax[0,0].plot(times,self.waveforms[self.uorder[0]]+1e-1*self.uorder[0],'k.')
+        [ax[0,1].plot(ff+.1*i) for i, ff in enumerate(self.filters.T)]
+        ax[0,1].plot(self.filters.T[self.uorder[0]]+1e-1*self.uorder[0],'k.')
+        conv = np.convolve(self.filters.T[self.uorder[0]],self.waveforms[self.uorder[0]],mode='same')
+        vmin = conv.min()
+        vmax = conv.max()
+        ax[1,0].plot(times, conv)
+        bias = self.sess.run(self.tconv1.b)
+        ax[1,0].hlines(-1*bias[self.uorder[0]],times[0], times[-1], linestyle='--')
+        strides = np.arange(0,len(times) + 1,self.specs['stride'] )[1:]
+        pool_bins = np.arange(0,len(times) + 1,self.specs['pooling'] )[1:]
+        ax[1,0].vlines(times[strides], vmin, vmax, linestyle='--', color='c')
+        ax[1,0].vlines(times[pool_bins], vmin, vmax, linestyle='--', color='m')
+        if self.out_weights.shape[-1] == 1:
+            ax[1,1].pcolor(self.F)
+            ax[1,1].hlines(self.uorder[0]+.5,0,self.F.shape[1], color='r')
+        else:
+            ax[1,1].plot(self.out_weights[:,self.uorder[0],:], 'k*')
+        #plt.show()
+
+
+#    def plot_filters(self):
+#        plt.figure()
+
+
+        #plt.figure()
+        #[plt.plot(np.convolve(ff,self.out_weights[...,i,0])+.1*i) for i, ff in enumerate(self.filters.T)]
+
+#        plt.show()
+#        f2 = plt.figure()
+
+
+
+
+    def sorting(self, sorting='best'):
+        order = []
+        ts = []
+
+        if sorting == 'l2':
+            order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=2))
+            contribution = self.out_weights[...,i].T
+            ts = None
+#        elif sorting == 'l1':
+#            order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=1))
+        #elif sorting == '95':
+
+        elif sorting == 'best_spatial':
+            #nfilt = np.prod(self.y_shape)
+            for i in range(np.prod(self.y_shape)):
+                contribution = self.out_weights[...,i].T * self.rfocs[...,i].T
+                pat = np.argmax(contribution.sum(-1))
+                order.append(np.tile(pat,contribution.shape[1]))
+                ts.append(np.arange(contribution.shape[-1]))
+
+        elif sorting == 'best':
+            #nfilt = np.prod(self.y_shape)
+
+            #_ = self.spearman_features()
+            for i in range(np.prod(self.y_shape)):
+                contribution = np.abs(self.out_weights[...,i].T * self.rfocs[...,i].T)
+                pat, t = np.where(contribution==np.max(contribution))
+                order.append(pat)
+                ts.append(t)
+
+        elif sorting == 'best_weight':
+            for i in range(np.prod(self.y_shape)):
+                contribution = self.out_weights[...,i].T
+                pat, t = np.where(contribution==np.max(contribution))
+                order.append(pat)
+                ts.append(t)
+
+        elif sorting == 'best_spear':
+            for i in range(np.prod(self.y_shape)):
+                contribution = self.rfocs[...,i].T
+                pat, t = np.where(contribution==np.max(contribution))
+                order.append(pat)
+                ts.append(t)
+
+        elif isinstance(sorting,float):
+            #nfilt = np.prod(self.y_shape)
+
+            #_ = self.spearman_features()
+            for i in range(np.prod(self.y_shape)):
+                contribution = self.out_weights[...,i].T * self.rfocs[...,i].T
+                pat, t = np.where(contribution>=np.percentile(contribution, sorting))
+                order.append(pat)
+                ts.append(t)
+
+            #self.plot_out_weights(pat=order, t=ts)
+        else:
+            print('ELSE!')
+            order = np.arange(self.specs['n_ls'])
+            contribution = self.out_weights[...,i].T
+
+        self.F = contribution
+        order = np.array(order)
+        ts = np.array(ts)
+        #print(order, ts)
+        return order, ts
+
+    def plot_patterns(self, sensor_layout=None, sorting='l2', percentile=90,
+                      spectra=False, scale=False, names=False):
         """
         Plot informative spatial activations patterns for each class of stimuli
 
@@ -658,9 +887,60 @@ class LFCNN(Model):
         Figure
 
         """
-        from mne import channels, evoked, create_info
-        import matplotlib.pyplot as plt
-        from scipy.signal import freqz, welch
+        if sensor_layout:
+            lo = channels.read_layout(sensor_layout)
+            info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
+            self.fake_evoked = evoked.EvokedArray(self.patterns, info)
+
+        order, ts = self.sorting(sorting)
+        #print(order, ts)
+        uorder = uniquify(order.ravel())
+        self.uorder = uorder
+        #print(uorder)
+        #uorder = np.array(uorder[ind])
+
+        if sensor_layout:
+            self.fake_evoked.data[:, :len(uorder)] = self.fake_evoked.data[:, uorder]
+            self.fake_evoked.crop(tmax=float(len(uorder)))
+            if scale:
+                self.fake_evoked.data[:, :len(uorder)] /= self.fake_evoked.data[:, :len(uorder)].std(0)
+#            self.fake_evoked.data[:, len(uorder):] *= 0
+
+        nfilt = max(np.prod(self.y_shape), 8)
+        nrows = max(1, len(uorder)//nfilt)
+        ncols = min(nfilt, len(uorder))
+
+        f, ax = plt.subplots(nrows, ncols, sharey=True)
+        f.set_size_inches([16,9])
+        ax = np.atleast_2d(ax)
+        #zz = 0
+        for i in range(nrows):
+                self.fake_evoked.plot_topomap(times=np.arange(i*ncols,  (i+1)*ncols, 1.),
+                                              axes=ax[i], colorbar=False,
+                                              vmax=np.percentile(self.fake_evoked.data[:, :len(uorder)], 95),
+                                              scalings=1, time_format='output # %g',
+                                              title='Informative patterns ('+str(sorting)+')')
+
+        if np.any(ts):
+            self.plot_out_weights(pat=order, t=ts, sorting=sorting)
+        else:
+            self.plot_out_weights()
+
+        return
+
+    def plot_spectra(self, fs=None, sorting='l2',  norm_spectra=None, percentile=99):
+        if norm_spectra:
+            from scipy.signal import welch
+            from spectrum import aryule
+            if norm_spectra == 'welch' and not hasattr(self, 'd_psds'):
+                    f, psd = welch(self.lat_tcs,fs=1000,nperseg=256)
+                    self.d_psds = psd[:,:-1]
+            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
+                ar = []
+                for i, ltc in enumerate(self.lat_tcs):
+                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
+                    ar.append(coef[None,:])
+                self.ar = np.concatenate(ar)
         if fs:
             self.fs = fs
         elif self.dataset.h_params['fs']:
@@ -669,82 +949,23 @@ class LFCNN(Model):
             print('Sampling frequency not specified, setting to 1.')
             self.fs = 1.
 
-        self.ts = []
-        if sensor_layout:
-            lo = channels.read_layout(sensor_layout)
-            info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
-            self.fake_evoked = evoked.EvokedArray(self.patterns, info)
+        order, ts = self.sorting(sorting)
+        print(order)
+        uorder = uniquify(order.ravel())
+        #self.uorder = uorder
+        print(uorder)
+        out_filters = self.filters[:, uorder]
 
-            nfilt = min(np.prod(self.y_shape), 8)
 
-        if sorting == 'l2':
-            order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=2))
-        elif sorting == 'l1':
-            order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=1))
-        elif sorting == 'contribution':
-            nfilt = 3
-            order = []
-            for i in range(np.prod(self.y_shape)):
-                inds = np.argsort(self.out_weights[..., i].sum(-1))[::-1]
-                order += list(inds[:nfilt])
-            order = np.array(order)
-        elif sorting == 'best_spatial':
-            nfilt = np.prod(self.y_shape)
-            order = []
-            for i in range(np.prod(self.y_shape)):
-                pat = np.argmax(self.out_weights[..., i].sum(-1))
-                order.append(pat)
-            order = np.array(order)
-        elif sorting == 'best':
-            nfilt = np.prod(self.y_shape)
-            order = []
-            for i in range(np.prod(self.y_shape)):
-                pat, t = np.where(self.out_weights[..., i] == np.max(self.out_weights[..., i]))
-                order.append(pat[0])
-                self.ts.append(t)
-            order = np.array(order)
-        elif sorting == 'best_neg':
-            nfilt = np.prod(self.y_shape)
-            order = []
-            for i in range(np.prod(self.y_shape)):
-                pat = np.argmin(self.out_weights[..., i].sum(-1))
-                order.append(pat)
-        elif sorting == 'worst':
-            nfilt = np.prod(self.y_shape)
-            order = []
-            weight_sum = np.sum(np.abs(self.out_weights).sum(-1), -1)
-            pat = np.argsort(weight_sum)
-            order = np.array(pat[:nfilt])
+        nfilt = max(np.prod(self.y_shape), 8)
+        nrows = max(1, len(uorder)//nfilt)
+        ncols = min(nfilt, len(uorder))
 
-        elif isinstance(sorting, list):
-            nfilt = len(sorting)
-            order = np.array(sorting)
-        else:
-            order = np.arange(self.specs['n_ls'])
-        if sensor_layout:
-            self.fake_evoked.data[:, :len(order)] = self.fake_evoked.data[:, order]
-            if scale:
-                self.fake_evoked.data[:, :len(order)] /= self.fake_evoked.data[:, :len(order)].max(0)
-            self.fake_evoked.data[:, len(order):] *= 0
-        self.out_filters = self.filters[:, order]
-        order = np.array(order)
-        if spectra and sensor_layout:
-            z = 2
-        else:
-            z = 1
-            nfilt = 8
-        nrows = max(1, len(order)//nfilt)
-        ncols = min(nfilt, len(order))
-
-        f, ax = plt.subplots(z*nrows, ncols, sharey=True)
+        f, ax = plt.subplots(nrows, ncols, sharey=True)
         f.set_size_inches([16,9])
         ax = np.atleast_2d(ax)
-        zz = 0
         for i in range(nrows):
-
-            if spectra:
-                zz = 0
-                for jj, flt in enumerate(self.out_filters[:, i*ncols:(i+1)*ncols].T):
+                for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
 
                     if norm_spectra == 'ar':
                         w, h = freqz(flt, self.ar[jj], worN=128)
@@ -755,23 +976,17 @@ class LFCNN(Model):
                     elif norm_spectra == 'plot_ar':
                         w0, h0 = freqz(flt, 1,worN=128)
                         w, h = freqz(self.ar[jj],1,worN=128)
-                        ax[z*i+zz, jj].plot(w/np.pi*self.fs/2, np.abs(h0))
+                        ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h0))
                         print(h0.shape, h.shape, w.shape)
                     else:
                         w, h = freqz(flt, 1, worN=128)
                     #else:
                      #   density = np.abs(h)
-                    ax[z*i+zz, jj].plot(w/np.pi*self.fs/2, np.abs(h).T)
-                zz=1
+                    ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h).T)
 
-            if sensor_layout:
-                self.fake_evoked.plot_topomap(times=np.arange(i*ncols,  (i+1)*ncols, 1.),
-                                              axes=ax[z*i+zz], colorbar=False,
-                                              vmax=np.percentile(self.fake_evoked.data[:, :len(order)], 95),
-                                              scalings=1, time_format='class # %g',
-                                              title='Informative patterns ('+sorting+')')
 
-        return f
+
+
 
 
 class VARCNN(Model):
@@ -850,7 +1065,7 @@ class VARCNNR(Model):
 
     def build_graph(self):
         self.scope = 'var-cnn'
-        self.demix = DeMixing(n_ls=self.specs['n_ls'])
+        self.demix = DeMixing(n_ls=self.specs['n_ls'],axis=1)
 
         tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
@@ -859,19 +1074,14 @@ class VARCNNR(Model):
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-        #fc1 = Dense(size=64,
-        #               nonlin=tf.identity, dropout=self.rate)
-
-        fin_fc = Dense(size=self.y_shape[0],
+        fin_fc = Dense(size=np.prod(self.y_shape),
                        nonlin=tf.identity, dropout=self.rate)
 
         y_pred = fin_fc(tconv1(self.demix(self.X)))
         return y_pred
 
-#def DEEP4(Model):
 
-
-class LFCNNR(LFCNN):
+class LFLSTM(LFCNN):
 
     """VAR-CNN
 
@@ -902,7 +1112,12 @@ class LFCNNR(LFCNN):
     def build_graph(self):
         self.scope = 'var-cnn'
 
-        self.demix = DeMixing(n_ls=self.specs['n_ls'],axis=1)
+        self.demix = DeMixing(n_ls=self.specs['n_ls'],axis=2)
+        dmx = self.demix(self.X)
+        #print('dmx-out:', dmx.shape)
+        dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],self.specs['n_ls']])
+        dmx = tf.expand_dims(dmx,-1)
+        print('dmx-sqout:', dmx.shape)
 
         self.tconv1 = LFTConv(scope="conv", #n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
@@ -911,8 +1126,54 @@ class LFCNNR(LFCNN):
                               pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
-        self.fin_fc = Dense(size=np.prod(self.y_shape),
-                            nonlin=tf.identity, dropout=self.rate)
+        features = self.tconv1(dmx)
+        print('features:', features.shape)
+        features = tf.reshape(features,[-1, self.dataset.h_params['n_seq'], tf.multiply(features.shape[1], features.shape[2])])
+        #features = tf.expand_dims(features, 0)
+        print('flat features:', features.shape)
+        self.lstm = LSTMv1(scope="lstm-weights",
+                           size=self.specs['n_ls'],
+                           dropout=self.rate,
+                           nonlin=tf.tanh,
+                           unit_forget_bias=True,
+                           return_sequences=True,
+                           unroll=False)
 
-        y_pred = self.fin_fc(self.tconv1(self.demix(self.X)))
+
+#        self.lstm = LSTMv1(scope="lstm",
+#                   size=self.specs['n_ls'],
+#                   dropout=self.rate,
+#                   nonlin=tf.nn.tanh,
+#                   unit_forget_bias=True,
+#                   return_sequences=True,
+#                   #kernel_initializer='glorot_uniform',
+#                   #recurrent_initializer='orthogonal',
+#                   #bias_initializer='zeros',
+#                   #kernel_regularizer=tf.keras.regularizers.l1(self.optimizer.params['l1_lambda']),
+#                   #recurrent_regularizer=tf.keras.regularizers.l1(self.optimizer.params['l1_lambda']),
+#                   #bias_regularizer=tf.keras.regularizers.l1(self.optimizer.params['l1_lambda']),
+#                   #activity_regularizer=tf.keras.regularizers.l1(self.optimizer.params['l1_lambda']),
+#                   #kernel_constraint=tf.keras.constraints.max_norm(1.),
+#                   #recurrent_constraint=tf.keras.constraints.max_norm(1.),
+#                   #bias_constraint=tf.keras.constraints.max_norm(1.),
+#                   #recurrent_dropout=.5,
+#                   return_state=False, go_backwards=False, stateful=False,
+#                   unroll=False)
+
+
+        lstm_out = self.lstm(features)
+        print('lstm_out:',lstm_out.shape)
+        #flat_features = tf.reshape(features, [1,None,tf.multiply(features.sh)]
+        #self.lstm = tf.keras.layers.LSTMCell(units=50)
+        self.fin_fc = DeMixing(n_ls=np.prod(self.y_shape),
+                            nonlin=tf.tanh, axis=-1)
+        y_pred = self.fin_fc(lstm_out)
+        #y_pred = tf.expand_dims(y_pred,0)
+        print(y_pred)
         return y_pred
+
+def uniquify(seq):
+    # order preserving
+    un = []
+    [un.append(i) for i in seq if not un.count(i)]
+    return  un
