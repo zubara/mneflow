@@ -16,7 +16,7 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 tf.enable_eager_execution()
 
 import os
-os.chdir('/m/home/home2/20/vranoug1/unix/OPM-BCI/mneflow-dev/scripts')
+os.chdir('/m/nbe/project/rtmeg/problearn/mneflow/')
 import mneflow
 
 from mneflow import Dataset

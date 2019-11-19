@@ -26,15 +26,15 @@ epochs_list = [mne.read_epochs(f) for f in filenames]
 import_opt = dict(savepath=savepath, #path where TFR files will be saved
 	   out_name='data1', #name of TFRecords files
 	   picks={'eeg':False, 'meg':'grad'},
-	   scale=True,  
+	   scale=True,
 	   crop_baseline=False,
 	   decimate = 4,
 	   bp_filter=(2.,45.),
 	   scale_interval=(0,200), #indices in time axis corresponding to baseline interval
-	   savebatch=1, # number of input files per TFRecord file           
+	   savebatch=1, # number of input files per TFRecord file
 	   save_origs=True, # whether to produce separate TFR-file for inputs in original order
 	   val_size=0.1,#validations set size set to 10% of all data
-           overwrite=False) 
+           overwrite=False)
 
 meta = mneflow.produce_tfrecords(epochs_list,**import_opt)
 
@@ -76,9 +76,9 @@ class TestCNN(mneflow.models.Model):
 
 
 # define some parameters
-optimizer_params = dict(l1_lambda=1e-3, 
-                        l2_lambda=1e-3, 
-                        learn_rate=3e-3, 
+optimizer_params = dict(l1_lambda=1e-3,
+                        l2_lambda=0,
+                        learn_rate=3e-3,
                         task= 'classification')
 
 optimizer = mneflow.Optimizer(**optimizer_params)
