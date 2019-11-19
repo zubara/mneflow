@@ -9,7 +9,165 @@ import tensorflow as tf
 # tf.enable_eager_execution()
 
 import numpy as np
-from mneflow.keras_layers import DeMixing, VARConv, LSTMv1, Dense, DeConvLayer, LFTConv
+from keras_layers import DeMixing, VARConv, LFTConv, LSTMv1, Dense, DeConvLayer
+from mneflow import Dataset
+from keras_utils import _speak, _get_metrics, _track_metrics
+
+get_samples = Dataset._get_n_samples
+
+
+def eval_per_segment(model, dataset, dset, loss_f, reg, metrics=[]):
+    assert dset in ['train', 'val', 'test']
+    path = dataset.h_params[dset+'_paths']
+    data = dataset.__getattribute__(dset)
+    data_elems = get_samples(None, path)
+
+    for x, y in data.take(data_elems):
+        # print('vx shape', vx.shape, 'vy shape', vy.shape)
+        for s in range(x.shape[2]):
+            _speak(s, s, dset+'step', n=100, t='')
+            xn = x[0, 0, s, :, :]
+            yn = y[0, 0, s, :]
+            y_ = model(xn)
+            loss_value = loss_f(yn, y_)
+            r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
+            l1_l2 = tf.add_n([reg(w) for w in r_])
+            cost = loss_value + l1_l2
+
+            # Track progress
+            tmp = _get_metrics(yn, y_, cost)
+            metrics = _track_metrics(metrics, tmp)
+
+    return metrics
+
+
+def eval_per_sequence(model, dataset, dset, loss_f, reg, metrics=[]):
+    assert dset in ['train', 'val', 'test']
+    path = dataset.h_params[dset+'_paths']
+    data = dataset.__getattribute__(dset)
+    data_elems = get_samples(None, path)
+
+    for vx, vy in data.take(data_elems):
+
+        y_ = model(vx)
+        vloss_value = loss_f(vy, y_)
+        r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
+        l1_l2 = tf.add_n([reg(w) for w in r_])
+        vcost = vloss_value + l1_l2
+
+        # Track progress
+        tmp = _get_metrics(vy, y_, vcost)
+        metrics = _track_metrics(metrics, tmp)
+
+    return metrics
+
+
+def train_per_segment(model, dataset, loss_f, reg, optim, n_epochs):
+    # % Training loop - per single sequence segment
+    # Keep results for plotting
+    train_metrics = []
+    val_metrics = []
+
+    # how many sequences per Dataset, to avoid infinitely looping
+    train_elems = get_samples(None, dataset.h_params['train_paths'])
+    for epoch in range(n_epochs):
+        print('Start of epoch %d' % epoch)
+        step = 0
+        t_ = []
+        v_ = []
+
+        # Training loop - using batches of single sequence segments
+        for x, y in dataset.train.take(train_elems):
+            nb = x.shape[0].value - 1
+            k = x.shape[1].value
+            nseq = x.shape[2].value
+            print(epoch, 'step', step, 'x shape', x.shape, 'y shape', y.shape)
+            for kk in range(k):
+                for s in range(nseq):
+                    _speak(s, step, 'step', n=100, t='')
+                    with tf.GradientTape() as tape:
+
+                        xn = x[nb, kk, s, :, :]
+                        yn = y[nb, kk, s, :]
+
+                        y_ = model(xn)
+                        loss_value = loss_f(yn, y_)
+                        r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
+                        l1_l2 = tf.add_n([reg(w) for w in r_])
+                        cost = loss_value + l1_l2
+
+                    grads = tape.gradient(cost, model.trainable_variables)
+                    grads_vars = zip(grads, model.trainable_variables)
+                    optim.apply_gradients(grads_vars, name='minimize')
+
+                    # Track progress
+                    tmp = _get_metrics(yn, y_, cost)
+                    t_ = _track_metrics(t_, tmp)
+
+                    step += 1
+                # end of sequence segments - iterated over all segments
+
+                # test on validation after every sequence
+                print('stepping in validation after step: ', step)
+                v_ = eval_per_segment(model, dataset, 'val', loss_f, reg, v_)
+
+            # End single train sequence
+
+        # end of epoch  - iterated over the whole dataset
+        train_metrics.append(t_)
+        val_metrics.append(v_)
+        # end of epoch
+
+    return train_metrics, val_metrics
+
+
+def train_per_sequence(model, dataset, loss_f, reg, optim, n_epochs):
+    # % Training loop - per single sequence segment
+    # Keep results for plotting
+    train_metrics = []
+    val_metrics = []
+
+    # how many sequences per Dataset, to avoid infinitely looping
+    train_elems = get_samples(None, dataset.h_params['train_paths'])
+    for epoch in range(n_epochs):
+        print('Start of epoch %d' % epoch)
+        step = 0
+        t_ = []
+        v_ = []
+
+        # Training loop - using batches of single sequence segments
+        for x, y in dataset.train.take(train_elems):
+            print(epoch, 'step:', step, 'x shape', x.shape, 'y shape', y.shape)
+            _speak(step, step, 'step', n=100, t='')
+            with tf.GradientTape() as tape:
+                y_ = model(x)
+                loss_value = loss_f(y, y_)
+                r_ = [tf.keras.backend.flatten(w) for w in model.trainable_weights]
+                l1_l2 = tf.add_n([reg(w) for w in r_])
+                cost = loss_value + l1_l2
+
+            # Track progress
+            tmp = _get_metrics(y, y_, cost)
+            t_ = _track_metrics(t_, tmp)
+
+            # optim.minimize(cost, model.trainable_variables, name='minimize')
+            grads = tape.gradient(cost, model.trainable_variables)
+            grads_vars = zip(grads, model.trainable_variables)
+            optim.apply_gradients(grads_vars, name='minimize')
+
+            step += 1
+
+            # test on validation after every sequence
+            print('stepping in validation after step: ', step)
+            v_ = eval_per_sequence(model, dataset, 'val', loss_f, reg, v_)
+
+        # end of epoch  - iterated over the whole dataset
+        train_metrics.append(t_)
+        val_metrics.append(v_)
+        # end of epoch
+
+    return train_metrics, val_metrics
+
 
 
 class VARCNNLSTM(tf.keras.Model):
@@ -34,7 +192,7 @@ class VARCNNLSTM(tf.keras.Model):
         pooling factor of the max pooling layer. Defaults to 2
 
     rnn_units : int
-        number of nodes in the LSTM layer
+        number of outputs of the LSTM layer
 
     rnn_dropout : float
         dropout for the LSTM layer
@@ -44,6 +202,15 @@ class VARCNNLSTM(tf.keras.Model):
 
     rnn_forget_bias : bool
         whether units forget bias
+
+    rnn_seq : bool
+        whether to return the output of the whole sequence or only the last one
+
+    l1 : float
+        l1 regularization parameter
+
+    l2: float
+        l2 regularization parameter
 
     References
     ----------
@@ -63,8 +230,6 @@ class VARCNNLSTM(tf.keras.Model):
         self.specs = specs
         self._layers.remove(self.specs)  # Weirdly it's considered as a layer
         self.model_path = specs['model_path']
-        self.rate = specs['dropout']
-        self.out_dim = specs['out_dim']
         self.l1_l2 = tf.keras.regularizers.l1_l2(l1=self.specs['l1'],
                                                  l2=self.specs['l1'])
 
@@ -88,14 +253,6 @@ class VARCNNLSTM(tf.keras.Model):
                            nonlin=self.specs['rnn_nonlin'],
                            return_sequences=self.specs['rnn_seq'])
 
-        # self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
-        #                     dropout=self.rate,
-        #                     kernel_regularizer=self.l1_l2,
-        #                     bias_regularizer=self.l1_l2)
-
-# self.l1 = self.add_loss(specs['l1']*tf.reduce_sum(tf.abs(self.trainable_variables)))
-# self.l2 = self.add_loss(specs['l2']*tf.nn.l2_loss(self.trainable_variables))
-
     def call(self, X):
         orig_dim = len(X.shape)
         # print(orig_dim)
@@ -111,6 +268,7 @@ class VARCNNLSTM(tf.keras.Model):
             x0 = tf.reshape(X, [1, 1, n_ch, time])  # [1, 1, n_ch, time]
 
         # print('input x0', x0.shape)
+        k, n_seq, n_ch, time = x0.shape
         x1 = self.demix(x0)                # [k, n_seq, time, 1, demix.size]
         # print('demix x1', x1.shape)
         x1a = tf.squeeze(x1, axis=0)       # [n_seq, time, 1, demix.size]
@@ -132,6 +290,19 @@ class VARCNNLSTM(tf.keras.Model):
             y_ = tf.reshape(y_, [-1])
         # print('final output y_', y_.shape)
         return y_
+
+    # Override methods
+    def eval_per_sequence(self, dataset, dset, loss_f, reg, metrics=[]):
+        return eval_per_sequence(self, dataset, dset, loss_f, reg, metrics)
+
+    def train_per_sequence(self, dataset, loss_f, reg, optim, n_epochs):
+        return train_per_sequence(self, dataset, loss_f, reg, optim, n_epochs)
+
+    def eval_per_segment(self, dataset, dset, loss_f, reg, metrics=[]):
+        return eval_per_segment(self, dataset, dset, loss_f, reg, metrics)
+
+    def train_per_segment(self, dataset, loss_f, reg, optim, n_epochs):
+        return train_per_segment(self, dataset, loss_f, reg, optim, n_epochs)
 
 
 
@@ -298,9 +469,10 @@ class VARCNN(tf.keras.Model):
                                                  l2=self.specs['l1'])
 
         self.demix = DeMixing(n_ls=self.specs['n_ls'],
+                              axis=specs['axis'],
                               kernel_regularizer=self.l1_l2,
-                              bias_regularizer=self.l1_l2,
-                              axis=2)
+                              bias_regularizer=self.l1_l2)
+
         self.tconv1 = VARConv(scope="conv", n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
                               filter_length=self.specs['filter_length'],
@@ -316,10 +488,148 @@ class VARCNN(tf.keras.Model):
                             bias_regularizer=self.l1_l2)
 
     def call(self, X):
-        x = self.demix(X)
-        x = self.tconv1(x)
-        x = self.fin_fc(x)
-        return x
+        orig_dim = len(X.shape)
+        # print(orig_dim)
+        x0 = X
+        if orig_dim > 4:
+            # Input shape: [batch_index, k, n_seq, n_ch, time]
+            x0 = tf.squeeze(X, axis=0)
+        elif orig_dim == 4:
+            k, n_seq, n_ch, time = X.shape    # [k, n_seq, n_ch, time]
+            x0 = X
+        elif orig_dim == 2:
+            n_ch, time = X.shape
+            x0 = tf.reshape(X, [1, 1, n_ch, time])  # [1, 1, n_ch, time]
+
+        # print('input x0', x0.shape)
+        k, n_seq, n_ch, time = x0.shape
+        x1 = self.demix(x0)                # [k, n_seq, time, 1, demix.size]
+        # print('demix x1', x1.shape)
+        x1a = tf.squeeze(x1, axis=0)       # [n_seq, time, 1, demix.size]
+        # print('squeezed x1a', x1a.shape)
+        x2 = self.tconv1(x1a)              # [n_seq, maxpool, tconv1.size]
+        # print('varconv x2', x2.shape)
+        y_ = self.fin_fc(x2)                # [k, n_seq, y_shape]
+        # print('lstm output y_', y_.shape)
+
+        if orig_dim > 4:
+            tf.reshape(y_, [1, k, *y_.shape])  # [batch_index, k, n_seq, y_shape]
+            # print('expanded y_', y_.shape)
+        elif orig_dim == 2:
+            y_ = tf.reshape(y_, [-1])
+        # print('final output y_', y_.shape)
+        return y_
+
+
+    # Override methods
+    def eval_per_sequence(self, dataset, dset, loss_f, reg, metrics=[]):
+        return eval_per_sequence(self, dataset, dset, loss_f, reg, metrics)
+
+    def train_per_sequence(self, dataset, loss_f, reg, optim, n_epochs):
+        return train_per_sequence(self, dataset, loss_f, reg, optim, n_epochs)
+
+    def eval_per_segment(self, dataset, dset, loss_f, reg, metrics=[]):
+        return eval_per_segment(self, dataset, dset, loss_f, reg, metrics)
+
+    def train_per_segment(self, dataset, loss_f, reg, optim, n_epochs):
+        return train_per_segment(self, dataset, loss_f, reg, optim, n_epochs)
+
+
+class LSTM1L(tf.keras.Model):
+    """1 layer LSTM
+
+    Parameters
+    ----------
+
+    rnn_units : int
+        number of nodes in the LSTM layer
+
+    rnn_dropout : float
+        dropout for the LSTM layer
+
+    rnn_nonlin : tf.activation
+        activation function for the LSTM layer
+
+    rnn_forget_bias : bool
+        whether units forget bias
+
+    rnn_seq : bool
+        whether to return the output of the whole sequence or only the last one
+
+    l1 : float
+        l1 regularization parameter
+
+    l2: float
+        l2 regularization parameter
+
+        """
+    def __init__(self, specs, name='lstm', **kwargs):
+        """
+        Parameters
+        -----------
+        specs : dict
+                dictionary of model-specific hyperparameters.
+
+        """
+        super(LSTM1L, self).__init__(name=name, **kwargs)
+        self.scope = name
+        self.specs = specs
+        self._layers.remove(self.specs)  # Weirdly it's considered as a layer
+        self.model_path = specs['model_path']
+        self.l1_l2 = tf.keras.regularizers.l1_l2(l1=self.specs['l1'],
+                                                 l2=self.specs['l1'])
+
+        self.lstm = LSTMv1(scope="lstm",
+                           size=self.specs['rnn_units'],
+                           dropout=self.specs['rnn_dropout'],
+                           nonlin=self.specs['rnn_nonlin'],
+                           unit_forget_bias=self.specs['rnn_forget_bias'],
+                           kernel_regularizer=self.l1_l2,
+                           bias_regularizer=self.l1_l2,
+                           return_sequences=self.specs['rnn_seq'])
+
+    def call(self, X):
+        orig_dim = len(X.shape)
+        # print(orig_dim)
+        x0 = X
+        if orig_dim > 4:
+            # Input shape: [batch_index, k, n_seq, n_ch, time]
+            x0 = tf.squeeze(X, axis=0)
+        elif orig_dim == 4:
+            k, n_seq, n_ch, time = X.shape          # [k, n_seq, n_ch, time]
+            x0 = X
+        elif orig_dim == 2:
+            n_ch, time = X.shape
+            x0 = tf.reshape(X, [1, 1, n_ch, time])  # [1, 1, n_ch, time]
+
+        k, n_seq, n_ch, time = x0.shape
+        # print('input x0', x0.shape)
+        col = tf.multiply(n_ch, time)
+        x1 = tf.reshape(x0, [k, n_seq, col])    # [k, n_seq, n_ch*time]
+        # print('expanded x1', x1.shape)
+        y_ = self.lstm(x1)                # [k, n_seq, y_shape]
+        # print('lstm output y_', y_.shape)
+
+        if orig_dim > 4:
+            y_ = tf.expand_dims(y_, axis=0)  # [batch_index, k, n_seq, y_shape]
+            # print('expanded y_', y_.shape)
+        elif orig_dim == 2:
+            y_ = tf.reshape(y_, [-1])
+        # print('final output y_', y_.shape)
+        return y_
+
+    # Override methods
+    def eval_per_sequence(self, dataset, dset, loss_f, reg, metrics=[]):
+        return eval_per_sequence(self, dataset, dset, loss_f, reg, metrics)
+
+    def train_per_sequence(self, dataset, loss_f, reg, optim, n_epochs):
+        return train_per_sequence(self, dataset, loss_f, reg, optim, n_epochs)
+
+    def eval_per_segment(self, dataset, dset, loss_f, reg, metrics=[]):
+        return eval_per_segment(self, dataset, dset, loss_f, reg, metrics)
+
+    def train_per_segment(self, dataset, loss_f, reg, optim, n_epochs):
+        return train_per_segment(self, dataset, loss_f, reg, optim, n_epochs)
 
 
 class VARDAE(tf.keras.Model):
