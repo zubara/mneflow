@@ -279,7 +279,7 @@ class Model(object):
 #        if self.dataset.h_params['task'] == 'classification':
 #            log['n_classes'] = self.dataset.h_params['n_classes']
         #else:
-        log['y_shape'] = self.dataset.h_params['y_shape']
+        log['y_shape'] = np.prod(self.dataset.h_params['y_shape'])
         log['fs'] = str(self.dataset.h_params['fs'])
         log.update(self.optimizer.params)
         log.update(self.specs)
@@ -585,10 +585,11 @@ class LFCNN(Model):
         self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
 
         self.tconv1 = LFTConv(scope="conv", n_ls=self.specs['n_ls'],
-                              nonlin=tf.nn.relu,
+                              nonlin=self.specs['nonlin'],
                               filter_length=self.specs['filter_length'],
                               stride=self.specs['stride'],
                               pooling=self.specs['pooling'],
+                              #pool_type=self.specs['pool_type'],
                               padding=self.specs['padding'])
         self.tconv_out = self.tconv1(self.demix(self.X))
 
@@ -748,26 +749,38 @@ class LFCNN(Model):
 ##        return np.unique(comp_inds[0][sorting[::-1]])
 #        return comp_inds[sorting]
 
-    def plot_waveforms(self, tmin=-.1):
+    def plot_waveforms(self, tmin=-.2):
         f, ax = plt.subplots(2,2)
         nt = self.dataset.h_params['n_t']
         self.waveforms = np.squeeze(self.lat_tcs.reshape([self.specs['n_ls'],  -1, nt]).mean(1))
         tstep = 1/float(self.fs)
         times = tmin+tstep*np.arange(nt)
-        [ax[0,0].plot(times,wf+1e-1*i) for i, wf in enumerate(self.waveforms) if i not in self.uorder]
-        ax[0,0].plot(times,self.waveforms[self.uorder[0]]+1e-1*self.uorder[0],'k.')
-        [ax[0,1].plot(ff+.1*i) for i, ff in enumerate(self.filters.T)]
-        ax[0,1].plot(self.filters.T[self.uorder[0]]+1e-1*self.uorder[0],'k.')
+        [ax[0,0].plot(times,wf+1e-1*i) for i, wf in enumerate(self.waveforms)
+                                            if i not in self.uorder]
+        ax[0,0].plot(times, self.waveforms[self.uorder[0]] + 1e-1 * self.uorder[0],'k.')
+        #[ax[0,1].plot(ff+.1*i) for i, ff in enumerate(self.filters.T)]
+        bias = self.sess.run(self.tconv1.b)[self.uorder[0]]
+        ax[0,1].stem(self.filters.T[self.uorder[0]])
+        ax[0,1].hlines(bias,0,len(self.filters.T[self.uorder[0]]),
+                      linestyle='--', label='Bias')
+        ax[0,1].legend()
         conv = np.convolve(self.filters.T[self.uorder[0]],self.waveforms[self.uorder[0]],mode='same')
         vmin = conv.min()
         vmax = conv.max()
-        ax[1,0].plot(times, conv)
-        bias = self.sess.run(self.tconv1.b)
-        ax[1,0].hlines(-1*bias[self.uorder[0]],times[0], times[-1], linestyle='--')
-        strides = np.arange(0,len(times) + 1,self.specs['stride'] )[1:]
-        pool_bins = np.arange(0,len(times) + 1,self.specs['pooling'] )[1:]
-        ax[1,0].vlines(times[strides], vmin, vmax, linestyle='--', color='c')
-        ax[1,0].vlines(times[pool_bins], vmin, vmax, linestyle='--', color='m')
+        ax[1,0].plot(times+0.5*self.specs['filter_length']/float(self.fs), conv)
+
+
+        #ax[1,0].hlines(-1*bias, times[-1], linestyle='--')
+        ax[1,0].hlines(bias,times[0], times[-1], linestyle='--', color='k')
+        tstep = float(self.specs['stride'])/self.fs
+        strides = np.arange(times[0],times[-1]+tstep/2, tstep)[1:-1]
+        pool_bins = np.arange(times[0],times[-1]+tstep,self.specs['pooling']/self.fs)[1:]
+        ax[1,0].vlines(strides, vmin, vmax, linestyle='--', color='c',
+                       label='Strides')
+        ax[1,0].vlines(pool_bins, vmin, vmax, linestyle='--', color='m',
+                       label='Pooling')
+        ax[1,0].set_xlim(times[0], times[-1])
+        ax[1,0].legend()
         if self.out_weights.shape[-1] == 1:
             ax[1,1].pcolor(self.F)
             ax[1,1].hlines(self.uorder[0]+.5,0,self.F.shape[1], color='r')
@@ -816,6 +829,7 @@ class LFCNN(Model):
             for i in range(np.prod(self.y_shape)):
                 contribution = np.abs(self.out_weights[...,i].T * self.rfocs[...,i].T)
                 pat, t = np.where(contribution==np.max(contribution))
+                print('Maximum spearman r * weight:', np.max(contribution))
                 order.append(pat)
                 ts.append(t)
 
@@ -823,17 +837,19 @@ class LFCNN(Model):
             for i in range(np.prod(self.y_shape)):
                 contribution = self.out_weights[...,i].T
                 pat, t = np.where(contribution==np.max(contribution))
+                print('Maximum weight:', np.max(contribution))
                 order.append(pat)
                 ts.append(t)
 
         elif sorting == 'best_spear':
             for i in range(np.prod(self.y_shape)):
                 contribution = self.rfocs[...,i].T
+                print('Maximum r_spear:', np.max(contribution))
                 pat, t = np.where(contribution==np.max(contribution))
                 order.append(pat)
                 ts.append(t)
 
-        elif isinstance(sorting,float):
+        elif isinstance(sorting,int):
             #nfilt = np.prod(self.y_shape)
 
             #_ = self.spearman_features()
@@ -847,7 +863,7 @@ class LFCNN(Model):
         else:
             print('ELSE!')
             order = np.arange(self.specs['n_ls'])
-            contribution = self.out_weights[...,i].T
+            contribution = self.out_weights[...,0].T
 
         self.F = contribution
         order = np.array(order)
@@ -929,18 +945,6 @@ class LFCNN(Model):
         return
 
     def plot_spectra(self, fs=None, sorting='l2',  norm_spectra=None, percentile=99):
-        if norm_spectra:
-            from scipy.signal import welch
-            from spectrum import aryule
-            if norm_spectra == 'welch' and not hasattr(self, 'd_psds'):
-                    f, psd = welch(self.lat_tcs,fs=1000,nperseg=256)
-                    self.d_psds = psd[:,:-1]
-            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
-                ar = []
-                for i, ltc in enumerate(self.lat_tcs):
-                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
-                    ar.append(coef[None,:])
-                self.ar = np.concatenate(ar)
         if fs:
             self.fs = fs
         elif self.dataset.h_params['fs']:
@@ -949,10 +953,24 @@ class LFCNN(Model):
             print('Sampling frequency not specified, setting to 1.')
             self.fs = 1.
 
+        if norm_spectra:
+            from scipy.signal import welch
+            from spectrum import aryule
+            if norm_spectra == 'welch':
+                    fr, psd = welch(self.lat_tcs,fs=self.fs,nperseg=256)
+                    self.d_psds = psd[:,:-1]
+            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
+                ar = []
+                for i, ltc in enumerate(self.lat_tcs):
+                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
+                    ar.append(coef[None,:])
+                self.ar = np.concatenate(ar)
+
+
         order, ts = self.sorting(sorting)
         print(order)
         uorder = uniquify(order.ravel())
-        #self.uorder = uorder
+        self.uorder = uorder
         print(uorder)
         out_filters = self.filters[:, uorder]
 
@@ -968,11 +986,17 @@ class LFCNN(Model):
                 for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
 
                     if norm_spectra == 'ar':
-                        w, h = freqz(flt, self.ar[jj], worN=128)
+                        w, h = freqz(flt, 1, worN=128)
+                        #w, h0 = freqz(1, self.ar[jj], worN=128)
+                        #ax[i, jj].plot(w/np.pi*self.fs/2, h0.T, label='Filter input')
+                        #h = h*h0
                     elif norm_spectra == 'welch':
                         w, h = freqz(flt, 1,worN=128)
-                        h = np.abs(h) * np.sqrt(self.d_psds[jj])
-                        h /= h.max()
+                        h0 = self.d_psds[uorder[jj],:]*np.abs(h)
+                        #h /= h.max()
+                        #h0 /= h0.max()
+                        ax[i, jj].plot(w/np.pi*self.fs/2, self.d_psds[uorder[jj],:]/np.max(self.d_psds[uorder[jj],:]), label='Filter input')
+                        ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h0), label='Fitler output')
                     elif norm_spectra == 'plot_ar':
                         w0, h0 = freqz(flt, 1,worN=128)
                         w, h = freqz(self.ar[jj],1,worN=128)
@@ -982,7 +1006,9 @@ class LFCNN(Model):
                         w, h = freqz(flt, 1, worN=128)
                     #else:
                      #   density = np.abs(h)
-                    ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h).T)
+                    ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h), label='Freq response')
+                    ax[i, jj].hlines(0, 0, np.max(w/np.pi*self.fs/2),linestyle='--')
+                    ax[i, jj].legend()
 
 
 
