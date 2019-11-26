@@ -72,7 +72,7 @@ class LFTConv():
     Stackable temporal convolutional layer, interpreatble (LF)
     """
     def __init__(self, scope="lf-conv", n_ls=32,  nonlin=tf.nn.relu,
-                 filter_length=7, stride=1, pooling=2, padding='SAME'):
+                 filter_length=7, stride=1, pooling=2, padding='SAME', pool_type='max'):
         self.scope = scope
         #self.size = n_ls
         self.filter_length = filter_length
@@ -80,6 +80,7 @@ class LFTConv():
         self.pooling = pooling
         self.nonlin = nonlin
         self.padding = padding
+        self.pool_type = pool_type
 
     def __call__(self, x):
         with tf.name_scope(self.scope):
@@ -91,10 +92,16 @@ class LFTConv():
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
+#                    if self.pool_type == 'avg':
+#                        conv = tf.nn.avg_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
+#                                              strides=[ 1, self.stride, 1, 1],
+#                                              padding=self.padding,
+#                                              data_format='NHWC')
+#                    else:
                     conv = tf.nn.max_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
-                                          strides=[ 1, self.stride, 1, 1],
-                                          padding=self.padding,
-                                          data_format='NHWC')
+                                              strides=[ 1, self.stride, 1, 1],
+                                              padding=self.padding,
+                                              data_format='NHWC')
                     print('f:',self.filters.shape)
                     print('lf-out',conv.shape)
                     return conv
