@@ -16,7 +16,10 @@ import csv
 from mne import filter as mnefilt
 
 
-def onehot(y):
+def _onehot(y):
+    """
+    Creates one-hot encoded labels
+    """
     n_classes = len(set(y))
     out = np.zeros((len(y), n_classes))
     for i, ii in enumerate(y):
@@ -24,7 +27,7 @@ def onehot(y):
     return out.astype(int)
 
 
-def load_meta(fname, data_id=''):
+def _load_meta(fname, data_id=''):
 
     """
     Loads a metadata file
@@ -157,7 +160,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     return X
 
 
-def make_example(X, y, input_type='iid', target_type='int'):
+def _make_example(X, y, input_type='iid', target_type='int'):
     #if input_type in ['iid', 'trials']:
     feature = {}
     feature['X'] = tf.train.Feature(float_list=tf.train.FloatList(value=X.flatten()))
@@ -202,7 +205,7 @@ def _write_tfrecords(X_, y_, output_file, input_type='iid', target_type='int'):
         # print(len(X_), len(y_), X.shape, y.shape)
         X = X.astype(np.float32)
         # Feature contains a map of string to feature proto objects
-        example = make_example(X, y, input_type=input_type, target_type=target_type)
+        example = _make_example(X, y, input_type=input_type, target_type=target_type)
         # Serialize the example to a string
         serialized = example.SerializeToString()
         # write the serialized object to the disk
@@ -235,82 +238,70 @@ def _split_sets(X, y, val=.1):
     return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
 
 
-def process_labels(y, scale=False, decimate=False, normalize=False,
-                   transpose=False, transform=False, segment=False):
-    """Preprocess target variables"""
-    if transpose:
-        y = np.swapaxes(y, -2, -1)
-
-    if segment:
-        y, _ = _segment(y, labels=None, segment_length=segment)
-    if decimate:
-        assert y.ndim == 3
-        y = y[..., ::decimate]
-    if normalize:
-        y = scale_to_baseline(y, baseline=None, crop_baseline=False)
-    y = np.mean(y**2, axis=-1)
-    # print('y', y.shape)
-#    if isinstance(transform, callable):
-#        y = transform(y)
-
-    return y
 
 
-def import_continuous(inp, picks=None, target_picks=None, array_keys={'X': 'X', 'y': 'y'},
-                      transpose=False, target_type='float'):
+
+#def import_continuous(inp, picks=None, target_picks=None, array_keys={'X': 'X', 'y': 'y'},
+#                      transpose=False, target_type='float'):
+#    """
+#    Returns
+#    -------
+#    data.ndim==3 [n_epochs, channels, times] and targets
+#    """
+#
+#    if isinstance(inp, tuple) and len(inp) == 2:
+#        data, targets = inp
+#    elif isinstance(inp, str):
+#        fname = inp
+#        # print(fname[-3:])
+#        if fname[-3:] == 'mat':
+#            datafile = sio.loadmat(fname)
+#
+#        if fname[-3:] == 'npz':
+#            datafile = np.load(fname)
+#
+#        data = datafile[array_keys['X']]
+#    data = data.astype(np.float32)
+#
+#    if data.ndim == 2:
+#        data = np.expand_dims(data, 0)
+#    if transpose:
+#        data = np.swapaxes(data, -1, -2)
+#
+#    if target_type == 'float':
+#        if np.any(target_picks):
+#            targets = data[:, target_picks,:]
+#            data = np.delete(data, target_picks, axis=1)
+#            print('Extracting target variables from target_picks')
+#        else:
+#            targets = datafile[array_keys['y']]
+#            if targets.ndim == 2:
+#                targets = np.expand_dims(targets, 0)
+#            if transpose:
+#                targets = np.swapaxes(targets, -1, -2)
+#            print('Extracting target variables from {}'.format(array_keys['y']))
+#
+#    if isinstance(picks, np.ndarray):
+#        data = data[:, picks, :]
+#    print('input shape:', data.shape)
+#    return data, targets
+
+
+def import_data(inp, picks=None, target_picks=None,
+                array_keys={'X': 'X', 'y': 'y'},
+                transpose=False):
     """
-    Returns
-    -------
-    data.ndim==3 [n_epochs, channels, times] and targets
-    """
-
-    if isinstance(inp, tuple) and len(inp) == 2:
-        data, targets = inp
-    elif isinstance(inp, str):
-        fname = inp
-        # print(fname[-3:])
-        if fname[-3:] == 'mat':
-            datafile = sio.loadmat(fname)
-
-        if fname[-3:] == 'npz':
-            datafile = np.load(fname)
-
-        data = datafile[array_keys['X']]
-    data = data.astype(np.float32)
-
-    if data.ndim == 2:
-        data = np.expand_dims(data, 0)
-    if transpose:
-        data = np.swapaxes(data, -1, -2)
-
-    if target_type == 'float':
-        if np.any(target_picks):
-            targets = data[:, target_picks,:]
-            data = np.delete(data, target_picks, axis=1)
-            print('Extracting target variables from target_picks')
-        else:
-            targets = datafile[array_keys['y']]
-            if targets.ndim == 2:
-                targets = np.expand_dims(targets, 0)
-            if transpose:
-                targets = np.swapaxes(targets, -1, -2)
-            print('Extracting target variables from {}'.format(array_keys['y']))
-
-    if isinstance(picks, np.ndarray):
-        data = data[:, picks, :]
-    print('input shape:', data.shape)
-    return data, targets
-
-
-def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
-    """
-    inputs : list, mne.epochs.Epochs, str
+    inp : list, mne.epochs.Epochs, str
         list of mne.epochs.Epochs or strings with filenames. If input is a
         single string or Epochs object it is firts converted into a list.
 
     picks : ndarray of int, optional
         Indices of channels to pick for processing, if None all channels
         are used.
+
+    target_picks : ndarray of int, optional
+        Indices of channels to pick up target variables. If None, targets are
+        extracetd from other sources. Defaults to None
 
     array_keys : dict, optional
         Dictionary mapping {'X':'data_matrix','y':'labels'},
@@ -324,31 +315,29 @@ def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
 
     """
 
-    #  Import data and labels
-    # for inp in inputs:
     if isinstance(inp, mnepochs.BaseEpochs):
         print('processing epochs')
         inp.load_data()
         data = inp.get_data()
         events = inp.events[:, 2]
-        # fs = inp.info['sfreq']
-        if isinstance(picks, dict):
-            picks = pick_types(inp.info, **picks)
-           # print('picks:', picks )
+
     elif isinstance(inp, tuple) and len(inp) == 2:
         print('importing from tuple')
         data, events = inp
+
     elif isinstance(inp, str):
+        # TODO: ADD CASE FOR RAW FILE
         fname = inp
-        # print(fname[-3:])
-        if fname[-3:] == 'fif':
+        if fname[-8:] == '-epo.fif':
             epochs = mnepochs.read_epochs(fname, preload=True,
                                           verbose='CRITICAL')
-            if isinstance(picks, dict):
-                picks = pick_types(epochs.info, **picks)
+            # if isinstance(picks, dict):
+            #    picks = pick_types(epochs.info, **picks)
             events = epochs.events[:, 2]
-            # fs = epochs.info['sfreq']
             data = epochs.get_data()
+        #elif fname[-8:] == '_raw.fif':
+        #    raw = mne.io.Raw[fname]
+
         else:
             if fname[-3:] == 'mat':
                 datafile = sio.loadmat(fname)
@@ -358,16 +347,28 @@ def import_epochs(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
                 datafile = np.load(fname)
 
             data = datafile[array_keys['X']]
-            print(data.shape)
-            events = datafile[array_keys['y']]
-            print(events.shape)
-#        if not fs:
-#            print('Specify sampling frequency')
-        # return
+            if np.any(target_picks):
+                events = data[:, target_picks, :]
+                data = np.delete(data, target_picks, axis=1)
+                print('Extracting target variables from target_picks')
+            else:
+                events = datafile[array_keys['y']]
+                print('Extracting target variables from {}'.format(array_keys['y']))
+
     data = data.astype(np.float32)
+    # TODO: make sure that X is 3d here
+    while data.ndim < 3:
+        data = np.expand_dims(data, 0)
+        events = np.expand_dims(events, 0)
     if isinstance(picks, np.ndarray):
         data = data[:, picks, :]
+    if any(transpose):
+        if 'X' in transpose:
+            data = np.swapaxes(data, -1, -2)
+        if 'y' in transpose:
+            events = np.swapaxes(events, -1, -2)
     print('input shape:', data.shape)
+    print('target shape:', events.shape)
     return data, events
 
 
@@ -404,15 +405,15 @@ def produce_labels(y, return_stats=True):
 
 
 
-def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
-                      overwrite=True, savebatch=1, save_origs=False, val_size=0.2,
-                      array_keys={'X': 'X', 'y': 'y'},
-                      picks=None, target_picks=None,
-                      combine_events=None, target_type='float',
-                      segment=False, augment=False, aug_stride=50, transpose=False,
-                      scale=False, scale_interval=None,
-                      crop_baseline=False, decimate=False, bp_filter=False,
-                      transform_targets=False, seq_length=None):
+def produce_tfrecords(inputs, savepath, out_name, fs,
+                      input_type='trials', target_type='float',
+                      array_keys={'X': 'X', 'y': 'y'}, val_size=0.2,
+                      scale=False, scale_interval=None,   crop_baseline=False,
+                      bp_filter=False, decimate=False, combine_events=None,
+                      segment=False, augment=False, aug_stride=50,
+                      picks=None, transpose=False,
+                      target_picks=None, transform_targets=False, seq_length=None,
+                      overwrite=True, savebatch=1, save_origs=False,):
 
     r"""
     Produces TFRecord files from input, applies (optional) preprocessing
@@ -423,7 +424,7 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
 
     Parameters
     ----------
-
+    inputs : mne.Epochs, list of str, tuple of ndarrays
 
     savepath : str
         a path where the output TFRecord and corresponding metadata
@@ -432,30 +433,44 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
     out_name :str
             filename prefix for the output files.
 
-    savebatch : int
-        number of input files per to be stored in the output TFRecord file.
-        Deafults to 1.
+    fs : float, optional
+            Sampling frequency, required only if inputs are not mne.Epochs
 
-    save_origs : bool, optinal
-        If True, also saves the whole dataset in original order, e.g. for
-        leave-one-subject-out cross-validation. Defaults to False.
+    input_type : str {'trials', 'iid', 'seq'}
+                 type of input data
+
+    target_type : str {'int', 'float'}
+                  type of target variable.
+                  'int' - for classification, 'float' for regression prblems
+
+    array_keys : dict, optional
+                 Dictionary mapping {'X':'data_matrix','y':'labels'},
+                 where 'data_matrix' and 'labels' are names of the
+                 corresponding variables if your input is paths to .mat or .npz
+                 files. Defaults to {'X':'X', 'y':'y'}
 
     val_size : float, optional
         Proportion of the data to use as a validation set. Only used if
         shuffle_split = True. Defaults to 0.2.
 
-    fs : float, optional
-            Sampling frequency, required only if inputs are not mne.Epochs
+    scale : bool, optinal
+        whether to perform scaling to baseline. Defaults to False.
 
+    scale_interval : NoneType, tuple of ints or floats,  optinal
+        baseline definition. If None (default) scaling is
+        perfromed based on all timepoints of the epoch.
+        If tuple, than baseline is data[tuple[0] : tuple[1]].
+        Only used if scale == True.
 
-
-    decimate : False, int, optional
-        whether to decimate the input data (defaults to False).
+    crop_baseline : bool, optinal
+        whether to crop baseline specified by 'scale_interval'
+        after scaling (defaults to False).
 
     bp_filter : bool, tuple, optinal
         band pass filter. Tuple of int or NoneType.
 
-
+    decimate : False, int, optional
+        whether to decimate the input data (defaults to False).
 
     combine_events : dict, optional
         dictionary for combining or otherwise manipulating lables. SHould
@@ -463,18 +478,33 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
         old_labels are not specified in keys the corresponding epochs are
         discarded.
 
+    segment : bool, int, optional
 
+    augment : bool, optional
 
-    task : 'classification', optional
-        So far the only available task.
+    aug_stride : int, optional
 
+    picks : ndarray, optional
 
+    target_picks : ndarray, optional
+
+    transpose : bool, optional
+
+    transform_targets : bool, optional
+
+    seq_length : int, optional
 
     overwrite : bool, optional
         Whether to overwrite the metafile if it already exists at the
         specified path.
 
+    savebatch : int
+        number of input files per to be stored in the output TFRecord file.
+        Deafults to 1.
 
+    save_origs : bool, optinal
+        If True, also saves the whole dataset in original order, e.g. for
+        leave-one-subject-out cross-validation. Defaults to False.
 
     Returns
     -------
@@ -512,18 +542,20 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
         if not isinstance(inputs, list):
             inputs = [inputs]
         for inp in inputs:
+            data, events = import_data(inp, picks=picks, array_keys=array_keys,
+                                       target_picks=target_picks,
+                                       transpose=transpose)
             if input_type=='trials':
-                data, events = import_epochs(inp, picks=picks, array_keys=array_keys)
                 if target_type == 'int':
+                    # Specific to classification
                     if combine_events:
                         events, keep_ind = _combine_labels(events, combine_events)
                         data = data[keep_ind, ...]
                         events = events[keep_ind]
 
                     events, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
-                    events = onehot(events)
+                    events = _onehot(events)
                     #print(np.unique(events))
-
                     #meta['n_classes'] = len(meta['class_proportions'])
                 x_train,  y_train, x_val, y_val = preprocess_epochs(data, events,
                                              scale=True, fs=fs, val_size=val_size,
@@ -531,16 +563,15 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                                              segment=segment, augment=augment,
                                              crop_baseline=crop_baseline,
                                              decimate=decimate, bp_filter=bp_filter)
-
                 meta['y_shape'] = y_train[0].shape
-                print(x_train.shape)
+                #print(x_train.shape)
             else:
                 # TODO: continous classification
-                data, events = import_continuous(inp, picks=picks,
-                                                 target_picks=target_picks,
-                                                 array_keys=array_keys,
-                                                 transpose=transpose,
-                                                 target_type='float')
+#                data, events = import_continuous(inp, picks=picks,
+#                                                 target_picks=target_picks,
+#                                                 array_keys=array_keys,
+#                                                 transpose=transpose,
+#                                                 target_type='float')
                 x_train,  y_train, x_val, y_val = preprocess_continuous(data, events,
                                                                        scale=scale,
                                                                        segment=segment,
@@ -554,16 +585,12 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
                                                                        input_type=input_type,
                                                                        seq_length=seq_length)
 
-#                x_train = [np.moveaxis(ii, 0, -1) for ii in x_train]
-#                y_train = [np.moveaxis(ii, 0, -1) for ii in y_train]
-#                x_val = [np.moveaxis(ii, 0, -1) for ii in x_val]
-#                y_val = [np.moveaxis(ii, 0, -1) for ii in y_val]
                 meta['y_shape'] = y_train[0].shape[-1]
-
+            # TODO: test for input_type ['trials', 'iid', 'seq'] and target_types [int, float]
             if input_type == 'seq':
-                n_epochs, meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
+                meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
                 #n_epochs, meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
-                #meta['y_shape'] = y_train[0].shape[-1]
+                meta['y_shape'] = y_train[0].shape[-1]
             else:
                  n_epochs, meta['n_ch'], meta['n_t'] = x_train.shape
                  #meta['y_shape'] = y_train.shape[-1]
@@ -572,14 +599,7 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
             print('Target shape actual/metadata: ', y_train[0].shape, meta['y_shape'])
             print('Saving TFRecord# {}'.format(jj))
 
-#            # Split val to val and test
-#            idx = x_val[0].shape[0] // 2
-#            x_test = [x_val[0][0:idx, :, :, :]]
-#            y_test = [y_val[0][0:idx, :, :]]
-#            x_val = [x_val[0][idx::, :, :, :]]
-#            y_val = [y_val[0][idx::, :, :]]
-
-            meta['val_size'] += y_val.shape[0]
+            meta['val_size'] += len(y_val)
             meta['train_paths'].append(''.join([savepath, out_name,
                                                 '_train_', str(jj),
                                                 '.tfrecord']))
@@ -608,13 +628,14 @@ def produce_tfrecords(inputs, fs, savepath, out_name, input_type='trials',
 
     elif os.path.exists(savepath+out_name+'_meta.pkl'):
         print('Metadata file found, restoring')
-        meta = load_meta(savepath, data_id=out_name)
+        meta = _load_meta(savepath, data_id=out_name)
     return meta
 
 
-def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None, scale_interval=None,
-                      crop_baseline=False, decimate=False, bp_filter=False,
-                      picks=None, segment=False, augment=False):
+def preprocess_epochs(data, events, val_size=.1, scale=False, fs=None,
+                      scale_interval=None, crop_baseline=False, decimate=False,
+                      bp_filter=False, picks=None, segment=False,
+                      augment=False):
     """
     scale : bool, optinal
         whether to perform scaling to baseline. Defaults to False.
@@ -685,7 +706,8 @@ def _combine_labels(labels, new_mapping):
     return new_labels, keep_ind
 
 
-def _segment(data, segment_length=200, seq_length=None, augment=False, stride=25, input_type='iid'):
+def _segment(data, segment_length=200, seq_length=None, augment=False,
+             stride=25, input_type='iid'):
     """
     Parameters:
     -----------
@@ -696,10 +718,11 @@ def _segment(data, segment_length=200, seq_length=None, augment=False, stride=25
             array of labels (n_epochs,)
 
     segment_length : int or False
-                    length of segment into which to split the data in time samples
+                    length of segment into which to split the data in
+                    time samples
 
     """
-    # print('input_type:', input_type)
+
     x_out = []
     for xx in data:
         n_epochs, n_ch, n_t = xx.shape
@@ -716,7 +739,7 @@ def _segment(data, segment_length=200, seq_length=None, augment=False, stride=25
             n_seqs = x4D.shape[1]
             #print(n_seqs)
             if input_type != 'seq':
-                x4D = x4D.reshape([n_epochs * n_seqs, 1, n_ch, segment_length], order='C')
+                x4D = x4D.reshape([n_epochs * n_seqs, n_ch, segment_length], order='C')
             elif seq_length:
                 #seqs_ = min(n_seq//segment_length
                 seq_bins = np.arange(0, n_seqs+1, seq_length)[1:]
@@ -822,7 +845,6 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
         y_train, y_val = partition(targets, test_inds)
 
     if segment:
-        # return
         x_train = _segment(x_train, segment_length=segment, augment=augment,
                            stride=aug_stride, input_type=input_type, seq_length=seq_length)
 
@@ -832,7 +854,7 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
                            stride=aug_stride, input_type=input_type, seq_length=seq_length)
         y_val = _segment(y_val, segment_length=segment, augment=augment,
                          stride=aug_stride, input_type=input_type, seq_length=seq_length)
-        print('segment:', y_val[0].shape)
+        print('segment:', x_val[0].shape, y_val[0].shape)
     if transform_targets:
 
         if input_type == 'seq':
@@ -851,3 +873,22 @@ def preprocess_continuous(data, targets, scale=True, segment=200, augment=False,
             print('preproc cont', x_train.shape, y_train.shape)
     return x_train, y_train, x_val, y_val
 
+# def process_labels(y, scale=False, decimate=False, normalize=False,
+#                   transpose=False, transform=False, segment=False):
+#    """Preprocess target variables."""
+#    if transpose:
+#        y = np.swapaxes(y, -2, -1)
+#
+#    if segment:
+#        y, _ = _segment(y, labels=None, segment_length=segment)
+#    if decimate:
+#        assert y.ndim == 3
+#        y = y[..., ::decimate]
+#    if normalize:
+#        y = scale_to_baseline(y, baseline=None, crop_baseline=False)
+#    y = np.mean(y**2, axis=-1)
+    # print('y', y.shape)
+#    if isinstance(transform, callable):
+#        y = transform(y)
+
+#    return y

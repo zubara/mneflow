@@ -13,7 +13,8 @@ class Optimizer(object):
     """
     def __init__(self, learn_rate=3e-4, l1_lambda=0, l2_lambda=0,
                  l1_scope=['weights'], l2_scope=['weights'],
-                 task='classification', class_weights=None):
+                 task='classification', class_weights=None,
+                 norm_constraints=False):
         """
         Parameters
         ----------
@@ -23,22 +24,42 @@ class Optimizer(object):
                     coefficient for sparse penaly on the model weights
         l2_lambda : float, optional
                     coefficient for l2 on the model weights
+        l1_scope : list of str, optional
+                   specifies which layers l1-penalty applies to
+                   'dmx' - de-mixing
+                   'fc' - fully-cnnected
+                   'tconv' - temopral convolution
+                   'weights' - all weights
+                   deafulats to 'weights'
+        l2_lambda : list of str, optional
+                    specifies which layers l2-penalty applies to
+                    'dmx' - de-mixing
+                    'fc' - fully-cnnected
+                    'tconv' - temopral convolution
+                    'weights' - all weights
+                    deafulats to 'weights'
+        norm_constraints : None, dict *Not Implemented*
+                    whether to apply norm constraints on filters
+                    available keys {'dmx', 'tconv', 'fc'}
+                    values {'l1', 'l2', 'nonneg'}
+
+
+
         task : str, {'classification', 'regression'}
-
-
         """
         self.params = dict(learn_rate=learn_rate, l1_lambda=l1_lambda,
                            l2_lambda=l2_lambda, task=task)
         self.class_weights = class_weights
         self.l1_scope = l1_scope
         self.l2_scope = l2_scope
+        self.norm_constraints = norm_constraints
 
         # TODO : add cost function options,
         # TODO : class balance
         # TODO : regularization options,
         # TODO : performance metric options
 
-    def set_optimizer(self, y_pred, y_true):
+    def _set_optimizer(self, y_pred, y_true):
 
         """
         Initializes the optimizer part of the computational graph
@@ -87,30 +108,10 @@ class Optimizer(object):
             correct_prediction = tf.equal(tf.argmax(y_pred, 1), tf.argmax(y_true,1))
             performance = tf.reduce_mean(tf.cast(correct_prediction,
                                                  tf.float32), name='accuracy')
-        elif self.params['task'] == 'ae':
-            loss = tf.losses.cosine_distance(y_true, y_pred, axis=1)
-            #loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred, reduction='weighted_sum')
-            cross_cov = tf.reduce_mean(y_true*y_pred, axis=1)
-            print('cross_cov', cross_cov.shape)
-            #print(y_pred.shape, y_true.shape)
-            #autocov = tf.reduce_mean(y_true*y_true, axis=1)
-            #loss = 1 - tf.reduce_mean(cross_cov/autocov)
-            performance = tf.reduce_mean(cross_cov)
-            print('PERF', performance.shape)
-            #loss = tf.reduce_mean((y_true-y_pred)**2)
-            #var_ = tf.reduce_mean((y_true)**2)
-
-            #performance = 1-loss/var_
-            prediction = y_pred
-            print(loss.shape, performance.shape)
-
         elif self.params['task'] == 'regression':
             #weights = tf.maximum(.5, 2*tf.abs(y_true))
             #loss = tf.losses.absolute_difference(labels=y_true, predictions=y_pred, weights=weights)  ##,, reduction='weighted_sum'
             loss = tf.losses.mean_squared_error(labels=y_true, predictions=y_pred)#, weights=weights
-            #mn, var_ = tf.nn.moments(y_true)
-            #var_ = tf.reduce_mean(y_true**2)
-
             # R^2
             total_error = tf.reduce_sum(tf.square(tf.subtract(y_true, tf.reduce_mean(y_true))), axis=0)
             unexplained_error = tf.reduce_sum(tf.square(tf.subtract(y_true, y_pred)), axis=0)
@@ -136,10 +137,16 @@ class Optimizer(object):
                    if any(scope in var.name for scope in self.l2_scope)]
             print('L2 penalty applied to', ', '.join(self.l2_scope))
             cost = loss + self.params['l2_lambda'] * tf.add_n(reg)
-
+        train_step = tf.train.AdamOptimizer(learning_rate=self.params['learn_rate'])
+#        if isinstance(self.norm_constraints, dict):
+#            grads_and_vars = train_step.compute_gradients(loss, )
+#            capped_grads_and_vars = [(tf.clip_by_norm(gv[0], clip_norm=123.0, axes=0), gv[1])
+#                         for gv in grads_and_vars]
+#            # Ask the optimizer to apply the capped gradients
+#            optimizer = optimizer.apply_gradients(capped_grads_and_vars)
+#            print('Not implemented')
 
         #  Optimizer
-        train_step = tf.train.AdamOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
-        # train_step = tf.train.RMSPropOptimizer(learning_rate=self.params['learn_rate']).minimize(cost)
-
+        #else:
+        train_step = train_step.minimize(cost)
         return train_step, performance, cost, prediction

@@ -92,13 +92,13 @@ class LFTConv():
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-#                    if self.pool_type == 'avg':
-#                        conv = tf.nn.avg_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
-#                                              strides=[ 1, self.stride, 1, 1],
-#                                              padding=self.padding,
-#                                              data_format='NHWC')
-#                    else:
-                    conv = tf.nn.max_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
+                    if self.pool_type == 'avg':
+                        conv = tf.nn.avg_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
+                                              strides=[ 1, self.stride, 1, 1],
+                                              padding=self.padding,
+                                              data_format='NHWC')
+                    else:
+                        conv = tf.nn.max_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
                                               strides=[ 1, self.stride, 1, 1],
                                               padding=self.padding,
                                               data_format='NHWC')
@@ -117,7 +117,7 @@ class VARConv():
     Stackable spatio-temporal convolutional Layer (VAR)
     """
     def __init__(self, scope="var-conv", n_ls=32,  nonlin=tf.nn.relu,
-                 filter_length=7, stride=1, pooling=2, padding='SAME'):
+                 filter_length=7, stride=1, pooling=2, padding='SAME', pool_type='max'):
         self.scope = scope
         self.size = n_ls
         self.filter_length = filter_length
@@ -125,6 +125,7 @@ class VARConv():
         self.pooling = pooling
         self.nonlin = nonlin
         self.padding = padding
+        self.pool_type = pool_type
 
     def __call__(self, x):
         with tf.name_scope(self.scope):
@@ -137,10 +138,17 @@ class VARConv():
 #                    conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
 #                                          strides=[1, self.stride, 1, 1],
 #                                          padding=self.padding)
-                    conv = tf.nn.max_pool2d(conv, ksize=[1, self.pooling, 1, 1],
-                                          strides=[1, self.stride, 1, 1],
-                                          padding='VALID')
-                    print(conv.shape)
+                    if self.pool_type == 'avg':
+                        conv = tf.nn.avg_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
+                                              strides=[ 1, self.stride, 1, 1],
+                                              padding=self.padding,
+                                              data_format='NHWC')
+                    else:
+                        conv = tf.nn.max_pool2d(conv, ksize=[ 1, self.pooling,  1, 1],
+                                              strides=[ 1, self.stride, 1, 1],
+                                              padding=self.padding,
+                                              data_format='NHWC')
+                    print(self.scope, 'inint:OK shape:', conv.shape)
                     return conv
                 except(AttributeError):
                     self.filters = weight_variable([self.filter_length, 1,
@@ -148,7 +156,7 @@ class VARConv():
                                                     self.size],
                                                    name='tconv_')
                     self.b = bias_variable([self.size])
-                    print(self.scope, 'init : OK')
+                    print(self.scope, 'init')
 
 
 class DeMixing():
