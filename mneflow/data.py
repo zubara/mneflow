@@ -52,7 +52,6 @@ class Dataset(object):
 
         self.train = self._build_dataset(self.h_params['train_paths'],
                                          n_batch=train_batch)
-        #print(self.train)
         self.val = self._build_dataset(self.h_params['val_paths'],
                                        n_batch=None)
         if 'test_paths' in self.h_params.keys():
@@ -68,9 +67,6 @@ class Dataset(object):
         if specified.
         """
         if not n_batch:
-#            if self.h_params['input_type'] in ['seq']:
-#                n_batch = 1  # each batch contains a single sequence
-#            else:
                 n_batch = self._get_n_samples(path)
 
         dataset = tf.data.TFRecordDataset(path)
@@ -89,7 +85,6 @@ class Dataset(object):
         else:
             ds_size = self._get_n_samples(path)
             dataset = dataset.batch(ds_size).repeat()
-        #print(dataset)
         dataset = dataset.map(self._unpack)
         return dataset
 
@@ -100,20 +95,15 @@ class Dataset(object):
                                        axis=0)
         return example_proto
 
-#    def global_scale(self,example_proto):
-#        example_proto['X'] -= tf.reduce_mean(example_proto['X'],axis = -1,
-#        return example_proto
     def class_weights(self):
         weights = np.array([v for k,v in self.h_params['class_proportions'].items()])
         return  1./(weights*float(len(weights)))
 
     def _decimate(self, example_proto):
         """Downsample data"""
-        print(example_proto['X'].shape)
         example_proto['X'] = tf.gather(example_proto['X'],
                                        self.timepoints,
                                        axis=-1)
-        print(example_proto['X'].shape)
         return example_proto
 
     def _get_n_samples(self, path):
@@ -128,10 +118,6 @@ class Dataset(object):
                 ns += 1
         return ns
 
-#    def parse_seq_record(record):
-#        c, f = tf.parse_single_sequence_example(record)
-#      return c, f
-
     def _parse_function(self, example_proto):
         """Restore data shape from serialized records"""
         keys_to_features = {}
@@ -140,7 +126,6 @@ class Dataset(object):
                                                            self.h_params['n_t']),
                                                           tf.float32)
             if self.h_params['target_type'] == 'int':
-                # TODO onehot encoding to utils for classification
                 keys_to_features['y'] =  tf.io.FixedLenFeature(self.h_params['y_shape'],
                                                                tf.int64)
             elif self.h_params['target_type'] == 'float':
@@ -148,38 +133,25 @@ class Dataset(object):
                                                                 tf.float32)
 
             parsed_features = tf.parse_single_example(example_proto, keys_to_features)
-            print(parsed_features)
 
         elif self.h_params['input_type'] in ['seq']:
-
-            #context_features = {'length': tf.io.FixedLenFeature((), tf.int64, default_value=0)}
             keys_to_features['X'] = tf.io.FixedLenFeature((self.h_params['n_seq'], self.h_params['n_ch'],
                                                                    self.h_params['n_t']), tf.float32)
             if self.h_params['target_type'] == 'int':
-                # TODO onehot encoding to utils for classification
                 keys_to_features['y'] =  tf.io.FixedLenFeature((self.h_params['n_seq'],self.h_params['y_shape']), tf.int64)
             elif self.h_params['target_type'] == 'float':
                 keys_to_features['y'] =  tf.io.FixedLenFeature((self.h_params['n_seq'],self.h_params['y_shape']), tf.float32)
-            #c, parsed_features = tf.parse_single_sequence_example(example_proto,
-            #                                                      context_features=context_features,
-            #                                                      sequence_features=keys_to_features)
             parsed_features = tf.parse_single_example(example_proto, keys_to_features)
-#            print(parsed_features['X'])
-#            print(parsed_features['y'])
-#            print('------------------------------------')
-            # Return back to shape [k, n_seq, n_ch, time]
-            #parsed_features['X'] = tf.transpose(parsed_features['X'], [3, 0, 1, 2], name='X')
-            #parsed_features['y'] = tf.transpose(parsed_features['y'], [2, 0, 1], name='y')
-            print(parsed_features['X'])
-            print(parsed_features['y'])
+
 
         return parsed_features
 
     def _select_classes(self, sample):
         """Picks a subset of classes specified in self.class_subset"""
         if self.class_subset:
+            # TODO: fix subsetting
             subset = tf.constant(self.class_subset, dtype=tf.int64)
-            out = tf.reduce_any(tf.equal(sample['y'], subset))
+            out = tf.reduce_any(tf.equal(tf.argmax(sample['y']), subset))
             return out
         else:
             return tf.constant(True, dtype=tf.bool)
