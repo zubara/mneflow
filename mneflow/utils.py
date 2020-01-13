@@ -362,7 +362,7 @@ def import_data(inp, picks=None, target_picks=None,
         events = np.expand_dims(events, 0)
     if isinstance(picks, np.ndarray):
         data = data[:, picks, :]
-    if any(transpose):
+    if transpose:
         if 'X' in transpose:
             data = np.swapaxes(data, -1, -2)
         if 'y' in transpose:
@@ -479,16 +479,25 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         discarded.
 
     segment : bool, int, optional
+                whether to spit the data into smaller segments of sepcified
+                length
 
     augment : bool, optional
+                whether to apply sliding window agumentation
 
     aug_stride : int, optional
+                 stride of sliding window augmentation.
 
-    picks : ndarray, optional
+    picks : ndarray of int, optional
+            array of indices of channels to use in decoding
 
     target_picks : ndarray, optional
+            array of indices of channels to extract target variable
 
-    transpose : bool, optional
+    transpose : bool, tuple, optional
+                ('X', 'y') swaps lat two dimentions of both data and targets
+                during import
+                ('X'), does the same for data only. Deafult is False
 
     transform_targets : bool, optional
 

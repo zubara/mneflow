@@ -1177,7 +1177,7 @@ class LFLSTM(LFCNN):
         self.lstm = LSTMv1(scope="lstm-weights",
                            size=self.specs['n_ls'],
                            dropout=self.rate,
-                           nonlin=tf.tanh,
+                           nonlin=tf.identity,
                            unit_forget_bias=True,
                            return_sequences=True,
                            unroll=False)
