@@ -20,7 +20,7 @@ from matplotlib import pyplot as plt, patches as ptch, collections
 import csv
 import os
 from .keras_layers import LSTMv1
-
+from tensorflow.keras import regularizers as k_reg, constraints
 
 class Model(object):
     """
@@ -119,7 +119,7 @@ class Model(object):
         y_pred = fc_1(self.X)
         return y_pred
 
-    def train(self, n_iter, eval_step=250, min_delta=1e-6, early_stopping=3):
+    def train(self, n_iter, eval_step=250, min_delta=1e-6, early_stopping=5):
         """
         Trains a model
 
@@ -146,7 +146,8 @@ class Model(object):
             self.sess.run(tf.global_variables_initializer())
             self.min_val_loss = np.inf
             self.t_hist = []
-
+        if not early_stopping:
+            early_stopping = np.inf
         patience_cnt = 0
         for i in range(n_iter+1):
             _ = self.sess.run([self.train_step],
@@ -229,8 +230,8 @@ class Model(object):
             print('Specify data_path!')
             return
 
-        elif not hasattr(self.dataset, 'test'):
-            self._add_dataset(data_path)
+        #elif not hasattr(self.dataset, 'test'):
+        self._add_dataset(data_path)
 
         acc = self.sess.run(self.accuracy, feed_dict={self.handle:
                                                       self.test_handle,
@@ -1150,7 +1151,7 @@ class LFLSTM(LFCNN):
         """
 
     def build_graph(self):
-        self.scope = 'var-cnn'
+        self.scope = 'lflstm-cnn'
 
         self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=2)
         dmx = self.demix(self.X)
@@ -1173,19 +1174,31 @@ class LFLSTM(LFCNN):
         features = tf.reshape(features, [-1, self.dataset.h_params['n_seq'],
                                          fshape])
         #  features = tf.expand_dims(features, 0)
+        l1_lambda = self.optimizer.params['l1_lambda']
         print('flat features:', features.shape)
-        self.lstm = LSTMv1(scope="lstm-weights",
+        self.lstm = LSTMv1(scope="lstm",
                            size=self.specs['n_ls'],
-                           dropout=self.rate,
-                           nonlin=tf.identity,
-                           unit_forget_bias=True,
-                           return_sequences=True,
+                           kernel_initializer='glorot_uniform',
+                           recurrent_initializer='orthogonal',
+                           recurrent_regularizer=k_reg.l1(l1_lambda),
+                           kernel_regularizer= k_reg.l2(l1_lambda),
+                           #bias_regularizer=None,
+                           #activity_regularizer= regularizers.l1(0.01),
+                           #kernel_constraint= constraints.UnitNorm(axis=0),
+                           #recurrent_constraint= constraints.NonNeg(),
+                           #bias_constraint=None,
+                           #dropout=0.1, recurrent_dropout=0.1,
+                           nonlin=tf.nn.tanh,
+                           unit_forget_bias=False,
+                           return_sequences=False,
                            unroll=False)
 
         lstm_out = self.lstm(features)
         print('lstm_out:', lstm_out.shape)
-        self.fin_fc = DeMixing(n_ls=np.prod(self.y_shape),
-                               nonlin=tf.tanh, axis=-1)
+        self.fin_fc = Dense(size=np.prod(self.y_shape),
+                            nonlin=tf.identity, dropout=1.)
+#        self.fin_fc = DeMixing(n_ls=np.prod(self.y_shape),
+#                               nonlin=tf.identity, axis=-1)
         y_pred = self.fin_fc(lstm_out)
         print(y_pred)
         return y_pred

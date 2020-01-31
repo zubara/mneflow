@@ -451,9 +451,11 @@ class LSTMv1(layers.LSTM):
                  bias_regularizer=None, return_sequences=True, **args):
         super(LSTMv1, self).__init__(name=scope, units=size,
                                      activation=nonlin,
-                                     recurrent_activation=tf.nn.sigmoid,
+                                     #recurrent_initializer='orthogonal',
+                                     recurrent_activation=tf.nn.tanh,
                                      unit_forget_bias=unit_forget_bias,
                                      kernel_regularizer=kernel_regularizer,
+                                     #kernel_initializer='glorot_uniform',
                                      bias_regularizer=bias_regularizer,
                                      return_sequences=return_sequences, **args)
         self.scope = scope
