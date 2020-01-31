@@ -138,7 +138,7 @@ class Dataset(object):
             keys_to_features['X'] = tf.io.FixedLenFeature((self.h_params['n_seq'], self.h_params['n_ch'],
                                                                    self.h_params['n_t']), tf.float32)
             if self.h_params['target_type'] == 'int':
-                keys_to_features['y'] =  tf.io.FixedLenFeature((self.h_params['n_seq'],self.h_params['y_shape']), tf.int64)
+                keys_to_features['y'] =  tf.io.FixedLenFeature((self.h_params['y_shape']), tf.int64)
             elif self.h_params['target_type'] == 'float':
                 keys_to_features['y'] =  tf.io.FixedLenFeature((self.h_params['n_seq'],self.h_params['y_shape']), tf.float32)
             parsed_features = tf.parse_single_example(example_proto, keys_to_features)
