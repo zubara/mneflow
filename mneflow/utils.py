@@ -13,7 +13,7 @@ import tensorflow as tf
 import scipy.io as sio
 
 from mne import filter as mnefilt
-from mne import epochs as mnepochs  # , pick_types
+from mne import epochs as mnepochs, pick_types
 
 from mneflow.data import Dataset
 from mneflow.optimize import Optimizer
@@ -343,7 +343,6 @@ def import_data(inp, picks=None, target_picks=None,
     return data, events
 
 
-
 def produce_labels(y, return_stats=True):
     """Produces labels array from e.g. event (unordered) trigger codes.
 
@@ -410,8 +409,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                       scale=False, scale_interval=None,   crop_baseline=False,
                       bp_filter=False, decimate=False, combine_events=None,
                       segment=False, augment=False, aug_stride=50,
-                      picks=None, transpose=False,
-                      target_picks=None, transform_targets=False, seq_length=None,
+                      picks=None, transpose=False, target_picks=None,
+                      transform_targets=False, seq_length=None,
                       overwrite=True, savebatch=1, test_set=False,):
 
     r"""
@@ -550,8 +549,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                     data_id=out_name, val_size=0, savepath=savepath,
                     target_type=target_type, input_type=input_type)
         jj = 0
-        #i = 0
-
+        # i = 0
         meta['fs'] = fs
         if not isinstance(inputs, list):
             inputs = [inputs]
@@ -565,27 +563,25 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                     events, keep_ind = _combine_labels(events, combine_events)
                     data = data[keep_ind, ...]
                     events = events[keep_ind]
-                    #print(events)
+                    # print(events)
 
-                events, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
+                events, total_counts, props, orig = produce_labels(events)
+                meta['class_proportions'] = props
+                meta['orig_classes'] = orig
+                del props, orig
+
                 events = _onehot(events)
 
-            x_train,  y_train, x_val, y_val = preprocess(data, events,
-                                                         input_type=input_type,
-                                                         scale=True, fs=fs,
-                                                         val_size=val_size,
-                                                         scale_interval=scale_interval,
-                                                         segment=segment,
-                                                         augment=augment,
-                                                         aug_stride=aug_stride,
-                                                         crop_baseline=crop_baseline,
-                                                         decimate=decimate,
-                                                         bp_filter=bp_filter,
-                                                         seq_length=seq_length)
+            x_train,  y_train, x_val, y_val = preprocess(
+                    data, events, input_type=input_type, scale=True, fs=fs,
+                    val_size=val_size, scale_interval=scale_interval,
+                    segment=segment, augment=augment, aug_stride=aug_stride,
+                    crop_baseline=crop_baseline, decimate=decimate,
+                    bp_filter=bp_filter, seq_length=seq_length)
+
             if test_set == 'holdout':
                 x_val, y_val, x_test, y_test = _split_sets(x_val, y_val,
                                                            val=.5)
-
             if input_type == 'trials':
                 meta['y_shape'] = y_train[0].shape
             else:
@@ -593,10 +589,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
 
             if input_type == 'seq':
                 meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
-                meta['y_shape'] = y_train[0].shape[-1]
             else:
-                n_epochs, meta['n_ch'], meta['n_t'] = x_train.shape
-                meta['y_shape'] = y_train.shape[-1]
+                _, meta['n_ch'], meta['n_t'] = x_train.shape
 
             print('Prepocessed sample shape:', x_train[0].shape)
             print('Target shape actual/metadata: ',
@@ -625,6 +619,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                                  meta['test_paths'][-1],
                                  input_type=input_type,
                                  target_type=target_type)
+
             elif test_set == 'holdout':
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
@@ -643,14 +638,23 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
 
 
 def _combine_labels(labels, new_mapping):
-    """Combines labels
+    """Combine event labels.
 
     Parameters
     ----------
     labels : ndarray
-            label vector
+        Label vector
+
     combine_dict : dict
-            mapping {'new_label':[old_label1,old_label2]}
+        Mapping {'new_label': [old_label1, old_label2]}
+
+    Returns:
+    --------
+    new_labels : ndarray
+        Updated label vector.
+
+    keep_ind : ndarray
+        Label indices.
     """
     new_labels = 404*np.ones(len(labels), int)
     for old_label, new_label in new_mapping.items():
@@ -662,24 +666,31 @@ def _combine_labels(labels, new_mapping):
 
 def _segment(data, segment_length=200, seq_length=None, augment=False,
              stride=25, input_type='iid'):
-    """
+    """Split the data into fixed-length segments.
+
     Parameters:
     -----------
     data : list of ndarrays
-            data array of shape (n_epochs, n_channels, n_times)
+        Data array of shape (n_epochs, n_channels, n_times)
 
     labels : ndarray
-            array of labels (n_epochs,)
+        Array of labels (n_epochs, y_shape)
+
+    seq_length: int or None
+        Length of segment sequence.
 
     segment_length : int or False
-                    length of segment into which to split the data in
-                    time samples
+        Length of segment into which to split the data in time samples.
 
+    Returns:
+    --------
+    data : list of ndarrays
+        Data array of shape
+        [n_epochs*nrows, seq_length, n_channels, segment_length]
     """
-    #print('data:', data.shape)
     x_out = []
     for jj, xx in enumerate(data):
-        #print('xx:', xx.shape)
+        # print('xx:', xx.shape)
         n_ch, n_t = xx.shape
         last_segment_start = n_t - segment_length
         if not augment:
@@ -687,7 +698,7 @@ def _segment(data, segment_length=200, seq_length=None, augment=False,
         starts = np.arange(0, last_segment_start+1, stride)
         segments = [xx[..., s:s+segment_length] for s in starts]
 
-        if input_type=='seq':
+        if input_type == 'seq':
             if not seq_length:
                 seq_length = len(segments)
             seq_bins = np.arange(seq_length, len(segments)+1, seq_length)
@@ -695,18 +706,20 @@ def _segment(data, segment_length=200, seq_length=None, augment=False,
             x_new = np.array(segments)
         else:
             x_new = np.stack(segments, axis=0)
-#        if jj == 0:
-#            print('n_segments: {:d}, shape: {:d}x{:d}'.format(len(segments), segments[0].shape[0], segments[0].shape[1]))
+        # if jj == 0:
+        #    print('n_segments: {:d}, shape: {:d}x{:d}'.format(len(segments),
+        #          segments[0].shape[0], segments[0].shape[1]))
         x_out.append(x_new)
+        # print('xout:', len(x_out), x_out[-1].shape)
+    # if input_type != 'seq' or seq_length:
 
     return np.concatenate(x_out, 0)
+    # else:
+    #    return(x_out)
 
 
 def cont_split_indices(X, test_size=.1, test_segments=5):
-    """
-    X - 3d data array
-
-    """
+    """X - 3d data array."""
     raw_len = X.shape[-1]
     test_samples = int(test_size*raw_len//test_segments)
     interval = raw_len//(test_segments+1)
@@ -715,35 +728,53 @@ def cont_split_indices(X, test_size=.1, test_segments=5):
     test_start = [ds + np.random.randint(interval - test_samples)
                   for ds in data_intervals]
 
-    test_indices = [(t_strt, t_strt + test_samples)
+    test_indices = [(t_strt, t_strt+test_samples)
                     for t_strt in test_start[:-1]]
     return test_indices
 
 
 def partition(data, test_indices):
+    """Partition data according to ranges defined by `test_indices`.
 
+    Parameters:
+    -----------
+    data : list of ndarray
+        Data array to be partitioned.
+
+    test_indices : list
+        Contains pairs of values [start, end], indicating where the data
+        will be partitioned.
+
+    Returns:
+    --------
+    x_train, x_test: lists of ndarrays
+        The data partitioned into two sets.
+
+    Raises:
+    -------
+        ValueError: If the shape of`test_indices` is incorrect.
+
+        AttributeError: If `test_indices` is empty.
+    """
     if any(test_indices):
-
         if np.ndim(test_indices) == 1 and np.max(test_indices) < data.shape[0]:
-
-            x_out = [data[test_indices, ...], np.delete(data, test_indices,
-                                                        axis=0)][::-1]
+            x_out = [data[test_indices, ...],
+                     np.delete(data, test_indices, axis=0)][::-1]
         elif np.ndim(test_indices) == 2:
             bins = sorted(np.ravel(test_indices))
+            # data is a list of segments of different lengths
             x_out = np.split(data, bins, axis=-1)
-
         else:
-            print('Could not split the data, check test_indices!')
-            return
+            raise ValueError('Could not split the data, check test_indices!')
 
         x_out = [xt - np.median(xt, axis=-1, keepdims=True) for xt in x_out]
         x_train = x_out[0::2]
         x_test = x_out[1::2]
 
+        # print([xt.shape for xt in x_train])
         return x_train, x_test
     else:
-        print('No test labels provided')
-        return None
+        raise AttributeError('No test indices provided')
 
 
 def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
@@ -751,24 +782,27 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
                decimate=False, bp_filter=False, picks=None, segment=False,
                augment=False, aug_stride=25, seq_length=None):
     """
-    scale : bool, optinal
-        whether to perform scaling to baseline. Defaults to False.
+    scale : bool, optional
+        Whether to perform scaling to baseline. Defaults to False.
 
-    scale_interval : NoneType, tuple of ints or floats,  optinal
-        baseline definition. If None (default) scaling is
-        perfromed based on all timepoints of the epoch.
+    scale_interval : NoneType, tuple of ints or floats,  optional
+        Baseline definition. If None (default) scaling is
+        performed based on all timepoints of the epoch.
         If tuple, than baseline is data[tuple[0] : tuple[1]].
         Only used if scale == True.
 
-    crop_baseline : bool, optinal
-        whether to crop baseline specified by 'scale_interval'
+    crop_baseline : bool, optional
+        Whether to crop baseline specified by 'scale_interval'
         after scaling (defaults to False).
 
 
     Returns
     -------
-    x_train, x_val - arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
-    y_train, y_val - arrays of dimensions [n_epochs, n_seq, n_targets]
+    x_train, x_val: ndarrays
+        Data arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
+
+    y_train, y_val : ndarrays
+        Label arrays of dimensions [n_epochs, n_seq, n_targets]
     """
 
     if bp_filter:
@@ -839,6 +873,7 @@ def preprocess_continuous_labels(data, targets, scale=True, segment=200,
     x_train, x_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
     y_train, y_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_targets]
     """
+    raise NotImplementedError
 
     if transform_targets:
 
