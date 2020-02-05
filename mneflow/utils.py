@@ -384,26 +384,6 @@ def produce_labels(y, return_stats=True):
         return inv
 
 
-# def process_labels(y, scale=False, decimate=False, normalize=False,
-#                   transpose=False, transform=False, segment=False):
-#    """Preprocess target variables."""
-#    if transpose:
-#        y = np.swapaxes(y, -2, -1)
-#
-#    if segment:
-#        y, _ = _segment(y, labels=None, segment_length=segment)
-#    if decimate:
-#        assert y.ndim == 3
-#        y = y[..., ::decimate]
-#    if normalize:
-#        y = scale_to_baseline(y, baseline=None, crop_baseline=False)
-#    y = np.mean(y**2, axis=-1)
-    # print('y', y.shape)
-#    if isinstance(transform, callable):
-#        y = transform(y)
-#    return y
-
-
 def produce_tfrecords(inputs, savepath, out_name, fs,
                       input_type='trials', target_type='float',
                       array_keys={'X': 'X', 'y': 'y'}, val_size=0.2,
@@ -411,8 +391,9 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                       bp_filter=False, decimate=False, combine_events=None,
                       segment=False, augment=False, aug_stride=50,
                       picks=None, transpose=False,
-                      target_picks=None, transform_targets=False, seq_length=None,
-                      overwrite=True, savebatch=1, test_set=False,):
+                      target_picks=None, transform_targets=False,
+                      seq_length=None, overwrite=True, savebatch=1,
+                      test_set=False,):
 
     r"""
     Produces TFRecord files from input, applies (optional) preprocessing.
@@ -550,7 +531,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                     data_id=out_name, val_size=0, savepath=savepath,
                     target_type=target_type, input_type=input_type)
         jj = 0
-        #i = 0
+        # i = 0
 
         meta['fs'] = fs
         if not isinstance(inputs, list):
@@ -565,9 +546,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                     events, keep_ind = _combine_labels(events, combine_events)
                     data = data[keep_ind, ...]
                     events = events[keep_ind]
-                    #print(events)
 
-                events, total_counts, meta['class_proportions'], meta['orig_classes'] = produce_labels(events)
+                events, n_ev, meta['class_ratio'], _ = produce_labels(events)
                 events = _onehot(events)
 
             x_train,  y_train, x_val, y_val = preprocess(data, events,
@@ -582,6 +562,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                                                          decimate=decimate,
                                                          bp_filter=bp_filter,
                                                          seq_length=seq_length)
+
             if test_set == 'holdout':
                 x_val, y_val, x_test, y_test = _split_sets(x_val, y_val,
                                                            val=.5)
@@ -676,10 +657,8 @@ def _segment(data, segment_length=200, seq_length=None, augment=False,
                     time samples
 
     """
-    #print('data:', data.shape)
     x_out = []
     for jj, xx in enumerate(data):
-        #print('xx:', xx.shape)
         n_ch, n_t = xx.shape
         last_segment_start = n_t - segment_length
         if not augment:
@@ -687,7 +666,7 @@ def _segment(data, segment_length=200, seq_length=None, augment=False,
         starts = np.arange(0, last_segment_start+1, stride)
         segments = [xx[..., s:s+segment_length] for s in starts]
 
-        if input_type=='seq':
+        if input_type == 'seq':
             if not seq_length:
                 seq_length = len(segments)
             seq_bins = np.arange(seq_length, len(segments)+1, seq_length)
@@ -695,8 +674,6 @@ def _segment(data, segment_length=200, seq_length=None, augment=False,
             x_new = np.array(segments)
         else:
             x_new = np.stack(segments, axis=0)
-#        if jj == 0:
-#            print('n_segments: {:d}, shape: {:d}x{:d}'.format(len(segments), segments[0].shape[0], segments[0].shape[1]))
         x_out.append(x_new)
 
     return np.concatenate(x_out, 0)
@@ -826,34 +803,51 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
 
     return x_train, y_train, x_val, y_val
 
+# def process_labels(y, scale=False, decimate=False, normalize=False,
+#                   transpose=False, transform=False, segment=False):
+#    """Preprocess target variables."""
+#    if transpose:
+#        y = np.swapaxes(y, -2, -1)
+#
+#    if segment:
+#        y, _ = _segment(y, labels=None, segment_length=segment)
+#    if decimate:
+#        assert y.ndim == 3
+#        y = y[..., ::decimate]
+#    if normalize:
+#        y = scale_to_baseline(y, baseline=None, crop_baseline=False)
+#    y = np.mean(y**2, axis=-1)
+    # print('y', y.shape)
+#    if isinstance(transform, callable):
+#        y = transform(y)
+#    return y
 
-def preprocess_continuous_labels(data, targets, scale=True, segment=200,
-                          augment=False,
-                          val_size=0.1, aug_stride=10, transform_targets=True,
-                          bp_filter=False, fs=None, decimate=None,
-                          input_type='iid',
-                          seq_length=None):
-    """
-    Returns
-    -------
-    x_train, x_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
-    y_train, y_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_targets]
-    """
-
-    if transform_targets:
-
-        if input_type == 'seq':
-            y_train = [np.mean(y_tr[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_tr in y_train]
-            y_val = [np.mean(y_v[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_v in y_val]
-#            y_train = [np.mean(y_tr[..., -aug_stride:], axis=-1) for y_tr in y_train]
-#            y_val = [np.mean(y_v[..., -aug_stride:], axis=-1) for y_v in y_val]
-            print('preproc cont', len(x_train), x_train[0].shape, y_train[0].shape)
-        else:
-            y_train = np.mean(y_train[...,0, -aug_stride:], axis=-1, keepdims=True)
-            y_val = np.mean(y_val[...,0, -aug_stride:], axis=-1, keepdims=True)
-#            y_train -= y_median[None,0, :]
-#            y_val -= y_median[None,0,  :]
-#            y_train /= qrange[None,0, :]
-#            y_val /= qrange[None, 0, :]
-            print('preproc cont', x_train.shape, y_train.shape)
-    return x_train, y_train, x_val, y_val
+#def preprocess_continuous_labels(data, targets, scale=True, segment=200,
+#                                 augment=False, val_size=0.1, aug_stride=10,
+#                                 transform_targets=True, bp_filter=False,
+#                                 fs=None, decimate=None, input_type='trials',
+#                                 seq_length=None):
+#    """
+#    Returns
+#    -------
+#    x_train, x_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
+#    y_train, y_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_targets]
+#    """
+#
+#    if transform_targets:
+#
+#        if input_type == 'seq':
+#            y_train = [np.mean(y_tr[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_tr in y_train]
+#            y_val = [np.mean(y_v[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_v in y_val]
+##            y_train = [np.mean(y_tr[..., -aug_stride:], axis=-1) for y_tr in y_train]
+##            y_val = [np.mean(y_v[..., -aug_stride:], axis=-1) for y_v in y_val]
+#            print('preproc cont', len(x_train), x_train[0].shape, y_train[0].shape)
+#        else:
+#            y_train = np.mean(y_train[...,0, -aug_stride:], axis=-1, keepdims=True)
+#            y_val = np.mean(y_val[...,0, -aug_stride:], axis=-1, keepdims=True)
+##            y_train -= y_median[None,0, :]
+##            y_val -= y_median[None,0,  :]
+##            y_train /= qrange[None,0, :]
+##            y_val /= qrange[None, 0, :]
+#            print('preproc cont', x_train.shape, y_train.shape)
+#    return x_train, y_train, x_val, y_val
