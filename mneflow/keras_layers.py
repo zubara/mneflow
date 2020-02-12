@@ -3,7 +3,7 @@
 """
 mneflow.Layers implementation using keras layers
 
-@author: vranoug1
+@author: Gavriela Vranou
 """
 import tensorflow as tf
 import numpy as np
@@ -39,35 +39,47 @@ class Dense(layers.Layer):
 
     def build(self, input_shape):
         super(Dense, self).build(input_shape)
+        # print(input_shape)
         if len(input_shape) > 2:
             self.flatsize = np.prod(input_shape[1:]).value
         else:
             self.flatsize = input_shape[1].value
 
-        self.w = self.add_weight(shape=(self.flatsize, self.size),
+        print(self.scope, ':::', self.flatsize, self.size)
+        self.w = self.add_weight(shape=[self.flatsize, self.size],
                                  initializer='he_uniform',
                                  regularizer=self.kernel_regularizer,
                                  trainable=True,
                                  name='fc_weights',
                                  dtype=tf.float32)
 
-        self.b = self.add_weight(shape=([self.size]),
+        self.b = self.add_weight(shape=[self.size],
                                  initializer=Constant(0.1),
                                  regularizer=self.bias_regularizer,
                                  trainable=True,
-                                 name='bias',
+                                 name='fc_bias',
                                  dtype=tf.float32)
 
-        self.w = tf.nn.dropout(self.w, rate=self.dropout)
         print(self.scope, 'build : OK')
 
-    def call(self, x):
+    @tf.function
+    def call(self, x, training=None):
         """Dense layer currying, to apply layer to any input tensor `x`"""
         with tf.name_scope(self.scope):
             if len(x.shape) > 2:  # flatten if input is not 2d array
+                # print(self.flatsize)
                 x = tf.reshape(x, [-1, self.flatsize])
-            out = self.nonlin(tf.matmul(x, self.w) + self.b, name='out')
-            return out
+
+            tmprate = 0.5 if training else 0.0
+            tmpw = tf.nn.dropout(self.w, rate=tmprate)
+
+            tmp = tf.matmul(x, tmpw)
+            # print('matmul shape:', tmp.shape)
+            tmp = tmp + self.b
+            # print('added bias shape:', tmp.shape)
+            tmp = self.nonlin(tmp, name='out')
+            # print('after nonlin:', tmp.shape)
+            return tmp
 
 
 class LFTConv(layers.Layer):
@@ -76,30 +88,33 @@ class LFTConv(layers.Layer):
     """
     def __init__(self, scope="lf-conv", n_ls=32,  nonlin=tf.nn.relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME',
-                 kernel_regularizer=None, bias_regularizer=None, **args):
+                 pool_type='max', kernel_regularizer=None,
+                 bias_regularizer=None, **args):
         super(LFTConv, self).__init__(name=scope, **args)
         self.scope = scope
-        self.size = n_ls
+        # self.size = n_ls
         self.filter_length = filter_length
         self.stride = stride
         self.pooling = pooling
         self.nonlin = nonlin
         self.padding = padding
+        self.pool_type = pool_type
         self.kernel_regularizer = kernel_regularizer
         self.bias_regularizer = bias_regularizer
 
     def get_config(self):
 
         config = super(LFTConv, self).get_config()
-        config.update({'scope': self.scope, 'size': self.size,
+        config.update({'scope': self.scope,
                        'filter_length': self.filter_length,
                        'stride': self.stride, 'pooling': self.pooling,
-                       'nonlin': self.nonlin, 'padding': self.padding})
+                       'nonlin': self.nonlin, 'padding': self.padding,
+                       'pool_type': self.pool_type})
         return config
 
     def build(self, input_shape):
         super(LFTConv, self).build(input_shape)
-        shape = [self.filter_length, 1, self.size, 1]
+        shape = [self.filter_length, 1, input_shape[-1].value, 1]
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
                                        regularizer=self.kernel_regularizer,
@@ -107,7 +122,7 @@ class LFTConv(layers.Layer):
                                        name='tconv_weights',
                                        dtype=tf.float32)
 
-        self.b = self.add_weight(shape=([self.size]),
+        self.b = self.add_weight(shape=([input_shape[-1].value]),
                                  initializer=Constant(0.1),
                                  regularizer=self.bias_regularizer,
                                  trainable=True,
@@ -115,30 +130,42 @@ class LFTConv(layers.Layer):
                                  dtype=tf.float32)
         print(self.scope, 'build : OK')
 
-    def call(self, x):
+    @tf.function
+    def call(self, x, training=None):
         with tf.name_scope(self.scope):
+            # tf.print('lf-inp', x.shape)
             conv = tf.nn.depthwise_conv2d(x,
                                           self.filters,
                                           padding=self.padding,
                                           strides=[1, 1, 1, 1],
                                           data_format='NHWC')
             conv = self.nonlin(conv + self.b)
-            conv = tf.nn.max_pool(conv,
-                                  ksize=[1, self.pooling, 1, 1],
-                                  strides=[1, self.stride, 1, 1],
-                                  padding=self.padding)
-            conv = tf.squeeze(conv, axis=2)
-            #print(self.scope, conv.shape)
+
+            if self.pool_type == 'avg':
+                conv = tf.nn.avg_pool2d(
+                        conv,
+                        ksize=[1, self.pooling,  1, 1],
+                        strides=[1, self.stride, 1, 1],
+                        padding=self.padding,
+                        data_format='NHWC')
+            else:
+                conv = tf.nn.max_pool2d(conv,
+                                        ksize=[1, self.pooling, 1, 1],
+                                        strides=[1, self.stride, 1, 1],
+                                        padding=self.padding)
+            # print('f:', self.filters.shape)
+            # print('lf-out', conv.shape)
+            # conv = tf.squeeze(conv, axis=2)
+            # print(self.scope, conv.shape)
             return conv
 
 
 class VARConv(layers.Layer):
-    """
-    Stackable spatio-temporal convolutional Layer (VAR)
-    """
+    """Stackable spatio-temporal convolutional Layer (VAR)."""
     def __init__(self, scope="var-conv", n_ls=32, nonlin=relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME',
-                 kernel_regularizer=None, bias_regularizer=None, **args):
+                 pool_type='max', kernel_regularizer=None,
+                 bias_regularizer=None, **args):
         super(VARConv, self).__init__(name=scope, **args)
         self.scope = scope
         self.size = n_ls
@@ -147,6 +174,7 @@ class VARConv(layers.Layer):
         self.pooling = pooling
         self.nonlin = nonlin
         self.padding = padding
+        self.pool_type = pool_type
         self.kernel_regularizer = kernel_regularizer
         self.bias_regularizer = bias_regularizer
 
@@ -157,10 +185,12 @@ class VARConv(layers.Layer):
         config.update({'scope': self.scope, 'size': self.size,
                        'filter_length': self.filter_length,
                        'stride': self.stride, 'pooling': self.pooling,
-                       'nonlin': self.nonlin, 'padding': self.padding})
+                       'nonlin': self.nonlin, 'padding': self.padding,
+                       'pool_type': self.pool_type})
         return config
 
     def build(self, input_shape):
+
         super(VARConv, self).build(input_shape)
         shape = [self.filter_length, 1, input_shape[-1].value, self.size]
         self.filters = self.add_weight(shape=shape,
@@ -178,7 +208,8 @@ class VARConv(layers.Layer):
                                  dtype=tf.float32)
         print(self.scope, 'build : OK')
 
-    def call(self, x):
+    @tf.function
+    def call(self, x, training=None):
         with tf.name_scope(self.scope):
             conv = tf.nn.conv2d(x,
                                 self.filters,
@@ -187,13 +218,22 @@ class VARConv(layers.Layer):
                                 data_format='NHWC')
             conv = self.nonlin(conv + self.b)
 
-            conv = tf.nn.max_pool(conv,
-                                  ksize=[1, self.pooling, 1, 1],
-                                  strides=[1, self.stride, 1, 1],
-                                  padding='VALID')
-            conv = tf.squeeze(conv, axis=2)
-            #print(self.scope, conv.shape)
-            # # print(self.scope, 'call : OK')
+            if self.pool_type == 'avg':
+                conv = tf.nn.avg_pool2d(
+                        conv,
+                        ksize=[1, self.pooling, 1, 1],
+                        strides=[1, self.stride, 1, 1],
+                        padding=self.padding,
+                        data_format='NHWC')
+            else:
+                conv = tf.nn.max_pool2d(
+                        conv,
+                        ksize=[1, self.pooling, 1, 1],
+                        strides=[1, self.stride, 1, 1],
+                        padding=self.padding,
+                        data_format='NHWC')
+
+            print(self.scope, 'call: ok shape', conv.shape)
             return conv
 
 
@@ -201,32 +241,34 @@ class DeMixing(layers.Layer):
     """
     Spatial demixing Layer
     """
-    def __init__(self, scope="de-mix", n_ls=32,  axis=1, nonlin=tf.identity,
+    def __init__(self, scope="de-mix", n_ls=32,  axis=2, nonlin=tf.identity,
                  kernel_regularizer=None, bias_regularizer=None, **args):
         super(DeMixing, self).__init__(name=scope, **args)
         self.scope = scope
         self.size = n_ls
         self.nonlin = nonlin
+        self.axis = axis
         self.kernel_regularizer = kernel_regularizer
         self.bias_regularizer = bias_regularizer
-        self.axis = axis
 
         print(self.scope, 'init : OK')
 
     def get_config(self):
         config = super(DeMixing, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': self.nonlin})
+                       'nonlin': self.nonlin, 'axis': self.axis})
         return config
 
     def build(self, input_shape):
+
         super(DeMixing, self).build(input_shape)
-        self.W = self.add_weight(shape=(input_shape[self.axis].value, self.size),
-                                 initializer='he_uniform',
-                                 regularizer=self.kernel_regularizer,
-                                 trainable=True,
-                                 name='dmx_weights',
-                                 dtype=tf.float32)
+        self.W = self.add_weight(
+                shape=(input_shape[self.axis].value, self.size),
+                initializer='he_uniform',
+                regularizer=self.kernel_regularizer,
+                trainable=True,
+                name='dmx_weights',
+                dtype=tf.float32)
 
         self.b_in = self.add_weight(shape=([self.size]),
                                     initializer=Constant(0.1),
@@ -236,14 +278,16 @@ class DeMixing(layers.Layer):
                                     dtype=tf.float32)
         print(self.scope, 'built : OK')
 
-    def call(self, x):
+    @tf.function
+    def call(self, x, training=None):
         with tf.name_scope(self.scope):
-            demix = tf.tensordot(x, self.W, axes=[[self.axis], [0]], name='de-mix')
+            demix = tf.tensordot(x, self.W, axes=[[self.axis], [0]],
+                                 name='de-mix')
             demix = self.nonlin(demix + self.b_in)
-            x_reduced = tf.expand_dims(demix, -2)
+            # x_reduced = tf.expand_dims(demix, -2)
 
-            #print(self.scope, x_reduced.shape)
-            return x_reduced
+            print('dmx', demix.shape)
+            return demix
 
 
 class ConvDSV(layers.Layer):
@@ -287,6 +331,7 @@ class ConvDSV(layers.Layer):
         return config
 
     def build(self, input_shape):
+
         super(ConvDSV, self).build(input_shape)
         shape = None
         if self.domain == 'time':
@@ -296,7 +341,8 @@ class ConvDSV(layers.Layer):
             shape = [self.filter_length, 1, self.inch, self.size]
 
         elif self.domain == '2d':
-            shape = [self.filter_length[0], self.filter_length[1], self.inch, self.size]
+            shape = [self.filter_length[0], self.filter_length[1],
+                     self.inch, self.size]
 
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
@@ -322,7 +368,8 @@ class ConvDSV(layers.Layer):
                                        dtype=tf.float32)
         print(self.scope, 'build : OK')
 
-    def call(self, x):
+    @tf.function
+    def call(self, x, training=None):
         with tf.name_scope(self.scope):
             conv_ = None
 
@@ -347,23 +394,22 @@ class ConvDSV(layers.Layer):
 
             conv_ = self.nonlin(conv_ + self.b)
 
-            conv_ = tf.nn.max_pool(conv_,
-                                   ksize=[1, self.pool, 1, 1],
-                                   strides=[1, 1, 1, 1],
-                                   padding='SAME')
+            conv_ = tf.nn.max_pool2d(conv_,
+                                     ksize=[1, self.pool, 1, 1],
+                                     strides=[1, 1, 1, 1],
+                                     padding='SAME')
             return conv_
 
 
 class DeConvLayer(layers.Layer):
     # Migrated from dev.py
     """DeConvolution Layer"""
-    def __init__(self, n_ls, n_ch, n_t, scope="deconv", flat_out=False,
+    def __init__(self, n_ls, y_shape, scope="deconv", flat_out=False,
                  filter_length=5, kernel_regularizer=None,
                  bias_regularizer=None, **args):
         super(DeConvLayer, self).__init__(name=scope, **args)
         self.scope = scope
-        self.n_ch = n_ch
-        self.n_t = n_t
+        self.n_ch, self.n_t = y_shape
         self.size = n_ls
         self.filter_length = filter_length
         self.flat_out = flat_out
@@ -381,6 +427,7 @@ class DeConvLayer(layers.Layer):
         return config
 
     def build(self, input_shape):
+
         super(DeConvLayer, self).build(input_shape)
         self.W = self.add_weight(shape=(input_shape[1].value, self.size),
                                  initializer='he_uniform',
@@ -403,13 +450,6 @@ class DeConvLayer(layers.Layer):
                                     name='bias_in',
                                     dtype=tf.float32)
 
-        self.b = self.add_weight(shape=([self.size]),
-                                 initializer=Constant(0.1),
-                                 regularizer=self.bias_regularizer,
-                                 trainable=True,
-                                 name='bias',
-                                 dtype=tf.float32)
-
         self.b_out = self.add_weight(shape=([self.n_ch]),
                                      initializer=Constant(0.1),
                                      regularizer=self.bias_regularizer,
@@ -426,18 +466,25 @@ class DeConvLayer(layers.Layer):
 
         print(self.scope, 'build : OK')
 
-    def call(self, x):
-        tmp = tf.tensordot(x, self.W, axes=[[1], [0]])
+    @tf.function
+    def call(self, x, training=None):
+
+        tmprate = 0.5 if training else 0.0
+        tmpW = tf.nn.dropout(self.W, rate=tmprate)
+
+        tmp = tf.tensordot(x, tmpW, axes=[[1], [0]])
         latent = tf.nn.relu(tmp + self.b_in)
 
-        #print('x_reduced', latent.shape)
+        # print('x_reduced', latent.shape)
         x_perm = tf.expand_dims(latent, 1)
         print('x_perm', x_perm.shape)
 
         conv_ = tf.einsum('lij, ki -> lkj', x_perm, self.filters)
-        #print('deconv:', conv_.shape)
-        out = tf.einsum('lkj, jm -> lmk', conv_, self.demixing)
+        # print('deconv:', conv_.shape)
+        tmpdemix = tf.nn.dropout(self.demixing, rate=tmprate)
+        out = tf.einsum('lkj, jm -> lmk', conv_, tmpdemix)
         out = out
+
         if self.flat_out:
             return tf.reshape(out, [-1, self.n_t*self.n_ch])
         else:
@@ -446,18 +493,27 @@ class DeConvLayer(layers.Layer):
 
 
 class LSTMv1(layers.LSTM):
-    def __init__(self, scope="lstm", size=32, dropout=0.5, nonlin='tanh',
-                 unit_forget_bias=True, kernel_regularizer=None,
-                 bias_regularizer=None, return_sequences=True, **args):
-        super(LSTMv1, self).__init__(name=scope, units=size,
+    def __init__(self, scope="lstm", size=32, nonlin='tanh', dropout=0.0,
+                 recurrent_activation='tanh', recurrent_dropout=0.0,
+                 use_bias=True, unit_forget_bias=True,
+                 kernel_regularizer=None, bias_regularizer=None,
+                 return_sequences=True, stateful=False, unroll=False, **args):
+        super(LSTMv1, self).__init__(name=scope,
+                                     units=size,
                                      activation=nonlin,
-                                     #recurrent_initializer='orthogonal',
-                                     recurrent_activation=tf.nn.tanh,
+                                     dropout=dropout,
+                                     recurrent_activation=recurrent_activation,
+                                     recurrent_dropout=recurrent_dropout,
+                                     use_bias=use_bias,
                                      unit_forget_bias=unit_forget_bias,
                                      kernel_regularizer=kernel_regularizer,
-                                     #kernel_initializer='glorot_uniform',
+                                     # kernel_initializer='glorot_uniform',
+                                     # recurrent_initializer='orthogonal',
                                      bias_regularizer=bias_regularizer,
-                                     return_sequences=return_sequences, **args)
+                                     return_sequences=return_sequences,
+                                     stateful=stateful,
+                                     unroll=unroll,
+                                     **args)
         self.scope = scope
         self.size = size
         self.nonlin = nonlin
@@ -470,11 +526,12 @@ class LSTMv1(layers.LSTM):
         return config
 
     def build(self, input_shape):
-        #print(self.scope, 'build : OK')
+        # print(self.scope, 'build : OK')
         super(LSTMv1, self).build(input_shape)
 
+    @tf.function
     def call(self, inputs, mask=None, training=None, initial_state=None):
-        #print(self.scope, inputs.shape)
+        # print(self.scope, inputs.shape)
         return super(LSTMv1, self).call(inputs, mask=mask, training=training,
                                         initial_state=initial_state)
 

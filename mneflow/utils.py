@@ -9,7 +9,8 @@ import pickle
 from operator import itemgetter
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 import scipy.io as sio
 
 from mne import filter as mnefilt
@@ -406,7 +407,7 @@ def produce_labels(y, return_stats=True):
 def produce_tfrecords(inputs, savepath, out_name, fs,
                       input_type='trials', target_type='float',
                       array_keys={'X': 'X', 'y': 'y'}, val_size=0.2,
-                      scale=False, scale_interval=None,   crop_baseline=False,
+                      scale=False, scale_interval=None, crop_baseline=False,
                       bp_filter=False, decimate=False, combine_events=None,
                       segment=False, augment=False, aug_stride=50,
                       picks=None, transpose=False, target_picks=None,
@@ -513,7 +514,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         Number of input files per to be stored in the output TFRecord
         file. Deafults to 1.
 
-    test_set : str {'holdout', 'loso', 'none'}, optinal
+    test_set : str {'holdout', 'loso', 'none'}, optional
         Defines if a separate holdout test set is required.
         'holdout' saves 50% of the validation set
         'loso' saves the whole dataset in original order for
@@ -572,8 +573,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
 
                 events = _onehot(events)
 
-            x_train,  y_train, x_val, y_val = preprocess(
-                    data, events, input_type=input_type, scale=True, fs=fs,
+            x_train, y_train, x_val, y_val = preprocess(
+                    data, events, input_type=input_type, scale=scale, fs=fs,
                     val_size=val_size, scale_interval=scale_interval,
                     segment=segment, augment=augment, aug_stride=aug_stride,
                     crop_baseline=crop_baseline, decimate=decimate,
@@ -589,6 +590,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
 
             if input_type == 'seq':
                 meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
+                meta['y_shape'] = y_train[0].shape
             else:
                 _, meta['n_ch'], meta['n_t'] = x_train.shape
 
@@ -611,6 +613,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                              input_type=input_type, target_type=target_type)
 
             if test_set == 'loso':
+                meta['test_size'] = len(y_val) + len(y_train)
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
@@ -621,6 +624,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                                  target_type=target_type)
 
             elif test_set == 'holdout':
+                meta['test_size'] = len(y_test)
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
@@ -820,20 +824,27 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
     if decimate:
         data = data[..., ::decimate]
 
-    if input_type == 'continuous':
+    if input_type in ['continuous']:
         test_inds = cont_split_indices(data, test_size=val_size,
                                        test_segments=5)
         x_train, x_val = partition(data, test_inds)
         y_train, y_val = partition(events, test_inds)
 
     else:
+        # TODO (Gabi): Leaving this in as a reminder for the BCI dataset
+        # if data.shape[0] == 1:
+        #    x_train, y_train, x_val, y_val = _split_sets(data.T, events.T,
+        #                                                 val=val_size)
+        #   x_train, y_train, x_val, y_val = [ii.T for ii in [x_train, y_train,
+        #                                                     x_val, y_val]]
+        # else:
         x_train, y_train, x_val, y_val = _split_sets(data, events,
                                                      val=val_size)
         if y_train.ndim == 1 and y_val.ndim == 1:
             y_train = np.expand_dims(y_train, -1)
             y_val = np.expand_dims(y_val, -1)
-    print('training set: X-', x_train.shape, ' y-', y_train.shape)
-    print('validation set: X-', x_val.shape, ' y-', y_val.shape)
+        print('training set: X-', x_train.shape, ' y-', y_train.shape)
+        print('validation set: X-', x_val.shape, ' y-', y_val.shape)
 
     if segment:
         x_train = _segment(x_train, segment_length=segment, augment=augment,
@@ -862,11 +873,10 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
 
 
 def preprocess_continuous_labels(data, targets, scale=True, segment=200,
-                          augment=False,
-                          val_size=0.1, aug_stride=10, transform_targets=True,
-                          bp_filter=False, fs=None, decimate=None,
-                          input_type='iid',
-                          seq_length=None):
+                                 augment=False, val_size=0.1, aug_stride=10,
+                                 transform_targets=True, bp_filter=False,
+                                 fs=None, decimate=None, input_type='iid',
+                                 seq_length=None):
     """
     Returns
     -------

@@ -5,7 +5,8 @@ Defines mneflow.Optimizer object.
 
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 
 class Optimizer(object):
@@ -133,7 +134,7 @@ class Optimizer(object):
 
             print(unexplained_error.shape)
             performance = tf.subtract(1., tf.reduce_mean(
-                    tf.div(unexplained_error, total_error)))
+                    tf.math.divide(unexplained_error, total_error)))
 
             prediction = y_pred
 
