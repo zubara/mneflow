@@ -3,7 +3,7 @@
 """
 Created on Fri Nov  1 11:49:38 2019
 
-@author: vranoug1
+@author: Gavriela Vranou
 """
 import tensorflow as tf
 # tf.enable_eager_execution()
@@ -12,6 +12,37 @@ import numpy as np
 
 
 # %% Auxilliary functions
+def _test_tfrecords(path, pattern):
+    import tensorflow as tf
+    import glob
+
+    CRED = '\033[91m'
+    CGRE = '\033[92m'
+    CEND = '\033[0m'
+    total_files = 0
+    error_files = 0
+    train_files = sorted(glob.glob('%s*%s*.tfrecord' % (path, pattern)))
+    for f_i, file in enumerate(train_files):
+        try:
+            total_files += sum(
+                    [1 for _ in tf.python_io.tf_record_iterator(file)])
+            print(CGRE + 'OK:\t', f_i, file + CEND)
+
+        except IOError:
+            print(CRED + 'ERROR:\t', f_i, file + CEND)
+            total_files += 1
+            error_files += 1
+    print('Found %d files, %d raised an error.')
+
+
+def _make_4d(input_shape):
+    while len(input_shape) < 4:
+        input_shape = tf.TensorShape([*input_shape.as_list(), 1])
+
+    print('input_shape', input_shape)
+    return input_shape
+
+
 def _get_metrics(vy, y_, vcost):
     tmp = [rmse(vy, y_), mse(vy, y_), r_square(vy, y_), soft_acc(vy, y_),
            vcost, vy, y_]
@@ -106,27 +137,48 @@ def report_results(model, train, val, test, r_batch, event_names):
 
 
 # %% Metrics
-def rmse(y_true, y_pred, axis=-1):
+def rmse(y_true, y_pred, axis=0):
     # root mean squared error (rmse) for regression
     from tensorflow.keras import backend as K
     return K.sqrt(K.mean(K.square(y_pred - y_true), axis=axis))
 
 
-def mse(y_true, y_pred, axis=-1):
+def mse_weighted(labels, predictions, thres=0.3):
+    w = tf.where(tf.less_equal(labels, thres),
+                 0.5*tf.ones_like(labels, tf.float32),
+                 tf.ones_like(labels, tf.float32))
+    return tf.losses.mean_squared_error(labels, predictions, weights=w)
+
+
+def mae_weighted(labels, predictions, thres=0.3):
+    mae = tf.keras.losses.MeanAbsoluteError()
+    w = tf.where(tf.less_equal(labels, thres),
+                 0.5*tf.ones_like(labels, tf.float32),
+                 tf.ones_like(labels, tf.float32))
+    return mae(labels, predictions, sample_weight=w)
+
+
+def mse(y_true, y_pred, axis=0):
     # mean squared error (mse) for regression
     from tensorflow.keras import backend as K
     return K.mean(K.square(y_pred - y_true), axis=axis)
 
 
-def r_square(y_true, y_pred, axis=-1):
+def r_square(y_true, y_pred, axis=0):
     # coefficient of determination (R^2) for regression
+    # y_mean = tf.reduce_mean(y_true)
+    # SS_tot = tf.reduce_sum(tf.square(tf.subtract(y_true, y_mean)), axis=axis)
+    # SS_res = tf.reduce_sum(tf.square(tf.subtract(y_true, y_pred)), axis=axis)
+    # e = tf.keras.backend.epsilon()
+    # return tf.subtract(1., tf.div(SS_res, SS_tot + e))
+
     from tensorflow.keras import backend as K
     SS_res = K.sum(K.square(y_true - y_pred), axis=axis)
-    SS_tot = K.sum(K.square(y_true - K.mean(y_true)), axis=axis)
+    SS_tot = K.sum(K.square(y_true - K.mean(y_true, axis=axis)), axis=axis)
     return (1 - SS_res/(SS_tot + K.epsilon()))
 
 
-def soft_acc(y_true, y_pred, axis=-1, d=2):
+def soft_acc(y_true, y_pred, axis=0, d=2):
     from tensorflow.keras import backend as K
     decim = 10**d
     y_t = K.round(y_true*decim)/decim
@@ -135,6 +187,36 @@ def soft_acc(y_true, y_pred, axis=-1, d=2):
 
 
 # %% Plot functions
+def plot_output(t, title='', epochs=None):
+    import matplotlib.pyplot as plt
+    n_epoch = len(t)
+    fig = plt.figure(figsize=(12, 8))
+    fig.suptitle(title+':Raw Output')
+    labels = []
+    if not epochs:
+        toprint = range(n_epoch)
+    else:
+        if isinstance(epochs, (list, tuple)):
+            toprint = epochs
+        elif isinstance(epochs, int):
+            toprint = [epochs]
+
+    for ii in toprint:
+        eid = ii if ii >= 0 else (n_epoch+ii)
+        labels.append('epoch %d' % eid)
+        yn, y_ = t[ii][-2:]
+        plt.ylabel("Output", fontsize=14)
+        if len(labels) == 1:
+            plt.plot(yn, 'r')
+        plt.plot(y_)
+
+        plt.xlabel("segment", fontsize=14)
+
+    plt.legend(labels=['y_true']+labels, loc='upper left')
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    plt.show()
+
+
 def plot_metrics(t, title='', epochs=None):
     import matplotlib.pyplot as plt
     n_epoch = len(t)
@@ -219,6 +301,38 @@ def plot_metrics(t, title='', epochs=None):
 
         fig.tight_layout(rect=[0, 0, 1, 0.97])
         plt.show()
+
+
+def plot_history_v2(history, title='', nepochs=0, nend=None):
+    import matplotlib.pyplot as plt
+    h = history.history
+    k = list(h.keys())
+    total_m = len(k)
+    m = total_m // 2  # half are from validation
+    nrows = m  # int(np.ceil(m / 3))
+    ncols = 1  # int(np.ceil(m / nrows))
+    # plt.subplots(nrows, ncols)
+    plt.subplots(nrows, ncols, sharex=True)
+
+    for ii in range(m):
+        t_label = k[ii]
+        v_label = k[m + ii]
+        stop = nend if nend else len(h[t_label])
+        start = nepochs if nepochs >= 0 else (stop + nepochs)
+        t_values = h[t_label][start:stop]
+        v_values = h[v_label][start:stop]
+
+        xticks = np.arange(start, stop, dtype=int)
+        plt.subplot(nrows, ncols, ii+1)
+        plt.plot(xticks, t_values, 'blue')
+        plt.plot(xticks, v_values, 'orange')
+        plt.ylabel(t_label)
+        if not ii:
+            plt.title(title)
+            plt.legend(['Train', 'Val'], loc='best')
+
+    plt.xlabel('Epoch')
+    plt.show()
 
 
 def plot_history(history):
