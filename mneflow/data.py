@@ -5,7 +5,8 @@ Defines mneflow.Dataset object.
 
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 import numpy as np
 
 
@@ -55,8 +56,9 @@ class Dataset(object):
         self.val = self._build_dataset(self.h_params['val_paths'],
                                        n_batch=None)
         if 'test_paths' in self.h_params.keys():
-            self.test = self._build_dataset(self.h_params['test_paths'],
-                                            n_batch=None)
+            if len(self.h_params['test_paths']):
+                self.test = self._build_dataset(self.h_params['test_paths'],
+                                                n_batch=None)
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
