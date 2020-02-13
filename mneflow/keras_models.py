@@ -587,7 +587,7 @@ class LFCNN(tf.keras.Model):
         ax[0, 0].set_title('Latent component waveforms')
 
         bias = self.sess.run(self.tconv1.b)[self.uorder[0]]
-        ax[0, 1].stem(self.filters.T[self.uorder[0]])
+        ax[0, 1].stem(self.filters.T[self.uorder[0]], use_line_collection=True)
         ax[0, 1].hlines(bias, 0, len(self.filters.T[self.uorder[0]]),
                         linestyle='--', label='Bias')
         ax[0, 1].legend()
@@ -1009,7 +1009,7 @@ class LFLSTM(LFCNN):
                 dictionary of model-specific hyperparameters.
 
         """
-        super(LFLSTM, self).__init__(name=name, **kwargs)
+        super(LFLSTM, self).__init__(specs, dataset, name=name, **kwargs)
         self.scope = name
         self.specs = specs
         if dataset:
@@ -1060,35 +1060,37 @@ class LFLSTM(LFCNN):
         # Ensure the tensor is 4D
         x0 = make_4D(self, X)                # [k, n_ch, time, n_seq]
 
-        if x0.shape[-1].value == 1:
-            _, n_ch, ntime, n_seq = x0.shape
-        else:
-            _, n_seq, n_ch, ntime = x0.shape
-            x0 = tf.reshape(x0, [-1, n_ch, ntime])
-            x0 = tf.expand_dims(x0, 1)
+        _, n_ch, ntime, n_seq = x0.shape
 
         print('input x0', x0.shape)
         dmx = self.demix(x0)                 # [k, n_seq, time, 1, demix.size]
         print('demix dmx', dmx.shape)
-        dmx = tf.reshape(dmx, [-1, ntime, self.demix.size], name='dmx_res')
+        dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
+                               self.specs['n_ls']], name='dmx_res')
         dmx = tf.expand_dims(dmx, -1)
-        print('reshaped dmx', dmx.shape)
+        print('dmx-sqout:', dmx.shape)
 
-        conv = self.tconv1(dmx)              # [n_seq, maxpool, tconv1.size]
-        print('varconv', conv.shape)
-        col = tf.multiply(conv.shape[1], conv.shape[2])
-        conv = tf.reshape(conv, [-1, n_seq, col], name='conv_res')
-        print('reshaped varconv', conv.shape)  # [n_seq, maxpool*tconv1.size]
+        features = self.tconv1(dmx)            # [n_seq, maxpool, tconv1.size]
+        print('features', features.shape)
+        fshape = tf.multiply(features.shape[1], features.shape[2])
+        if 'n_seq' in self.dataset.h_params.keys():
+            features = tf.reshape(
+                    features, [-1, self.dataset.h_params['n_seq'], fshape],
+                    name='conv_res')
+        else:
+            features = tf.reshape(features, [-1, 1, fshape], name='conv_res')
+        print('flat features:', features.shape)  # [n_seq, maxpool*tconv1.size]
 
-        lstmout = self.lstm(conv)            # [k, n_seq, n_ls]
-        print('lstm', lstmout.shape)
-        y_ = self.fin_fc(lstmout)            # [k, n_seq, y_shape]
-        print('fc y_', y_.shape)
+        lstm_out = self.lstm(features)            # [k, n_seq, n_ls]
+        print('lstm_out', lstm_out.shape)
+        y_ = self.fin_fc(lstm_out)            # [k, n_seq, y_shape]
+        # print('fc y_', y_.shape)
 
         return check_yshape(self, y_)
 
 
 class VARLSTM(tf.keras.Model):
+    # TODO! Requires more testing. Consider it placeholder.
     """VAR-CNN-LSTM
 
     For details see [1].

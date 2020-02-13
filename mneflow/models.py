@@ -657,7 +657,7 @@ class LFCNN(Model):
         """
         self.scope = 'lf-cnn'
 
-        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=2)
+        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
 
         self.tconv1 = LFTConv(scope="conv",
                               n_ls=self.specs['n_ls'],
@@ -876,7 +876,7 @@ class LFCNN(Model):
         ax[0, 0].set_title('Latent component waveforms')
 
         bias = self.sess.run(self.tconv1.b)[self.uorder[0]]
-        ax[0, 1].stem(self.filters.T[self.uorder[0]])
+        ax[0, 1].stem(self.filters.T[self.uorder[0]], use_line_collection=True)
         ax[0, 1].hlines(bias, 0, len(self.filters.T[self.uorder[0]]),
                         linestyle='--', label='Bias')
         ax[0, 1].legend()
@@ -1261,7 +1261,7 @@ class LFLSTM(LFCNN):
     def build_graph(self):
         self.scope = 'lf-cnn-lstm'
 
-        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=2)
+        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
         dmx = self.demix(self.X)
         dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
                                self.specs['n_ls']])
