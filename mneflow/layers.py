@@ -5,7 +5,8 @@ Defines mneflow.layers for mneflow.models.
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
 import functools
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 from numpy import prod, sqrt
 
 
@@ -50,15 +51,15 @@ def bias_variable(shape):
     return tf.Variable(initial, trainable=True, name='bias')
 
 
-def spatial_dropout(x, keep_prob, seed=1234):
+def spatial_dropout(x, rate, seed=1234):
     num_feature_maps = [tf.shape(x)[0], tf.shape(x)[3]]
-    random_tensor = keep_prob
+    random_tensor = 1 - rate
     random_tensor = random_tensor + tf.random_uniform(num_feature_maps,
                                                       seed=seed,
                                                       dtype=x.dtype)
     binary_tensor = tf.floor(random_tensor)
     binary_tensor = tf.reshape(binary_tensor, [-1, 1, 1, tf.shape(x)[3]])
-    ret = tf.div(x, keep_prob) * binary_tensor
+    ret = tf.div(x, (1 - rate)) * binary_tensor
     return ret
 
 
@@ -84,8 +85,14 @@ class Dense():
                     if len(x.shape) > 2:  # flatten if input is not 2d array
                         # print(self.flatsize)
                         x = tf.reshape(x, [-1, self.flatsize])
-                    return self.nonlin(tf.matmul(x, self.w) + self.b,
-                                       name='out')
+                    tmp = tf.matmul(x, self.w)
+                    # print('matmul shape:', tmp.shape)
+                    tmp = tmp + self.b
+                    # print('added bias shape:', tmp.shape)
+                    tmp = self.nonlin(tmp, name='out')
+                    # print('after nonlin:', tmp.shape)
+                    return tmp
+
                 except(AttributeError):
                     if len(x.shape) > 2:
                         self.flatsize = int(prod(x.get_shape().as_list()[1:]))
@@ -96,7 +103,7 @@ class Dense():
                     self.w = weight_variable((self.flatsize, self.size),
                                              name='fc_')
                     self.b = bias_variable([self.size])
-                    self.w = tf.nn.dropout(self.w, self.dropout)
+                    self.w = tf.nn.dropout(self.w, rate=self.dropout)
                     print(self.scope, 'init : OK')
 
 
@@ -123,7 +130,7 @@ class LFTConv():
             while True:
                 # reuse weights if already initialized
                 try:
-                    print('lf-inp', x.shape)
+                    # print('lf-inp', x.shape)
                     conv = tf.nn.depthwise_conv2d(x,
                                                   self.filters,
                                                   padding=self.padding,
@@ -198,7 +205,7 @@ class VARConv():
                                 strides=[1, self.stride, 1, 1],
                                 padding=self.padding,
                                 data_format='NHWC')
-                    print(self.scope, 'inint:OK shape:', conv.shape)
+                    print(self.scope, 'init:OK shape:', conv.shape)
                     return conv
 
                 except(AttributeError):
