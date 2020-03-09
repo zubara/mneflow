@@ -29,7 +29,7 @@ from matplotlib import pyplot as plt
 from matplotlib import patches as ptch
 from matplotlib import collections
 
-from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing
+from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing, TempPooling
 from .keras_layers import LSTMv1
 from tensorflow.keras import regularizers as k_reg, constraints
 
@@ -669,12 +669,17 @@ class LFCNN(Model):
                               n_ls=self.specs['n_ls'],
                               nonlin=self.specs['nonlin'],
                               filter_length=self.specs['filter_length'],
-                              stride=self.specs['stride'],
-                              pooling=self.specs['pooling'],
-                              pool_type=self.specs['pool_type'],
+#                              stride=self.specs['stride'],
+#                              pooling=self.specs['pooling'],
+#                              pool_type=self.specs['pool_type'],
                               padding=self.specs['padding'])
 
-        self.tconv_out = self.tconv1(self.demix(self.X))
+        pool = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='max')
+
+        self.tconv_out = pool(self.tconv1(self.demix(self.X)))
 
         self.fin_fc = Dense(size=np.prod(self.y_shape),
                             nonlin=tf.identity,
@@ -1221,12 +1226,17 @@ class VARCNN(Model):
                               n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
                               filter_length=self.specs['filter_length'],
-                              stride=self.specs['stride'],
-                              pooling=self.specs['pooling'],
+#                              stride=self.specs['stride'],
+#                              pooling=self.specs['pooling'],
                               padding=self.specs['padding'],
-                              pool_type=self.specs['pool_type'])
+                              #pool_type=self.specs['pool_type']
+                              )
+        pool = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='max')
 
-        self.tconv_out = self.tconv1(self.demix(self.X))
+        self.tconv_out = pool(self.tconv1(self.demix(self.X)))
 
         self.fin_fc = Dense(size=np.prod(self.y_shape),
                             nonlin=tf.identity,
@@ -1278,26 +1288,32 @@ class LFLSTM(LFCNN):
                               n_ls=self.specs['n_ls'],
                               nonlin=tf.nn.relu,
                               filter_length=self.specs['filter_length'],
-                              stride=self.specs['stride'],
-                              pooling=self.specs['pooling'],
+#                              stride=self.specs['stride'],
+#                              pooling=self.specs['pooling'],
                               padding=self.specs['padding'])
 
         features = self.tconv1(dmx)
-        pool2 = tf.nn.max_pool2d(
-                                features,
-                                ksize=[1, self.specs['pooling'],  1, 1],
-                                strides=[1, self.specs['stride'], 1, 1],
-                                padding=self.specs['padding'],
-                                data_format='NHWC')
-        pool3 = tf.nn.avg_pool2d(
-                                pool2,
-                                ksize=[1, self.specs['pooling'],  1, 1],
-                                strides=[1, self.specs['stride'], 1, 1],
-                                padding=self.specs['padding'],
-                                data_format='NHWC')
+        pool1 = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='max')
+
+        pool2 = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='max')
+
+        pool3 = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='avg')
+
         print('features:', pool3.shape)
-        fshape = tf.multiply(pool3.shape[1], pool3.shape[2])
-        ffeatures = tf.reshape(pool3,
+        pooled = pool3(pool2(pool1(features)))
+
+        fshape = tf.multiply(pooled.shape[1], pooled.shape[2])
+
+        ffeatures = tf.reshape(pooled,
                               [-1, self.dataset.h_params['n_seq'], fshape])
         #  features = tf.expand_dims(features, 0)
         l1_lambda = self.optimizer.params['l1_lambda']
@@ -1391,35 +1407,36 @@ class INV_LFCNN(LFCNN):
                               n_ls=self.specs['n_ls'],
                               nonlin=self.specs['nonlin'],
                               filter_length=self.specs['filter_length'],
-                              stride=self.specs['stride'],
-                              pooling=self.specs['pooling'],
-                              pool_type=self.specs['pool_type'],
+#                              stride=self.specs['stride'],
+#                              pooling=self.specs['pooling'],
+#                              pool_type=self.specs['pool_type'],
                               padding=self.specs['padding'])
 
 
         self.tconv_out = self.tconv1(self.demix(self.X))
-        self.pooling = self.specs['pooling']
-        self.stride=self.specs['stride']
-        self.padding=self.specs['padding']
+        #self.pooling = self.specs['pooling']
+        #self.stride=self.specs['stride']
+        #self.padding=self.specs['padding']
+        pool1 = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='max')
 
-        pool2 = tf.nn.max_pool2d(
-                                self.tconv_out,
-                                ksize=[1, self.pooling,  1, 1],
-                                strides=[1, self.stride, 1, 1],
-                                padding=self.padding,
-                                data_format='NHWC')
-        pool3 = tf.nn.avg_pool2d(
-                                pool2,
-                                ksize=[1, self.pooling,  1, 1],
-                                strides=[1, self.stride, 1, 1],
-                                padding=self.padding,
-                                data_format='NHWC')
+        pool2 = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='max')
+
+        pool3 = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='avg')
 
         self.fin_fc = Dense(size=np.prod(self.y_shape),
                             nonlin=tf.identity,
                             dropout=self.rate)
 
-        y_pred = self.fin_fc(pool3)
+        y_pred = self.fin_fc(pool3(pool2(pool1(self.tconv_out))))
 
         return y_pred
 
