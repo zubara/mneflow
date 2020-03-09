@@ -106,13 +106,14 @@ class LFTConv():
                  filter_length=7, stride=1, pooling=2, padding='SAME',
                  pool_type='max', **args):
         self.scope = scope
-        super(LFTConv, self).__init__(name=scope, **args)
+#        super(LFTConv, self).__init__(name=scope, **args)
         self.size = n_ls
         self.filter_length = filter_length
         self.stride = stride
         self.pooling = pooling
         self.nonlin = nonlin
         self.padding = padding
+        self.pool_type = pool_type
         #self.kernel_regularizer = kernel_regularizer
         #self.bias_regularizer = bias_regularizer
         ##############################################
