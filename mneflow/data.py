@@ -8,7 +8,6 @@ Defines mneflow.Dataset object.
 import tensorflow as tf
 import numpy as np
 
-
 class Dataset(object):
     """TFRecords dataset from TFRecords files using the metadata."""
 
@@ -49,11 +48,12 @@ class Dataset(object):
         self.channel_subset = pick_channels
         self.class_subset = class_subset
         self.decim = decim
+        self.h_params['train_batch'] = train_batch
 
         self.train = self._build_dataset(self.h_params['train_paths'],
                                          n_batch=train_batch)
         self.val = self._build_dataset(self.h_params['val_paths'],
-                                       n_batch=None)
+                                       n_batch=train_batch)
         if 'test_paths' in self.h_params.keys():
             self.test = self._build_dataset(self.h_params['test_paths'],
                                             n_batch=None)
@@ -64,8 +64,8 @@ class Dataset(object):
         """Produce a tf.Dataset object and apply preprocessing
         functions if specified.
         """
-        if not n_batch:
-            n_batch = self._get_n_samples(path)
+
+
 
         dataset = tf.data.TFRecordDataset(path)
 
@@ -83,13 +83,15 @@ class Dataset(object):
                     np.arange(0, self.h_params['n_t'], self.decim))
             dataset = dataset.map(self._decimate)
 
+
         if n_batch:
             dataset = dataset.batch(batch_size=n_batch).repeat()
         else:
-            ds_size = self._get_n_samples(path)
-            dataset = dataset.batch(ds_size).repeat()
+            dataset = dataset.repeat()
 
         dataset = dataset.map(self._unpack)
+        dataset.n_samples = self._get_n_samples(path)
+        print(dataset.n_samples)
         return dataset
 
     def _select_channels(self, example_proto):
@@ -163,7 +165,10 @@ class Dataset(object):
         """Pick a subset of classes specified in self.class_subset."""
         if self.class_subset:
             # TODO: fix subsetting
-            subset = tf.constant(self.class_subset, dtype=tf.int64)
+            onehot_subset = _onehot(self.class_subset,
+                                    n_classes=self.h_params['y_shape'])
+            #print(onehot_subset)
+            subset = tf.constant(onehot_subset, dtype=tf.int64)
             out = tf.reduce_any(tf.equal(tf.argmax(sample['y']), subset))
             return out
         else:
@@ -171,3 +176,13 @@ class Dataset(object):
 
     def _unpack(self, sample):
         return sample['X'], sample['y']
+
+
+def _onehot(y, n_classes=False):
+    if not n_classes:
+        """Create one-hot encoded labels."""
+        n_classes = len(set(y))
+    out = np.zeros((len(y), n_classes))
+    for i, ii in enumerate(y):
+        out[i][ii] += 1
+    return out.astype(int)

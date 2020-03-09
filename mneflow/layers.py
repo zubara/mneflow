@@ -104,15 +104,18 @@ class LFTConv():
     """Stackable temporal convolutional layer, interpretable (LF)."""
     def __init__(self, scope="lf-conv", n_ls=32,  nonlin=tf.nn.relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME',
-                 pool_type='max'):
+                 pool_type='max', **args):
         self.scope = scope
-        # self.size = n_ls
+        super(LFTConv, self).__init__(name=scope, **args)
+        self.size = n_ls
         self.filter_length = filter_length
         self.stride = stride
         self.pooling = pooling
         self.nonlin = nonlin
         self.padding = padding
-        self.pool_type = pool_type
+        #self.kernel_regularizer = kernel_regularizer
+        #self.bias_regularizer = bias_regularizer
+        ##############################################
 
     def __call__(self, x):
         with tf.name_scope(self.scope):
@@ -250,7 +253,6 @@ class ConvDSV():
         self.size = n_ls
         self.filter_length = filter_length
         self.stride = stride
-        self.pool = pooling
         self.nonlin = nonlin
         self.conv_type = conv_type
 
@@ -290,10 +292,7 @@ class ConvDSV():
                         raise ValueError('Invalid convolution type.')
 
                     conv_ = self.nonlin(conv_ + self.b)
-                    conv_ = tf.nn.max_pool(conv_,
-                                           ksize=[1, self.pool, 1, 1],
-                                           strides=[1, 1, 1, 1],
-                                           padding='SAME')
+
                     return conv_
 
                 except(AttributeError):
@@ -320,54 +319,3 @@ class ConvDSV():
                     print(self.scope, 'init : OK')
 
 
-class DeConvLayer():
-    """DeConvolution Layer."""
-    def __init__(self, n_ls, y_shape, scope="deconv", flat_out=False,
-                 filter_length=5):
-        self.scope = scope
-        self.n_ch, self.n_t = y_shape
-        self.size = n_ls
-        self.filter_length = filter_length
-        self.flat_out = flat_out
-
-    def __call__(self, x):
-        with tf.name_scope(self.scope):
-            while True:
-                try:
-                    latent = tf.nn.relu(tf.tensordot(x,
-                                                     self.W,
-                                                     axes=[[1], [0]])
-                                        + self.b_in)
-                    print('x_reduced', latent.shape)
-
-                    x_perm = tf.expand_dims(latent, 1)
-                    print('x_perm', x_perm.shape)
-
-                    conv_ = tf.einsum('lij, ki -> lkj', x_perm, self.filters)
-                    print('deconv:', conv_.shape)
-
-                    out = tf.einsum('lkj, jm -> lmk', conv_, self.demixing)
-                    out = out + self.b_out
-
-                    if self.flat_out:
-                        return tf.reshape(out, [-1, self.n_t*self.n_ch])
-                    else:
-                        print(out.shape)
-                        return out
-
-                except(AttributeError):
-                    self.W = weight_variable(
-                            (x.get_shape()[1].value, self.size))
-                    self.W = tf.nn.dropout(self.W, rate=.5)
-
-                    self.b_in = bias_variable([self.size])
-
-                    self.filters = weight_variable([self.n_t, 1])
-                    #  self.b = bias_variable([self.size])
-
-                    self.demixing = weight_variable((self.size, self.n_ch))
-                    self.demixing = tf.nn.dropout(self.demixing, rate=.5)
-
-                    self.b_out = bias_variable([self.n_ch])
-
-                    print(self.scope, 'init : OK')
