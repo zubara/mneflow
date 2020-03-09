@@ -107,21 +107,50 @@ class Dense():
                     self.w = tf.nn.dropout(self.w, rate=self.dropout)
                     print(self.scope, 'init : OK')
 
+class TempPooling():
+    def __init__(self, scope="pool", stride=2, pooling=2,
+                       padding='SAME', pool_type='max', **args):
+        self.scope = '_'.join([pool_type, scope])
+        self.strides = [1, stride, 1, 1]
+        self.kernel = [1, pooling,  1, 1]
+        self.padding = padding
+        self.pool_type = pool_type
+
+    def __call__(self, x):
+        if self.pool_type == 'avg':
+            pooled = tf.nn.avg_pool2d(
+                                x,
+                                ksize=self.kernel,
+                                strides=self.strides,
+                                padding=self.padding,
+                                data_format='NHWC')
+        else:
+            pooled = tf.nn.max_pool2d(
+                                x,
+                                ksize=self.kernel,
+                                strides=self.strides,
+                                padding=self.padding,
+                                data_format='NHWC')
+        return pooled
+
+
 
 class LFTConv():
     """Stackable temporal convolutional layer, interpretable (LF)."""
     def __init__(self, scope="lf-conv", n_ls=32,  nonlin=tf.nn.relu,
-                 filter_length=7, stride=1, pooling=2, padding='SAME',
-                 pool_type='max', **args):
+                 filter_length=7, padding='SAME',
+                 #stride=1, pooling=2, pool_type='max',
+                 **args):
         self.scope = scope
 #        super(LFTConv, self).__init__(name=scope, **args)
         self.size = n_ls
         self.filter_length = filter_length
-        self.stride = stride
-        self.pooling = pooling
+#        self.stride = stride
+#        self.pooling = pooling
+#        self.pool_type = pool_type
         self.nonlin = nonlin
         self.padding = padding
-        self.pool_type = pool_type
+
         #self.kernel_regularizer = kernel_regularizer
         #self.bias_regularizer = bias_regularizer
         ##############################################
@@ -139,21 +168,7 @@ class LFTConv():
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
 
-                    if self.pool_type == 'avg':
-                        conv = tf.nn.avg_pool2d(
-                                conv,
-                                ksize=[1, self.pooling,  1, 1],
-                                strides=[1, self.stride, 1, 1],
-                                padding=self.padding,
-                                data_format='NHWC')
-                    else:
-                        conv = tf.nn.max_pool2d(
-                                conv,
-                                ksize=[1, self.pooling,  1, 1],
-                                strides=[1, self.stride, 1, 1],
-                                padding=self.padding,
-                                data_format='NHWC')
-                    print('f:', self.filters.shape)
+                    #print('f:', self.filters.shape)
                     print('lf-out', conv.shape)
                     return conv
                 except(AttributeError):
@@ -167,16 +182,18 @@ class LFTConv():
 class VARConv():
     """Stackable spatio-temporal convolutional Layer (VAR)."""
     def __init__(self, scope="var-conv", n_ls=32,  nonlin=tf.nn.relu,
-                 filter_length=7, stride=1, pooling=2, padding='SAME',
-                 pool_type='max'):
+                 filter_length=7, padding='SAME',
+                 #stride=1, pooling=2, pool_type='max',
+                 **args):
         self.scope = scope
         self.size = n_ls
         self.filter_length = filter_length
-        self.stride = stride
-        self.pooling = pooling
+#        self.stride = stride
+#        self.pooling = pooling
+#        self.pool_type = pool_type
         self.nonlin = nonlin
         self.padding = padding
-        self.pool_type = pool_type
+
 
     def __call__(self, x):
         with tf.name_scope(self.scope):
