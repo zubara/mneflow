@@ -11,8 +11,9 @@ import warnings
 import itertools
 import csv
 
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+import tensorflow as tf
+# import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
 import numpy as np
 
 from mne import channels, evoked, create_info

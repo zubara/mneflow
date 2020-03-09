@@ -5,15 +5,17 @@ Defines mneflow.Dataset object.
 
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+import tensorflow as tf
+# import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
 import numpy as np
 
 class Dataset(object):
     """TFRecords dataset from TFRecords files using the metadata."""
 
     def __init__(self, h_params, train_batch=200, class_subset=None,
-                 combine_classes=False, pick_channels=None, decim=None):
+                 combine_classes=False, pick_channels=None, decim=None,
+                 test_batch=None):
 
         r"""Initialize tf.data.TFRdatasets.
 
@@ -54,11 +56,11 @@ class Dataset(object):
         self.train = self._build_dataset(self.h_params['train_paths'],
                                          n_batch=train_batch)
         self.val = self._build_dataset(self.h_params['val_paths'],
-                                       n_batch=train_batch)
+                                       n_batch=test_batch)
         if 'test_paths' in self.h_params.keys():
             if len(self.h_params['test_paths']):
                 self.test = self._build_dataset(self.h_params['test_paths'],
-                                                n_batch=None)
+                                                n_batch=test_batch)
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
@@ -67,6 +69,9 @@ class Dataset(object):
         functions if specified.
         """
 
+
+        if not n_batch:
+            n_batch = self._get_n_samples(path)
 
 
         dataset = tf.data.TFRecordDataset(path)
@@ -86,14 +91,14 @@ class Dataset(object):
             dataset = dataset.map(self._decimate)
 
 
-        if n_batch:
-            dataset = dataset.batch(batch_size=n_batch).repeat()
-        else:
-            dataset = dataset.repeat()
+#        if n_batch:
+        dataset = dataset.batch(batch_size=n_batch).repeat()
+#        else:
+#            dataset = dataset.repeat(bat)
 
         dataset = dataset.map(self._unpack)
         dataset.n_samples = self._get_n_samples(path)
-        print(dataset.n_samples)
+        print('ds batch size:', n_batch)
         return dataset
 
     def _select_channels(self, example_proto):
