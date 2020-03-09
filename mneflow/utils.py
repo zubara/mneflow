@@ -19,9 +19,10 @@ from mneflow.data import Dataset
 from mneflow.optimize import Optimizer
 
 
-def _onehot(y):
-    """Create one-hot encoded labels."""
-    n_classes = len(set(y))
+def _onehot(y, n_classes=False):
+    if not n_classes:
+        """Create one-hot encoded labels."""
+        n_classes = len(set(y))
     out = np.zeros((len(y), n_classes))
     for i, ii in enumerate(y):
         out[i][ii] += 1
@@ -642,7 +643,7 @@ def _combine_labels(labels, new_mapping):
 
 
 def _segment(data, segment_length=200, seq_length=None, augment=False,
-             stride=25, input_type='iid'):
+             stride=None, input_type='iid'):
     """
     Parameters:
     -----------
@@ -795,8 +796,8 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
                              stride=aug_stride, input_type=input_type,
                              seq_length=seq_length)
         else:
-            y_train = np.tile(y_train, [x_train.shape[0]//y_train.shape[0], 1])
-            y_val = np.tile(y_val, [x_val.shape[0]//y_val.shape[0], 1])
+            y_train = np.repeat(y_train, x_train.shape[0]//y_train.shape[0], axis=0)
+            y_val = np.repeat(y_val, x_val.shape[0]//y_val.shape[0], axis=0)
 
         print('train segmented:', x_train.shape, y_train.shape)
         print('val segmented:', x_val.shape, y_val.shape)

@@ -131,7 +131,8 @@ class Model(object):
 
         return y_pred
 
-    def train(self, n_iter, eval_step=250, min_delta=1e-6, early_stopping=5):
+    def train(self, n_iter, eval_step=250, min_delta=1e-6, early_stopping=5,
+              prune_weights=False):
         """
         Train a model
 
@@ -149,12 +150,22 @@ class Model(object):
             of 'eval_step's during which validation cost is allowed to
             rise before training stops.
 
-        min_delta : float
+        min_delta : float, optional
             Convergence threshold for validation cost during training.
             Defaults to 1e-6.
+
+        prune_weights : bool, optional
+            If set to True, the model will set disable dropout regularization
+            when patience count = early_stopping - 3. This can help reduce
+            redundancies and allow more straightforward model interpretation.
+            It can also affect predictive performance.
+            Defaults to False
+
+
         """
         if not self.trained:
             self.sess.run(tf.global_variables_initializer())
+            print('GLOBAL INIT')
             self.min_val_loss = np.inf
             self.t_hist = []
         if not early_stopping:
@@ -170,10 +181,13 @@ class Model(object):
                                             feed_dict={self.handle:
                                                        self.train_handle,
                                                        self.rate: 1.})
-                self.v_acc, v_loss = self.sess.run([self.accuracy, self.cost],
-                                                   feed_dict={self.handle:
-                                                              self.val_handle,
-                                                              self.rate: 1.})
+                #self.v_acc, v_loss = self.sess.run([self.accuracy, self.cost],
+                #                                   feed_dict={self.handle:
+                #                                              self.val_handle,
+                #                                              self.rate: 1.})
+                out = self.evaluate_minibatches('val',
+                                                batch_size=self.dataset.h_params['train_batch'])
+                self.v_acc, v_loss = out
                 self.t_hist.append([t_loss, v_loss])
 
                 if self.min_val_loss >= v_loss + min_delta:
@@ -186,10 +200,11 @@ class Model(object):
                 else:
                     patience_cnt += 1
                     print('* Patience count {}'.format(patience_cnt))
-#        if (patience_cnt >= early_stopping//2 and self.specs['dropout'] != 1):
-#            print('Setting dropout to 1.')
-#            self.specs['dropout'] = 1.
-#            self.optimizer.params['l1_lambda'] *= 10.
+
+                    if (prune_weights and patience_cnt == early_stopping - 3):
+                        print('Setting dropout to 1.')
+                        self.specs['dropout'] = 1.
+                        #self.optimizer.params['l1_lambda'] *= 10.
 
                 if patience_cnt >= early_stopping:
                     print("early stopping...")
@@ -345,46 +360,46 @@ class Model(object):
                 writer.writeheader()
             writer.writerow(self.log)
 
-#    def evaluate_realtime(self, data_path, batch_size=None, step_size=1):
-#        """Compute performance metric on a TFR dataset specified by path
-#            batch by batch with updating the model after each batch."""
-#        prt_batch_pred = []
-#        prt_logits = []
-#        n_test_points = batch_size//step_size
-#        count = 0
-#
-#        test_dataset = tf.data.TFRecordDataset(data_path
-#                                               ).map(self._parse_function)
-#        test_dataset = test_dataset.batch(step_size)
-#        test_iter = test_dataset.make_initializable_iterator()
-#        self.sess.run(test_iter.initializer)
-#        test_handle = self.sess.run(test_iter.string_handle())
-#
-#        while True:
-#            try:
-#                self.load()
-#                count = count + 1
-#                preds = 0
-#                for jj in range(n_test_points):
-#                    pred, probs = self.sess.run(
-#                            [self.correct_prediction, self.p_classes],
-#                            feed_dict={self.handle: test_handle,
-#                                       self.rate: 1})
-#                    self.sess.run(
-#                            self.train_step,
-#                            feed_dict={self.handle: test_handle,
-#                                       self.rate: self.specs['dropout']})
-#
-#                    preds = preds + np.mean(pred)
-#                    prt_logits.append(probs)
-#                prt_batch_pred.append(preds/n_test_points)
-#
-#            except tf.errors.OutOfRangeError:
-#                print('prt_done: count: %d, acc: %g +\\- %g'
-#                      % (count, np.mean(prt_batch_pred),
-#                         np.std(prt_batch_pred)))
-#                break
-#        return prt_batch_pred, np.concatenate(prt_logits)
+    def evaluate_minibatches(self, data_path, batch_size=None, update=False):
+        """Compute performance metric on a TFR dataset specified by path
+            batch by batch with updating the model after each batch."""
+        batch_metrics = []
+        batch_costs = []
+
+        #n_test_points = batch_size//step_size
+        #count = 0
+        if data_path == 'val':
+            test_handle = self.val_handle
+            n_samples = self.dataset.val.n_samples
+        else:
+            test_dataset = self.dataset._build_dataset(data_path).batch(batch_size)
+            test_iter = test_dataset.make_initializable_iterator()
+            self.sess.run(test_iter.initializer)
+            test_handle = self.sess.run(test_iter.string_handle())
+            n_samples = test_dataset.n_samples
+        if not batch_size:
+            batch_size = n_samples
+        for i in range(max(n_samples//batch_size, 1)):
+            try:
+                test_acc, test_loss = self.sess.run([self.accuracy, self.cost],
+                                                    feed_dict={self.handle:
+                                                              test_handle,
+                                                              self.rate: 1.})
+                if update:
+                    self.sess.run(
+                                self.train_step,
+                                feed_dict={self.handle: test_handle,
+                                           self.rate: self.specs['dropout']})
+                batch_metrics.append(test_acc)
+                batch_costs.append(test_loss)
+
+            except tf.errors.OutOfRangeError:
+                print('prt_done: acc: %g +\\- %g'
+                      % (np.mean(batch_metrics),
+                         np.std(batch_metrics)))
+                break
+
+        return np.mean(batch_metrics), np.mean(batch_costs)
 
     def plot_cm(self, dataset='validation', class_names=None, normalize=False):
 
@@ -1269,13 +1284,25 @@ class LFLSTM(LFCNN):
                               padding=self.specs['padding'])
 
         features = self.tconv1(dmx)
-        print('features:', features.shape)
-        fshape = tf.multiply(features.shape[1], features.shape[2])
-        features = tf.reshape(features,
+        pool2 = tf.nn.max_pool2d(
+                                features,
+                                ksize=[1, self.specs['pooling'],  1, 1],
+                                strides=[1, self.specs['stride'], 1, 1],
+                                padding=self.specs['padding'],
+                                data_format='NHWC')
+        pool3 = tf.nn.avg_pool2d(
+                                pool2,
+                                ksize=[1, self.specs['pooling'],  1, 1],
+                                strides=[1, self.specs['stride'], 1, 1],
+                                padding=self.specs['padding'],
+                                data_format='NHWC')
+        print('features:', pool3.shape)
+        fshape = tf.multiply(pool3.shape[1], pool3.shape[2])
+        ffeatures = tf.reshape(pool3,
                               [-1, self.dataset.h_params['n_seq'], fshape])
         #  features = tf.expand_dims(features, 0)
         l1_lambda = self.optimizer.params['l1_lambda']
-        print('flat features:', features.shape)
+        print('flat features:', ffeatures.shape)
         self.lstm = LSTMv1(scope="lstm",
                            size=self.specs['n_ls'],
                            kernel_initializer='glorot_uniform',
@@ -1293,7 +1320,7 @@ class LFLSTM(LFCNN):
                            return_sequences=False,
                            unroll=False)
 
-        lstm_out = self.lstm(features)
+        lstm_out = self.lstm(ffeatures)
         print('lstm_out:', lstm_out.shape)
         self.fin_fc = Dense(size=np.prod(self.y_shape),
                             nonlin=tf.identity, dropout=1.)
@@ -1301,4 +1328,216 @@ class LFLSTM(LFCNN):
 #                               nonlin=tf.identity, axis=-1)
         y_pred = self.fin_fc(lstm_out)
         print(y_pred)
+        return y_pred
+
+
+class INV_LFCNN(LFCNN):
+    """LF-CNN. Includes basic parameter interpretation options.
+
+    For details see [1].
+
+    Parameters
+    ----------
+    n_ls : int
+        Number of latent components.
+        Defaults to 32.
+
+    nonlin : callable
+        Activation function of the temporal Convolution layer.
+        Defaults to tf.nn.relu
+
+    filter_length : int
+        Length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7.
+
+    pooling : int
+        Pooling factor of the max pooling layer. Defaults to 2
+
+    pool_type : str {'avg', 'max'}
+        Type of pooling operation. Defaults to 'max'.
+
+    padding : str {'SAME', 'FULL', 'VALID'}
+        Convolution padding. Defaults to 'SAME'.
+
+    stride : int
+        Stride of the max pooling layer. Defaults to 1.
+
+
+    References
+    ----------
+        [1] I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+    """
+
+    def build_graph(self):
+        """Build computational graph using defined placeholder `self.X`
+        as input.
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
+        self.scope = 'lf-cnn'
+
+        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
+
+        self.tconv1 = LFTConv(scope="conv",
+                              n_ls=self.specs['n_ls'],
+                              nonlin=self.specs['nonlin'],
+                              filter_length=self.specs['filter_length'],
+                              stride=self.specs['stride'],
+                              pooling=self.specs['pooling'],
+                              pool_type=self.specs['pool_type'],
+                              padding=self.specs['padding'])
+
+
+        self.tconv_out = self.tconv1(self.demix(self.X))
+        self.pooling = self.specs['pooling']
+        self.stride=self.specs['stride']
+        self.padding=self.specs['padding']
+
+        pool2 = tf.nn.max_pool2d(
+                                self.tconv_out,
+                                ksize=[1, self.pooling,  1, 1],
+                                strides=[1, self.stride, 1, 1],
+                                padding=self.padding,
+                                data_format='NHWC')
+        pool3 = tf.nn.avg_pool2d(
+                                pool2,
+                                ksize=[1, self.pooling,  1, 1],
+                                strides=[1, self.stride, 1, 1],
+                                padding=self.padding,
+                                data_format='NHWC')
+
+        self.fin_fc = Dense(size=np.prod(self.y_shape),
+                            nonlin=tf.identity,
+                            dropout=self.rate)
+
+        y_pred = self.fin_fc(pool3)
+
+        return y_pred
+
+
+class Deep4(Model):
+    """
+    Deep ConvNet model from [1]_.
+    References
+    ----------
+    .. [1] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
+       Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. & Ball, T. (2017).
+       Deep learning with convolutional neural networks for EEG decoding and
+       visualization.
+       Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
+    """
+
+    def build_graph(self):
+        self.scope = 'deep4'
+        """Temporal conv_1 25 10x1 kernels"""
+        tconv1 = ConvDSV(n_ls=25, nonlin=tf.identity, inch=1,
+                         filter_length=10, domain='time', scope='tconv1',
+                         stride=1, pooling=1, padding='VALID', conv_type='2d')
+
+        tconv1_out = tconv1(self.X)
+        print('tconv1: ', tconv1_out.shape) #should be n_batch, sensors, times, kernels
+        sconv1 = ConvDSV(n_ls=25, nonlin=tf.nn.elu, inch=25,
+                         filter_length=204, domain='space', scope='sconv1',
+                         stride=1, pooling=1, padding='VALID', conv_type='2d')
+
+        sconv1_out = sconv1(tconv1_out)
+        print('sconv1:',  sconv1_out.shape)
+
+        pool1 = tf.nn.max_pool2d(sconv1_out,
+                                ksize=[1, 1, 3, 1],
+                                strides=[1, 1, 3, 1],
+                                padding='SAME',
+                                data_format='NHWC')
+        #pool1 = tf.transpose(pool1, [0, 2, 3, 1])
+        print('pool1: ', pool1.shape)
+
+        tsconv2 = ConvDSV(n_ls=50, nonlin=tf.nn.elu, inch=25,
+                         filter_length=10, domain='time', scope='tsconv2',
+                         stride=1, pooling=1, padding='VALID', conv_type='2d')
+        tsconv2_out = tsconv2(pool1)
+        print('tsconv2:',  tsconv2_out.shape) #should be n_batch, 1, times, kernels
+        pool2 = tf.nn.max_pool2d(tsconv2_out,
+                                ksize=[1, 1, 3, 1],
+                                strides=[1, 1, 3, 1],
+                                padding='SAME',
+                                data_format='NHWC')
+        print('pool2: ', pool2.shape)
+
+        tsconv3 = ConvDSV(n_ls=100, nonlin=tf.nn.elu, inch=50,
+                         filter_length=10, domain='time', scope='tsconv3',
+                         stride=1, pooling=1, padding='VALID', conv_type='2d')
+
+        tsconv3_out = tsconv3(pool2)
+        print('tsconv3:',  tsconv3_out.shape) #should be n_batch, sensors, times, kernels
+        pool3 = tf.nn.max_pool2d(tsconv3_out,
+                                ksize=[1, 1, 3, 1],
+                                strides=[1, 1, 3, 1],
+                                padding='SAME',
+                                data_format='NHWC')
+        print('pool3: ', pool3.shape)
+
+        tsconv4 = ConvDSV(n_ls=200, nonlin=tf.nn.elu, inch=100,
+                         filter_length=10, domain='time', scope='tsconv4',
+                         stride=1, pooling=1, padding='VALID', conv_type='2d')
+
+        tsconv4_out = tsconv4(pool3)
+        print('tsconv4:',  tsconv4_out.shape) #should be n_batch, sensors, times, kernels
+        pool4 = tf.nn.max_pool2d(tsconv4_out,
+                                ksize=[1, 1, 3, 1],
+                                strides=[1, 1, 3, 1],
+                                padding='SAME',
+                                data_format='NHWC')
+        print('pool4: ', pool4.shape)
+
+        fc_out = Dense(size=np.prod(self.y_shape),
+                       nonlin=tf.identity,
+                       dropout=self.rate)
+        y_pred = fc_out(pool4)
+        return y_pred
+
+
+class FBCSP_ShallowNet(Model):
+    """
+    Shallow ConvNet model from [1]_.
+    References
+    ----------
+    .. [1] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
+       Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. & Ball, T. (2017).
+       Deep learning with convolutional neural networks for EEG decoding and
+       visualization.
+       Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
+    """
+
+    def build_graph(self):
+        self.scope = 'deep4'
+        """Temporal conv_1 25 10x1 kernels"""
+        tconv1 = ConvDSV(n_ls=40, nonlin=tf.identity, inch=1,
+                         filter_length=25, domain='time', scope='tconv1',
+                         stride=1, pooling=1, padding='VALID', conv_type='2d')
+
+        tconv1_out = tconv1(self.X)
+        print('tconv1: ', tconv1_out.shape) #should be n_batch, sensors, times, kernels
+        sconv1 = ConvDSV(n_ls=40, nonlin=tf.square, inch=40,
+                         filter_length=204, domain='space', scope='sconv1',
+                         stride=1, pooling=1, padding='VALID', conv_type='2d')
+
+        sconv1_out = sconv1(tconv1_out)
+        print('sconv1:',  sconv1_out.shape)
+
+        pool1 = tf.nn.avg_pool2d(sconv1_out,
+                                ksize=[1, 1, 75, 1],
+                                strides=[1, 1, 15, 1],
+                                padding='SAME',
+                                data_format='NHWC')
+        #pool1 = tf.transpose(pool1, [0, 2, 3, 1])
+        print('pool1: ', pool1.shape)
+        fc_out = Dense(size=np.prod(self.y_shape),
+                       nonlin=tf.identity,
+                       dropout=self.rate)
+        y_pred = fc_out(tf.log(pool1))
         return y_pred
