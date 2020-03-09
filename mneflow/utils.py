@@ -644,7 +644,6 @@ def _combine_labels(labels, new_mapping):
 
 
 def _segment(data, segment_length=200, seq_length=None, augment=False,
-=======
              stride=25, input_type='iid'):
     """Split the data into fixed-length segments.
 
