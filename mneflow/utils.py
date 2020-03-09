@@ -10,10 +10,12 @@ from operator import itemgetter
 
 import numpy as np
 import tensorflow as tf
+# import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
 import scipy.io as sio
 
 from mne import filter as mnefilt
-from mne import epochs as mnepochs  # , pick_types
+from mne import epochs as mnepochs, pick_types
 
 from mneflow.data import Dataset
 from mneflow.optimize import Optimizer
@@ -78,8 +80,7 @@ def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
     for i, path in enumerate(meta['test_paths']):
         meta_loso = meta.copy()
 
-        # TODO! Gabi: reuse of i variable, ensure it doesn't mess up things
-        train_fold = [i for i, _ in enumerate(meta['train_paths'])]
+        train_fold = [jj for jj, _ in enumerate(meta['train_paths'])]
         train_fold.remove(i)
 
         meta_loso['train_paths'] = itemgetter(*train_fold)(meta['train_paths'])
@@ -191,8 +192,6 @@ def _make_example(X, y, input_type='iid', target_type='int'):
 
 
 def _write_tfrecords(X_, y_, output_file, input_type='iid', target_type='int'):
-    # TODO! Gabi: the parameter description was incorrect, X_ and y_ are
-    # lists of arrays. Otherwise zip wouldn't work.
     """Serialize and write datasets in TFRecords format.
 
     Parameters
@@ -344,7 +343,6 @@ def import_data(inp, picks=None, target_picks=None,
     return data, events
 
 
-
 def produce_labels(y, return_stats=True):
     """Produces labels array from e.g. event (unordered) trigger codes.
 
@@ -388,13 +386,12 @@ def produce_labels(y, return_stats=True):
 def produce_tfrecords(inputs, savepath, out_name, fs,
                       input_type='trials', target_type='float',
                       array_keys={'X': 'X', 'y': 'y'}, val_size=0.2,
-                      scale=False, scale_interval=None,   crop_baseline=False,
+                      scale=False, scale_interval=None, crop_baseline=False,
                       bp_filter=False, decimate=False, combine_events=None,
                       segment=False, augment=False, aug_stride=50,
-                      picks=None, transpose=False,
-                      target_picks=None, transform_targets=False,
-                      seq_length=None, overwrite=True, savebatch=1,
-                      test_set=False,):
+                      picks=None, transpose=False, target_picks=None,
+                      transform_targets=False, seq_length=None,
+                      overwrite=True, savebatch=1, test_set=False):
 
     r"""
     Produces TFRecord files from input, applies (optional) preprocessing.
@@ -496,7 +493,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         Number of input files per to be stored in the output TFRecord
         file. Deafults to 1.
 
-    test_set : str {'holdout', 'loso', 'none'}, optinal
+    test_set : str {'holdout', 'loso', 'none'}, optional
         Defines if a separate holdout test set is required.
         'holdout' saves 50% of the validation set
         'loso' saves the whole dataset in original order for
@@ -532,7 +529,6 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                     data_id=out_name, val_size=0, savepath=savepath,
                     target_type=target_type, input_type=input_type)
         jj = 0
-        # i = 0
 
         meta['fs'] = fs
         if not isinstance(inputs, list):
@@ -549,25 +545,19 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                     events = events[keep_ind]
 
                 events, n_ev, meta['class_ratio'], _ = produce_labels(events)
+
                 events = _onehot(events)
 
-            x_train,  y_train, x_val, y_val = preprocess(data, events,
-                                                         input_type=input_type,
-                                                         scale=True, fs=fs,
-                                                         val_size=val_size,
-                                                         scale_interval=scale_interval,
-                                                         segment=segment,
-                                                         augment=augment,
-                                                         aug_stride=aug_stride,
-                                                         crop_baseline=crop_baseline,
-                                                         decimate=decimate,
-                                                         bp_filter=bp_filter,
-                                                         seq_length=seq_length)
+            x_train, y_train, x_val, y_val = preprocess(
+                    data, events, input_type=input_type, scale=scale, fs=fs,
+                    val_size=val_size, scale_interval=scale_interval,
+                    segment=segment, augment=augment, aug_stride=aug_stride,
+                    crop_baseline=crop_baseline, decimate=decimate,
+                    bp_filter=bp_filter, seq_length=seq_length)
 
             if test_set == 'holdout':
                 x_val, y_val, x_test, y_test = _split_sets(x_val, y_val,
                                                            val=.5)
-
             if input_type == 'trials':
                 meta['y_shape'] = y_train[0].shape
             else:
@@ -575,10 +565,9 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
 
             if input_type == 'seq':
                 meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
-                meta['y_shape'] = y_train[0].shape[-1]
+                meta['y_shape'] = y_train[0].shape
             else:
-                n_epochs, meta['n_ch'], meta['n_t'] = x_train.shape
-                meta['y_shape'] = y_train.shape[-1]
+                _, meta['n_ch'], meta['n_t'] = x_train.shape
 
             print('Prepocessed sample shape:', x_train[0].shape)
             print('Target shape actual/metadata: ',
@@ -599,6 +588,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                              input_type=input_type, target_type=target_type)
 
             if test_set == 'loso':
+                meta['test_size'] = len(y_val) + len(y_train)
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
@@ -607,7 +597,9 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                                  meta['test_paths'][-1],
                                  input_type=input_type,
                                  target_type=target_type)
+
             elif test_set == 'holdout':
+                meta['test_size'] = len(y_test)
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
@@ -625,14 +617,23 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
 
 
 def _combine_labels(labels, new_mapping):
-    """Combines labels
+    """Combine event labels.
 
     Parameters
     ----------
     labels : ndarray
-            label vector
+        Label vector
+
     combine_dict : dict
-            mapping {'new_label':[old_label1,old_label2]}
+        Mapping {'new_label': [old_label1, old_label2]}
+
+    Returns:
+    --------
+    new_labels : ndarray
+        Updated label vector.
+
+    keep_ind : ndarray
+        Label indices.
     """
     new_labels = 404*np.ones(len(labels), int)
     for old_label, new_label in new_mapping.items():
@@ -643,20 +644,29 @@ def _combine_labels(labels, new_mapping):
 
 
 def _segment(data, segment_length=200, seq_length=None, augment=False,
-             stride=None, input_type='iid'):
-    """
+=======
+             stride=25, input_type='iid'):
+    """Split the data into fixed-length segments.
+
     Parameters:
     -----------
     data : list of ndarrays
-            data array of shape (n_epochs, n_channels, n_times)
+        Data array of shape (n_epochs, n_channels, n_times)
 
     labels : ndarray
-            array of labels (n_epochs,)
+        Array of labels (n_epochs, y_shape)
+
+    seq_length: int or None
+        Length of segment sequence.
 
     segment_length : int or False
-                    length of segment into which to split the data in
-                    time samples
+        Length of segment into which to split the data in time samples.
 
+    Returns:
+    --------
+    data : list of ndarrays
+        Data array of shape
+        [n_epochs*nrows, seq_length, n_channels, segment_length]
     """
     x_out = []
     for jj, xx in enumerate(data):
@@ -681,10 +691,7 @@ def _segment(data, segment_length=200, seq_length=None, augment=False,
 
 
 def cont_split_indices(X, test_size=.1, test_segments=5):
-    """
-    X - 3d data array
-
-    """
+    """X - 3d data array."""
     raw_len = X.shape[-1]
     test_samples = int(test_size*raw_len//test_segments)
     interval = raw_len//(test_segments+1)
@@ -693,35 +700,53 @@ def cont_split_indices(X, test_size=.1, test_segments=5):
     test_start = [ds + np.random.randint(interval - test_samples)
                   for ds in data_intervals]
 
-    test_indices = [(t_strt, t_strt + test_samples)
+    test_indices = [(t_strt, t_strt+test_samples)
                     for t_strt in test_start[:-1]]
     return test_indices
 
 
 def partition(data, test_indices):
+    """Partition data according to ranges defined by `test_indices`.
 
+    Parameters:
+    -----------
+    data : list of ndarray
+        Data array to be partitioned.
+
+    test_indices : list
+        Contains pairs of values [start, end], indicating where the data
+        will be partitioned.
+
+    Returns:
+    --------
+    x_train, x_test: lists of ndarrays
+        The data partitioned into two sets.
+
+    Raises:
+    -------
+        ValueError: If the shape of`test_indices` is incorrect.
+
+        AttributeError: If `test_indices` is empty.
+    """
     if any(test_indices):
-
         if np.ndim(test_indices) == 1 and np.max(test_indices) < data.shape[0]:
-
-            x_out = [data[test_indices, ...], np.delete(data, test_indices,
-                                                        axis=0)][::-1]
+            x_out = [data[test_indices, ...],
+                     np.delete(data, test_indices, axis=0)][::-1]
         elif np.ndim(test_indices) == 2:
             bins = sorted(np.ravel(test_indices))
+            # data is a list of segments of different lengths
             x_out = np.split(data, bins, axis=-1)
-
         else:
-            print('Could not split the data, check test_indices!')
-            return
+            raise ValueError('Could not split the data, check test_indices!')
 
         x_out = [xt - np.median(xt, axis=-1, keepdims=True) for xt in x_out]
         x_train = x_out[0::2]
         x_test = x_out[1::2]
 
+        # print([xt.shape for xt in x_train])
         return x_train, x_test
     else:
-        print('No test labels provided')
-        return None
+        raise AttributeError('No test indices provided')
 
 
 def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
@@ -729,24 +754,27 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
                decimate=False, bp_filter=False, picks=None, segment=False,
                augment=False, aug_stride=25, seq_length=None):
     """
-    scale : bool, optinal
-        whether to perform scaling to baseline. Defaults to False.
+    scale : bool, optional
+        Whether to perform scaling to baseline. Defaults to False.
 
-    scale_interval : NoneType, tuple of ints or floats,  optinal
-        baseline definition. If None (default) scaling is
-        perfromed based on all timepoints of the epoch.
+    scale_interval : NoneType, tuple of ints or floats,  optional
+        Baseline definition. If None (default) scaling is
+        performed based on all timepoints of the epoch.
         If tuple, than baseline is data[tuple[0] : tuple[1]].
         Only used if scale == True.
 
-    crop_baseline : bool, optinal
-        whether to crop baseline specified by 'scale_interval'
+    crop_baseline : bool, optional
+        Whether to crop baseline specified by 'scale_interval'
         after scaling (defaults to False).
 
 
     Returns
     -------
-    x_train, x_val - arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
-    y_train, y_val - arrays of dimensions [n_epochs, n_seq, n_targets]
+    x_train, x_val: ndarrays
+        Data arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
+
+    y_train, y_val : ndarrays
+        Label arrays of dimensions [n_epochs, n_seq, n_targets]
     """
 
     if bp_filter:
@@ -764,20 +792,27 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
     if decimate:
         data = data[..., ::decimate]
 
-    if input_type == 'continuous':
+    if input_type in ['continuous']:
         test_inds = cont_split_indices(data, test_size=val_size,
                                        test_segments=5)
         x_train, x_val = partition(data, test_inds)
         y_train, y_val = partition(events, test_inds)
 
     else:
+        # TODO (Gabi): Leaving this in as a reminder for the BCI dataset
+        # if data.shape[0] == 1:
+        #    x_train, y_train, x_val, y_val = _split_sets(data.T, events.T,
+        #                                                 val=val_size)
+        #   x_train, y_train, x_val, y_val = [ii.T for ii in [x_train, y_train,
+        #                                                     x_val, y_val]]
+        # else:
         x_train, y_train, x_val, y_val = _split_sets(data, events,
                                                      val=val_size)
         if y_train.ndim == 1 and y_val.ndim == 1:
             y_train = np.expand_dims(y_train, -1)
             y_val = np.expand_dims(y_val, -1)
-    print('training set: X-', x_train.shape, ' y-', y_train.shape)
-    print('validation set: X-', x_val.shape, ' y-', y_val.shape)
+        print('training set: X-', x_train.shape, ' y-', y_train.shape)
+        print('validation set: X-', x_val.shape, ' y-', y_val.shape)
 
     if segment:
         x_train = _segment(x_train, segment_length=segment, augment=augment,
@@ -796,7 +831,8 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
                              stride=aug_stride, input_type=input_type,
                              seq_length=seq_length)
         else:
-            y_train = np.repeat(y_train, x_train.shape[0]//y_train.shape[0], axis=0)
+            y_train = np.repeat(y_train, x_train.shape[0]//y_train.shape[0],
+                                axis=0)
             y_val = np.repeat(y_val, x_val.shape[0]//y_val.shape[0], axis=0)
 
         print('train segmented:', x_train.shape, y_train.shape)
@@ -822,6 +858,7 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
 #    if isinstance(transform, callable):
 #        y = transform(y)
 #    return y
+
 
 #def preprocess_continuous_labels(data, targets, scale=True, segment=200,
 #                                 augment=False, val_size=0.1, aug_stride=10,
@@ -852,3 +889,4 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
 ##            y_val /= qrange[None, 0, :]
 #            print('preproc cont', x_train.shape, y_train.shape)
 #    return x_train, y_train, x_val, y_val
+

@@ -11,7 +11,8 @@ import warnings
 import itertools
 import csv
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 import numpy as np
 
 from mne import channels, evoked, create_info
@@ -70,11 +71,13 @@ class Model(object):
         self.handle = tf.placeholder(tf.string, shape=[])
         self.train_iter, self.train_handle = self._start_iterator(Dataset.train)
         self.val_iter, self.val_handle = self._start_iterator(Dataset.val)
+        if hasattr(Dataset, 'test'):
+            self.test_iter, self.test_handle = self._start_iterator(Dataset.test)
 
         self.iterator = tf.data.Iterator.from_string_handle(
                 self.handle,
-                Dataset.train.output_types,
-                Dataset.train.output_shapes)
+                tf.data.get_output_types(Dataset.train),
+                tf.data.get_output_shapes(Dataset.train))
 
         self.X0, self.y_ = self.iterator.get_next()
         print('X0:', self.X0.shape)
@@ -91,7 +94,7 @@ class Model(object):
 
     def _start_iterator(self, Dataset):
         """Build initializable iterator and string handle."""
-        ds_iterator = Dataset.make_initializable_iterator()
+        ds_iterator = tf.data.make_initializable_iterator(Dataset)
         handle = self.sess.run(ds_iterator.string_handle())
         self.sess.run(ds_iterator.initializer)
 
@@ -180,14 +183,11 @@ class Model(object):
                 t_loss, acc = self.sess.run([self.cost, self.accuracy],
                                             feed_dict={self.handle:
                                                        self.train_handle,
-                                                       self.rate: 1.})
-                #self.v_acc, v_loss = self.sess.run([self.accuracy, self.cost],
-                #                                   feed_dict={self.handle:
-                #                                              self.val_handle,
-                #                                              self.rate: 1.})
-                out = self.evaluate_minibatches('val',
-                                                batch_size=self.dataset.h_params['train_batch'])
-                self.v_acc, v_loss = out
+                                                       self.rate: 0.})
+                self.v_acc, v_loss = self.sess.run([self.accuracy, self.cost],
+                                                   feed_dict={self.handle:
+                                                              self.val_handle,
+                                                              self.rate: 0.})
                 self.t_hist.append([t_loss, v_loss])
 
                 if self.min_val_loss >= v_loss + min_delta:
@@ -203,8 +203,7 @@ class Model(object):
 
                     if (prune_weights and patience_cnt == early_stopping - 3):
                         print('Setting dropout to 1.')
-                        self.specs['dropout'] = 1.
-                        #self.optimizer.params['l1_lambda'] *= 10.
+                        self.specs['dropout'] = 0.
 
                 if patience_cnt >= early_stopping:
                     print("early stopping...")
@@ -226,7 +225,11 @@ class Model(object):
 
     def plot_hist(self):
         """Plot loss history during training."""
-        plt.plot(np.array(self.t_hist.T))
+        plt.plot(np.array(self.t_hist))
+        plt.legend(['t_loss', 'v_loss'])
+        plt.title(self.scope.upper())
+        plt.xlabel('Epochs')
+        plt.show()
 
     def load(self):
         """Loads a pretrained model.
@@ -240,7 +243,7 @@ class Model(object):
 
         self.v_acc = self.sess.run([self.accuracy],
                                    feed_dict={self.handle: self.val_handle,
-                                              self.rate: 1.})
+                                              self.rate: 0.})
         self.trained = True
 
     def _add_dataset(self, data_path):
@@ -271,12 +274,12 @@ class Model(object):
         if not data_path:
             raise AttributeError('Specify data_path!')
 
-        #elif not hasattr(self.dataset, 'test'):
+        # elif not hasattr(self.dataset, 'test'):
         self._add_dataset(data_path)
 
         acc = self.sess.run(self.accuracy,
                             feed_dict={self.handle: self.test_handle,
-                                       self.rate: 1.})
+                                       self.rate: 0.})
 
         print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
         return np.mean(acc)
@@ -308,7 +311,7 @@ class Model(object):
             self._add_dataset(data_path)
             pred, true = self.sess.run(
                     [self.y_pred, self.y_],
-                    feed_dict={self.handle: self.test_handle, self.rate: 1.})
+                    feed_dict={self.handle: self.test_handle, self.rate: 0.})
             return pred, true
 
     def update_log(self):
@@ -330,12 +333,6 @@ class Model(object):
         else:
             log['class_subset'] = 'all'
 
-# sclass = self.dataset.h_params['class_proportions']
-# log['class_proportions'] = ' : '.join([str(v)[:4] for v in sclass.values()])
-# if self.dataset.h_params['task'] == 'classification':
-#     log['n_classes'] = self.dataset.h_params['n_classes']
-# else:
-
         log['y_shape'] = np.prod(self.dataset.h_params['y_shape'])
         log['fs'] = str(self.dataset.h_params['fs'])
         log.update(self.optimizer.params)
@@ -343,13 +340,13 @@ class Model(object):
 
         v_acc, v_loss = self.sess.run(
                 [self.accuracy, self.cost],
-                feed_dict={self.handle: self.val_handle, self.rate: 1.})
+                feed_dict={self.handle: self.val_handle, self.rate: 0.})
         log['v_acc'] = v_acc
         log['v_loss'] = v_loss
 
         t_acc, t_loss = self.sess.run(
                 [self.accuracy, self.cost],
-                feed_dict={self.handle: self.train_handle, self.rate: 1.})
+                feed_dict={self.handle: self.train_handle, self.rate: 0.})
         log['train_acc'] = t_acc
         log['train_loss'] = t_loss
         self.log = log
@@ -428,11 +425,11 @@ class Model(object):
                 Figure handle.
         """
         if dataset == 'validation':
-            feed_dict = {self.handle: self.val_handle, self.rate: 1.}
+            feed_dict = {self.handle: self.val_handle, self.rate: 0.}
         elif dataset == 'training':
-            feed_dict = {self.handle: self.train_handle, self.rate: 1.}
+            feed_dict = {self.handle: self.train_handle, self.rate: 0.}
         elif dataset == 'test':
-            feed_dict = {self.handle: self.test_handle, self.rate: 1.}
+            feed_dict = {self.handle: self.test_handle, self.rate: 0.}
         else:
             raise ValueError('Invalid dataset type.')
 
@@ -443,7 +440,7 @@ class Model(object):
 
         f = plt.figure()
         cm = confusion_matrix(y_true, y_pred)
-        title = 'Confusion matrix'
+        title = 'Confusion matrix: '+dataset.upper()
         if normalize:
             cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
 
@@ -479,14 +476,14 @@ class VGG19(Model):
     #[] TODO! missing
     """
     def __init__(self, Dataset, params, specs):
-        super().__init__(Dataset, params)
-        self.specs = dict(n_ls=self.params['n_ls'], nonlin=tf.nn.relu,
+        super().__init__(Dataset, params, specs)
+        self.specs = dict(n_ls=self.specs['n_ls'], nonlin=tf.nn.relu,
                           inch=1, padding='SAME', filter_length=(3, 3),
                           domain='2d', stride=1, pooling=1, conv_type='2d')
         self.scope = 'vgg19'
 
     def build_graph(self):
-        X1 = tf.expand_dims(self.X, -1)
+        X1 = self.X  # tf.expand_dims(self.X, -1)
         if X1.shape[1] == 306:
             X1 = tf.concat([X1[:, 0:306:3, :],
                             X1[:, 1:306:3, :],
@@ -561,7 +558,7 @@ class EEGNet(Model):
     def build_graph(self):
         self.scope = 'eegnet'
 
-        X1 = tf.expand_dims(self.X, -1)
+        X1 = self.X  # tf.expand_dims(self.X, -1)
         vc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity, inch=1,
                       filter_length=self.specs['filter_length'], domain='time',
                       stride=1, pooling=1, conv_type='2d')
@@ -576,7 +573,7 @@ class EEGNet(Model):
 
         bn2 = tf.layers.batch_normalization(dwc1o)
         out2 = tf.nn.elu(bn2)
-        out22 = tf.nn.dropout(out2, self.rate)
+        out22 = tf.nn.dropout(out2, rate=self.rate)
 
         sc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity,
                       inch=self.specs['n_ls'],
@@ -590,7 +587,7 @@ class EEGNet(Model):
 
         out4 = tf.nn.avg_pool(out3, [1, 1, self.specs['pooling'], 1],
                               [1, 1, self.specs['stride'], 1], 'SAME')
-        out44 = tf.nn.dropout(out4, self.rate)
+        out44 = tf.nn.dropout(out4, rate=self.rate)
 
         sc2 = ConvDSV(n_ls=self.specs['n_ls']*2, nonlin=tf.identity,
                       inch=self.specs['n_ls'],
@@ -604,7 +601,7 @@ class EEGNet(Model):
 
         out6 = tf.nn.avg_pool(out5, [1, 1, self.specs['pooling'], 1],
                               [1, 1, self.specs['stride'], 1], 'SAME')
-        out66 = tf.nn.dropout(out6, self.rate)
+        out66 = tf.nn.dropout(out6, rate=self.rate)
 
         out7 = tf.reshape(out66, [-1, np.prod(out66.shape[1:])])
         fc_out = Dense(size=self.y_shape[0],
@@ -683,6 +680,7 @@ class LFCNN(Model):
                             dropout=self.rate)
 
         y_pred = self.fin_fc(self.tconv_out)
+        # y_pred = tf.reshape(y_pred, [-1, *self.y_shape])
 
         return y_pred
 
@@ -737,7 +735,7 @@ class LFCNN(Model):
         elif not hasattr(self.dataset, 'test') and not data_path:
             raise AttributeError('Specify data path.')
 
-        vis_dict = {self.handle: self.test_handle, self.rate: 1}
+        vis_dict = {self.handle: self.test_handle, self.rate: 0}
 
         # Spatial stuff
         data, demx = self.sess.run([self.X, self.demix.W], feed_dict=vis_dict)
@@ -787,7 +785,7 @@ class LFCNN(Model):
         self.rfocs = []
         y_true = self.sess.run(self.y_,
                                feed_dict={self.handle: self.test_handle,
-                                          self.rate: 1.})
+                                          self.rate: 0.})
         flat_feats = self.tc_out.reshape(self.tc_out.shape[0], -1)
 
         if self.dataset.h_params['target_type'] == 'float':
@@ -883,7 +881,7 @@ class LFCNN(Model):
         ax[0, 0].set_title('Latent component waveforms')
 
         bias = self.sess.run(self.tconv1.b)[self.uorder[0]]
-        ax[0, 1].stem(self.filters.T[self.uorder[0]])
+        ax[0, 1].stem(self.filters.T[self.uorder[0]], use_line_collection=True)
         ax[0, 1].hlines(bias, 0, len(self.filters.T[self.uorder[0]]),
                         linestyle='--', label='Bias')
         ax[0, 1].legend()
@@ -1268,7 +1266,7 @@ class LFLSTM(LFCNN):
     def build_graph(self):
         self.scope = 'lf-cnn-lstm'
 
-        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=2)
+        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
         dmx = self.demix(self.X)
         dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
                                self.specs['n_ls']])
@@ -1322,12 +1320,17 @@ class LFLSTM(LFCNN):
 
         lstm_out = self.lstm(ffeatures)
         print('lstm_out:', lstm_out.shape)
+        # if 'n_seq' in self.dataset.h_params.keys():
+        #    lstm_out = tf.reshape(lstm_out, [-1,
+        #                                     self.dataset.h_params['n_seq'],
+        #                                     self.specs['n_ls']])
+
         self.fin_fc = Dense(size=np.prod(self.y_shape),
-                            nonlin=tf.identity, dropout=1.)
+                            nonlin=tf.identity, dropout=0.)
 #        self.fin_fc = DeMixing(n_ls=np.prod(self.y_shape),
 #                               nonlin=tf.identity, axis=-1)
         y_pred = self.fin_fc(lstm_out)
-        print(y_pred)
+        # print(y_pred)
         return y_pred
 
 
