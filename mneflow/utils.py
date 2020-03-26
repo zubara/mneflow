@@ -6,6 +6,7 @@ Specifies utility functions.
 """
 import os
 import pickle
+import warnings
 from operator import itemgetter
 
 import numpy as np
@@ -30,7 +31,7 @@ def _onehot(y):
 
 
 def _load_meta(fname, data_id=''):
-    """Loads a metadata file.
+    """Load a metadata file.
 
     Parameters
     ----------
@@ -49,8 +50,9 @@ def _load_meta(fname, data_id=''):
 
 
 def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
-    """Perform a leave-one-out cross-validation such that, on each fold
-    one input .tfrecord file is used as a validation set.
+    """Perform a leave-one-out cross-validation.
+
+    On each fold one input .tfrecord file is used as a validation set.
 
     Parameters
     ----------
@@ -79,7 +81,7 @@ def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
         meta_loso = meta.copy()
 
         # TODO! Gabi: reuse of i variable, ensure it doesn't mess up things
-        train_fold = [i for i, _ in enumerate(meta['train_paths'])]
+        train_fold = [ii for ii, _ in enumerate(meta['train_paths'])]
         train_fold.remove(i)
 
         meta_loso['train_paths'] = itemgetter(*train_fold)(meta['train_paths'])
@@ -101,7 +103,7 @@ def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
     return results
 
 
-def scale_to_baseline(X, baseline=None, crop_baseline=False):
+def scale_to_baseline(X_, baseline=None, crop_baseline=False):
     """Perform global scaling based on a specified baseline.
 
     Subtracts the mean and divides by the standard deviation of the
@@ -123,11 +125,11 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
 
     Returns
     -------
-
     X : ndarray
         Scaled data array.
 
     """
+    X = X_.copy()
 
     if baseline is None:
         X0 = X.reshape([X.shape[0], -1])
@@ -224,7 +226,7 @@ def _write_tfrecords(X_, y_, output_file, input_type='iid', target_type='int'):
 
 
 def _split_sets(X, y, val=.1):
-    """Applies shuffle and splits the shuffled data.
+    """Apply shuffle and split the shuffled data.
 
     Parameters
     ----------
@@ -244,13 +246,19 @@ def _split_sets(X, y, val=.1):
     X_train, y_train, X_val, y_val : ndarray
         Pairs of data / targets split in Training and Validation sets.
     """
+    assert (val > 0) and (val < 1), "Invalid val ratio."
+
+    while y.ndim < 2:
+        y = np.expand_dims(y, -1)
+
     shuffle = np.random.permutation(X.shape[0])
     val_size = int(round(val*X.shape[0]))
     X_val = X[shuffle[:val_size], ...]
     y_val = y[shuffle[:val_size], ...]
     X_train = X[shuffle[val_size:], ...]
     y_train = y[shuffle[val_size:], ...]
-    return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
+    # return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
+    return X_train, y_train, X_val, y_val
 
 
 def import_data(inp, picks=None, target_picks=None,
@@ -322,30 +330,48 @@ def import_data(inp, picks=None, target_picks=None,
                 print('Extracting target variables from target_picks')
             else:
                 events = datafile[array_keys['y']]
+                if (events.shape[0] != data.shape[0]):
+                    if (events.shape[0] == 1):
+                        events = np.squeeze(events, axis=0)
+                    else:
+                        raise ValueError("Target array misaligned.")
                 print('Extracting target variables from {}'.format(
                         array_keys['y']))
 
     data = data.astype(np.float32)
+
     # TODO: make sure that X is 3d here
+    # TODO: Gabi: here we expand on the left, while self.X expands on the right
     while data.ndim < 3:
         data = np.expand_dims(data, 0)
         events = np.expand_dims(events, 0)
 
-    if isinstance(picks, np.ndarray):
+    # Ensure y_shape in case data was already 3D
+    while events.ndim < 2:
+        events = np.expand_dims(events, -1)
+
+    if picks is not None:
+        picks = np.asarray(picks)
+        if np.any(data.shape[1] <= picks):
+            raise ValueError("Invalid picks.")
         data = data[:, picks, :]
 
     if transpose:
+        assert isinstance(transpose, (list, tuple)), "Invalid transpose type."
         if 'X' in transpose:
             data = np.swapaxes(data, -1, -2)
         if 'y' in transpose:
-            events = np.swapaxes(events, -1, -2)
+            if events.ndim > 2:
+                events = np.swapaxes(events, -1, -2)
+            else:
+                warnings.warn('Targets cannot be transposed.', UserWarning)
 
     print('input shapes: X-', data.shape, 'targets-', events.shape)
     return data, events
 
 
 def produce_labels(y, return_stats=True):
-    """Produces labels array from e.g. event (unordered) trigger codes.
+    """Produce labels array from e.g. event (unordered) trigger codes.
 
     Parameters
     ----------
@@ -369,7 +395,6 @@ def produce_labels(y, return_stats=True):
     orig_classes : dict, optional
         Mapping {new_class:old_class}.
     """
-
     classes, inds, inv, counts = np.unique(y,
                                            return_index=True,
                                            return_inverse=True,
@@ -412,10 +437,9 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                       segment=False, augment=False, aug_stride=50,
                       picks=None, transpose=False, target_picks=None,
                       transform_targets=False, seq_length=None,
-                      overwrite=True, savebatch=1, test_set=False,):
-
+                      overwrite=True, savebatch=1, test_set=None,):
     r"""
-    Produces TFRecord files from input, applies (optional) preprocessing.
+    Produce TFRecord files from input, apply (optional) preprocessing.
 
     Calling this function will convert the input data into TFRecords
     format that is used to effiently store and run Tensorflow models on
@@ -454,7 +478,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         Proportion of the data to use as a validation set. Only used if
         shuffle_split = True. Defaults to 0.2.
 
-    scale : bool, optinal
+    scale : bool, optional
         Whether to perform scaling to baseline. Defaults to False.
 
     scale_interval : NoneType, tuple of ints or floats,  optimal
@@ -463,7 +487,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         If tuple, then baseline is data[tuple[0] : tuple[1]].
         Only used if scale == True.
 
-    crop_baseline : bool, optinal
+    crop_baseline : bool, optional
         Whether to crop baseline specified by 'scale_interval'
         after scaling. Defaults to False.
 
@@ -501,7 +525,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         ('X'), does the same for data only. Default is False.
 
     transform_targets : bool, optional
-        Whether to transform the targets,
+        Whether to transform the targets.
 
     seq_length : int, optional
         Length of segment sequence.
@@ -511,15 +535,15 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         specified path.
 
     savebatch : int
-        Number of input files per to be stored in the output TFRecord
-        file. Deafults to 1.
+        Number of input files to be stored in each output TFRecord
+        file. Defaults to 1.
 
-    test_set : str {'holdout', 'loso', 'none'}, optional
+    test_set : str {'holdout', 'loso', None}, optional
         Defines if a separate holdout test set is required.
         'holdout' saves 50% of the validation set
         'loso' saves the whole dataset in original order for
         leave-one-subject-out cross-validation.
-        'none' does not leave a separate test set. Defaults to 'none'.
+        'none' does not leave a separate test set. Defaults to None.
 
     Returns
     -------
@@ -542,6 +566,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
     >>> meta = mneflow.produce_tfrecords(input_paths, \**import_opts)
 
     """
+    assert input_type in ['trials', 'seq', 'iid'], "Unknown input type."
+    assert target_type in ['int', 'float'], "Unknown target type."
     if not os.path.exists(savepath):
         os.mkdir(savepath)
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
@@ -562,6 +588,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
                 # Specific to classification
                 if combine_events:
                     events, keep_ind = _combine_labels(events, combine_events)
+
+                    # TODO!  suggest these move inside _combine_labels
                     data = data[keep_ind, ...]
                     events = events[keep_ind]
                     # print(events)
@@ -583,7 +611,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
             if test_set == 'holdout':
                 x_val, y_val, x_test, y_test = _split_sets(x_val, y_val,
                                                            val=.5)
-            if input_type == 'trials':
+            if input_type in ['trials', 'iid']:
                 meta['y_shape'] = y_train[0].shape
             else:
                 meta['y_shape'] = y_train[0].shape[-1]
@@ -650,21 +678,35 @@ def _combine_labels(labels, new_mapping):
         Label vector
 
     combine_dict : dict
-        Mapping {'new_label': [old_label1, old_label2]}
+        Mapping {new_label1: [old_label1, old_label2], ...}
 
-    Returns:
-    --------
+    Returns
+    -------
     new_labels : ndarray
         Updated label vector.
 
     keep_ind : ndarray
         Label indices.
     """
-    new_labels = 404*np.ones(len(labels), int)
-    for old_label, new_label in new_mapping.items():
-        ind = np.where(labels == old_label)[0]
-        new_labels[ind] = new_label
-    keep_ind = np.where(new_labels != 404)[0]
+    assert isinstance(new_mapping, dict), "Invalid label mapping."
+    # Find all possible label values
+    tmp = []
+    for k, j in new_mapping.items():
+        tmp.append(k)
+        if not isinstance(j, (list, tuple)):
+            # for simplicity, force all old_labels to be lists
+            new_mapping[k] = [j]
+        tmp.extend(new_mapping[k])
+
+    # pick the exlusion value
+    inv = np.min(tmp) - 1
+    new_labels = inv*np.ones(len(labels), int)
+
+    for new_label, old_label in new_mapping.items():
+        # print(old_label, new_label)
+        ind = [ii for ii, v in enumerate(labels) if v in old_label]
+        new_labels[ind] = int(new_label)
+    keep_ind = np.where(new_labels != inv)[0]
     return new_labels, keep_ind
 
 
@@ -672,8 +714,8 @@ def _segment(data, segment_length=200, seq_length=None, augment=False,
              stride=25, input_type='iid'):
     """Split the data into fixed-length segments.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     data : list of ndarrays
         Data array of shape (n_epochs, n_channels, n_times)
 
@@ -686,8 +728,8 @@ def _segment(data, segment_length=200, seq_length=None, augment=False,
     segment_length : int or False
         Length of segment into which to split the data in time samples.
 
-    Returns:
-    --------
+    Returns
+    -------
     data : list of ndarrays
         Data array of shape
         [n_epochs*nrows, seq_length, n_channels, segment_length]
@@ -740,8 +782,8 @@ def cont_split_indices(X, test_size=.1, test_segments=5):
 def partition(data, test_indices):
     """Partition data according to ranges defined by `test_indices`.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     data : list of ndarray
         Data array to be partitioned.
 
@@ -749,13 +791,13 @@ def partition(data, test_indices):
         Contains pairs of values [start, end], indicating where the data
         will be partitioned.
 
-    Returns:
-    --------
+    Returns
+    -------
     x_train, x_test: lists of ndarrays
         The data partitioned into two sets.
 
-    Raises:
-    -------
+    Raises
+    ------
         ValueError: If the shape of`test_indices` is incorrect.
 
         AttributeError: If `test_indices` is empty.
@@ -785,7 +827,10 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
                fs=None, scale_interval=None, crop_baseline=False,
                decimate=False, bp_filter=False, picks=None, segment=False,
                augment=False, aug_stride=25, seq_length=None):
-    """
+    """Preprocess input data.
+
+    Parameters
+    ----------
     scale : bool, optional
         Whether to perform scaling to baseline. Defaults to False.
 
@@ -808,9 +853,12 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
     y_train, y_val : ndarrays
         Label arrays of dimensions [n_epochs, n_seq, n_targets]
     """
+    if (data.ndim != 3) or (events.ndim < 2):
+        warnings.warn('Input misshaped, using import_data.', UserWarning)
+        data, events = import_data((data, events))
 
     if bp_filter:
-        data = data.astype(np.float64)
+        assert len(bp_filter) == 2, "Invalid bp_filter values."
         data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
                                    h_freq=bp_filter[1],
                                    method='iir', verbose=False)
@@ -825,6 +873,7 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
         data = data[..., ::decimate]
 
     if input_type in ['continuous']:
+        # Placeholder for future segmentation. Not unit_tested
         test_inds = cont_split_indices(data, test_size=val_size,
                                        test_segments=5)
         x_train, x_val = partition(data, test_inds)
@@ -840,9 +889,6 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
         # else:
         x_train, y_train, x_val, y_val = _split_sets(data, events,
                                                      val=val_size)
-        if y_train.ndim == 1 and y_val.ndim == 1:
-            y_train = np.expand_dims(y_train, -1)
-            y_val = np.expand_dims(y_val, -1)
         print('training set: X-', x_train.shape, ' y-', y_train.shape)
         print('validation set: X-', x_val.shape, ' y-', y_val.shape)
 
@@ -872,33 +918,42 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
     return x_train, y_train, x_val, y_val
 
 
-def preprocess_continuous_labels(data, targets, scale=True, segment=200,
-                                 augment=False, val_size=0.1, aug_stride=10,
-                                 transform_targets=True, bp_filter=False,
-                                 fs=None, decimate=None, input_type='iid',
-                                 seq_length=None):
-    """
-    Returns
-    -------
-    x_train, x_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
-    y_train, y_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_targets]
-    """
-    raise NotImplementedError
+# def preprocess_continuous_labels(data, targets, scale=True, segment=200,
+#                                  augment=False, val_size=0.1, aug_stride=10,
+#                                  transform_targets=True, bp_filter=False,
+#                                  fs=None, decimate=None, input_type='iid',
+#                                  seq_length=None):
+#     """
+#     Returns
+#     -------
+#     x_train, x_val -
+#     arrays or lists of arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
+#     y_train, y_val -
+#     arrays or lists of arrays of dimensions [n_epochs, n_seq, n_targets]
+#     """
+#     raise NotImplementedError
 
-    if transform_targets:
+#     if transform_targets:
 
-        if input_type == 'seq':
-            y_train = [np.mean(y_tr[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_tr in y_train]
-            y_val = [np.mean(y_v[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_v in y_val]
-#            y_train = [np.mean(y_tr[..., -aug_stride:], axis=-1) for y_tr in y_train]
-#            y_val = [np.mean(y_v[..., -aug_stride:], axis=-1) for y_v in y_val]
-            print('preproc cont', len(x_train), x_train[0].shape, y_train[0].shape)
-        else:
-            y_train = np.mean(y_train[...,0, -aug_stride:], axis=-1, keepdims=True)
-            y_val = np.mean(y_val[...,0, -aug_stride:], axis=-1, keepdims=True)
-#            y_train -= y_median[None,0, :]
-#            y_val -= y_median[None,0,  :]
-#            y_train /= qrange[None,0, :]
-#            y_val /= qrange[None, 0, :]
-            print('preproc cont', x_train.shape, y_train.shape)
-    return x_train, y_train, x_val, y_val
+#         if input_type == 'seq':
+#             y_train = [np.mean(y_tr[..., 0, -aug_stride:],
+#                                axis=-1, keepdims=True) for y_tr in y_train]
+#             y_val = [np.mean(y_v[..., 0, -aug_stride:],
+#                              axis=-1, keepdims=True) for y_v in y_val]
+#             # y_train = [np.mean(y_tr[..., -aug_stride:], axis=-1)
+#             #            for y_tr in y_train]
+#             # y_val = [np.mean(y_v[..., -aug_stride:], axis=-1)
+#             #          for y_v in y_val]
+#             print('preproc cont', len(x_train),
+#                   x_train[0].shape, y_train[0].shape)
+#         else:
+#             y_train = np.mean(y_train[..., 0, -aug_stride:],
+#                               axis=-1, keepdims=True)
+#             y_val = np.mean(y_val[..., 0, -aug_stride:],
+#                             axis=-1, keepdims=True)
+#             # y_train -= y_median[None,0, :]
+#             # y_val -= y_median[None,0,  :]
+#             # y_train /= qrange[None,0, :]
+#             # y_val /= qrange[None, 0, :]
+#             print('preproc cont', x_train.shape, y_train.shape)
+#     return x_train, y_train, x_val, y_val
