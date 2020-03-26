@@ -55,9 +55,9 @@ class Model(tf.keras.Model):
             self.dataset = dataset
         self.fs = dataset.h_params['fs']
         self._layers.remove(specs)  # Weirdly it's considered as a layer
-        self.rate = specs.get('dropout', 0.0)
+        self.rate = specs.setdefault('dropout', 0.0)
         self.y_shape = specs['y_shape']
-        self.out_dim = specs.get('out_dim', np.prod(specs['y_shape']))
+        self.out_dim = specs.setdefault('out_dim', np.prod(specs['y_shape']))
         self.target_type = dataset.h_params['target_type']
 
     def make_4D(self, X):
@@ -196,22 +196,22 @@ class LFCNN(Model):
                 dictionary of model-specific hyperparameters.
         """
         super(LFCNN, self).__init__(specs, dataset, name=name, **kwargs)
-        l1 = specs.get('l1', 0.0)
-        l2 = specs.get('l2', 0.0)
+        l1 = specs.setdefault('l1', 0.0)
+        l2 = specs.setdefault('l2', 0.0)
 
-        self.demix = DeMixing(n_ls=specs.get('n_ls', 32),
-                              axis=specs.get('axis', 1),
+        self.demix = DeMixing(n_ls=specs.setdefault('n_ls', 32),
+                              axis=specs.setdefault('axis', 1),
                               kernel_regularizer=l1_l2(l1=l1, l2=l2),
                               bias_regularizer=l1_l2(l1=l1, l2=l2))
 
         self.tconv1 = LFTConv(scope="conv",
-                              n_ls=specs.get('n_ls', 32),
-                              nonlin=specs.get('nonlin', tf.nn.relu),
-                              filter_length=specs.get('filter_length', 7),
-                              stride=specs.get('stride', 1),
-                              pooling=specs.get('pooling', 2),
-                              pool_type=specs.get('pool_type', 'max'),
-                              padding=specs.get('padding', 'SAME'),
+                              n_ls=specs.setdefault('n_ls', 32),
+                              nonlin=specs.setdefault('nonlin', tf.nn.relu),
+                              filter_length=specs.setdefault('filter_length', 7),
+                              stride=specs.setdefault('stride', 1),
+                              pooling=specs.setdefault('pooling', 2),
+                              pool_type=specs.setdefault('pool_type', 'max'),
+                              padding=specs.setdefault('padding', 'SAME'),
                               kernel_regularizer=l1_l2(l1=l1, l2=l2),
                               bias_regularizer=l1_l2(l1=l1, l2=l2))
 
@@ -220,6 +220,9 @@ class LFCNN(Model):
                             dropout=self.rate,
                             kernel_regularizer=l1_l2(l1=l1, l2=l2),
                             bias_regularizer=l1_l2(l1=l1, l2=l2))
+
+        self.specs = specs.copy()  # specs was updated with default values
+
 
     def call(self, X):
         # Ensure the tensor is 4D
@@ -321,7 +324,7 @@ class LFCNN(Model):
         #  Temporal conv stuff
         self.filters = np.squeeze(kern)
         self.tc_out = np.squeeze(tc_out)
-        self.out_weights = np.reshape(out_w, [-1, self.specs['n_ls'],
+        self.out_weights = np.reshape(out_w, [-1, self.demix.size,
                                               self.out_dim])
 
         print('demx:', demx.shape,
@@ -780,18 +783,18 @@ class VARCNN(Model):
         l1 = specs['l1']
         l2 = specs['l2']
 
-        self.demix = DeMixing(n_ls=specs.get('n_ls', 32),
-                              axis=specs.get('axis', 1),
+        self.demix = DeMixing(n_ls=specs.setdefault('n_ls', 32),
+                              axis=specs.setdefault('axis', 1),
                               kernel_regularizer=l1_l2(l1=l1, l2=l2),
                               bias_regularizer=l1_l2(l1=l1, l2=l2))
 
         self.tconv1 = VARConv(scope="conv",
-                              n_ls=specs.get('n_ls', 32),
+                              n_ls=specs.setdefault('n_ls', 32),
                               nonlin=tf.nn.relu,
-                              filter_length=specs.get('filter_length', 7),
-                              stride=specs.get('stride', 1),
-                              pooling=specs.get('pooling', 2),
-                              padding=specs.get('padding', 'SAME'),
+                              filter_length=specs.setdefault('filter_length', 7),
+                              stride=specs.setdefault('stride', 1),
+                              pooling=specs.setdefault('pooling', 2),
+                              padding=specs.setdefault('padding', 'SAME'),
                               kernel_regularizer=l1_l2(l1=l1, l2=l2),
                               bias_regularizer=l1_l2(l1=l1, l2=l2))
 
@@ -800,6 +803,8 @@ class VARCNN(Model):
                             dropout=self.rate,
                             kernel_regularizer=l1_l2(l1=l1, l2=l2),
                             bias_regularizer=l1_l2(l1=l1, l2=l2))
+
+        self.specs = specs.copy()  # specs was updated with default values
 
     def call(self, X):
         # Ensure the tensor is 4D
@@ -860,35 +865,37 @@ class LFLSTM(LFCNN):
         l1 = specs['l1']
         l2 = specs['l2']
 
-        self.demix = DeMixing(n_ls=specs.get('n_ls', 32),
-                              axis=specs.get('axis', 1),
+        self.demix = DeMixing(n_ls=specs.setdefault('n_ls', 32),
+                              axis=specs.setdefault('axis', 1),
                               kernel_regularizer=l1_l2(l1=l1, l2=l2),
                               bias_regularizer=l1_l2(l1=l1, l2=l2))
 
         self.tconv1 = LFTConv(scope="conv",
-                              n_ls=specs.get('n_ls', 32),
+                              n_ls=specs.setdefault('n_ls', 32),
                               nonlin=tf.nn.relu,
-                              filter_length=specs.get('filter_length', 7),
-                              stride=specs.get('stride', 1),
-                              pooling=specs.get('pooling', 2),
-                              padding=specs.get('padding', 'SAME'),
+                              filter_length=specs.setdefault('filter_length', 7),
+                              stride=specs.setdefault('stride', 1),
+                              pooling=specs.setdefault('pooling', 2),
+                              padding=specs.setdefault('padding', 'SAME'),
                               kernel_regularizer=l1_l2(l1=l1, l2=l2),
                               bias_regularizer=l1_l2(l1=l1, l2=l2))
 
         self.lstm = LSTMv1(scope="lstm",
-                           size=specs.get('n_ls', 32),
-                           dropout=specs.get('rnn_dropout', 0.0),
-                           nonlin=specs.get('rnn_nonlin', 'tanh'),
-                           unit_forget_bias=specs.get('rnn_forget_bias', True),
+                           size=specs.setdefault('n_ls', 32),
+                           dropout=specs.setdefault('rnn_dropout', 0.0),
+                           nonlin=specs.setdefault('rnn_nonlin', 'tanh'),
+                           unit_forget_bias=specs.setdefault('rnn_forget_bias', True),
                            kernel_regularizer=l1_l2(l1=l1, l2=l2),
                            bias_regularizer=l1_l2(l1=l1, l2=l2),
-                           return_sequences=specs.get('rnn_seq', True),
-                           unroll=specs.get('unroll', False))
+                           return_sequences=specs.setdefault('rnn_seq', True),
+                           unroll=specs.setdefault('unroll', False))
 
         self.fin_fc = Dense(scope='fc',
                             size=self.out_dim,
                             nonlin=tf.identity,
-                            dropout=specs.get('dropout', 0.0))
+                            dropout=specs.setdefault('dropout', 0.0))
+
+        self.specs = specs.copy()  # specs was updated with default values
 
     def call(self, X):
         # Ensure the tensor is 4D

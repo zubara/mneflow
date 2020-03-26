@@ -34,7 +34,7 @@ def _test_tfrecords(path='./', pattern=''):
             print(CRED + 'ERROR:\t', f_i, file + CEND)
             total_files += 1
             error_files += 1
-    print('Found %d files, %d raised an error.')
+    print('Found %d files, %d raised an error.' % (total_files, error_files))
 
 
 def get_targets(model, dataset, dset, steps):
