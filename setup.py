@@ -30,5 +30,5 @@ if __name__ == "__main__":
         platforms='any',
         packages=['mneflow'],
         install_requires=['numpy', 'scipy', 'mne', 'tensorflow',  'matplotlib',
-                          'sklearn'],
+                          'sklearn', 'spectrum'],
     )
