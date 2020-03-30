@@ -30,7 +30,7 @@ from matplotlib import patches as ptch
 from matplotlib import collections
 
 from .layers import ConvDSV, Dense, vgg_block, LFTConv, VARConv, DeMixing, TempPooling
-from .keras_layers import LSTMv1
+#from .layers import LSTMv1
 from tensorflow.keras import regularizers as k_reg, constraints
 
 
@@ -80,13 +80,14 @@ class Model(object):
                 tf.data.get_output_types(Dataset.train),
                 tf.data.get_output_shapes(Dataset.train))
 
-        self.X0, self.y_ = self.iterator.get_next()
-        print('X0:', self.X0.shape)
+        self.X, self.y_ = self.iterator.get_next()
+        print('X:', self.X.shape)
 
-        if len(self.X0.shape) == 3:
-            self.X = tf.expand_dims(self.X0, -1)
-        else:
-            self.X = self.X0
+#        if len(self.X0.shape) == 3:
+#                print("Self")
+#            self.X = tf.expand_dims(self.X0, -1)
+#        else:
+#            self.X = self.X0
 
         self.rate = tf.placeholder(tf.float32, name='rate')
         self.dataset = Dataset
@@ -663,7 +664,7 @@ class LFCNN(Model):
         """
         self.scope = 'lf-cnn'
 
-        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
+        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=3)
 
         self.tconv1 = LFTConv(scope="conv",
                               n_ls=self.specs['n_ls'],
@@ -678,14 +679,16 @@ class LFCNN(Model):
                             pooling=self.specs['pooling'],
                             padding='SAME',
                             pool_type='max')
-
-        self.tconv_out = pool(self.tconv1(self.demix(self.X)))
-
+        dmx_out = self.demix(self.X)
+        print('dmx out:', dmx_out.shape)
+        self.tconv_out = self.tconv1(dmx_out)
+        print("tconv out:", self.tconv_out.shape)
+        pooled = pool(self.tconv_out)
         self.fin_fc = Dense(size=np.prod(self.y_shape),
                             nonlin=tf.identity,
                             dropout=self.rate)
 
-        y_pred = self.fin_fc(self.tconv_out)
+        y_pred = self.fin_fc(pooled)
         # y_pred = tf.reshape(y_pred, [-1, *self.y_shape])
 
         return y_pred
@@ -1246,109 +1249,109 @@ class VARCNN(Model):
         return y_pred
 
 
-class LFLSTM(LFCNN):
-    # TODO! Gabi: check that the description describes the model
-    """LF-CNN-LSTM
-
-    For details see [1].
-
-    Parameters
-    ----------
-    n_ls : int
-        number of latent components
-        Defaults to 32
-
-    filter_length : int
-        length of spatio-temporal kernels in the temporal
-        convolution layer. Defaults to 7
-
-    stride : int
-        stride of the max pooling layer. Defaults to 1
-
-    pooling : int
-        pooling factor of the max pooling layer. Defaults to 2
-
-    References
-    ----------
-        [1]  I. Zubarev, et al., Adaptive neural network classifier for
-        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-    """
-
-    def build_graph(self):
-        self.scope = 'lf-cnn-lstm'
-
-        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
-        dmx = self.demix(self.X)
-        dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
-                               self.specs['n_ls']])
-        dmx = tf.expand_dims(dmx, -1)
-        print('dmx-sqout:', dmx.shape)
-
-        self.tconv1 = LFTConv(scope="conv",
-                              n_ls=self.specs['n_ls'],
-                              nonlin=tf.nn.relu,
-                              filter_length=self.specs['filter_length'],
-#                              stride=self.specs['stride'],
-#                              pooling=self.specs['pooling'],
-                              padding=self.specs['padding'])
-
-        features = self.tconv1(dmx)
-        pool1 = TempPooling(stride=self.specs['stride'],
-                            pooling=self.specs['pooling'],
-                            padding='SAME',
-                            pool_type='max')
-
-        pool2 = TempPooling(stride=self.specs['stride'],
-                            pooling=self.specs['pooling'],
-                            padding='SAME',
-                            pool_type='max')
-
-        pool3 = TempPooling(stride=self.specs['stride'],
-                            pooling=self.specs['pooling'],
-                            padding='SAME',
-                            pool_type='avg')
-
-        print('features:', pool3.shape)
-        pooled = pool3(pool2(pool1(features)))
-
-        fshape = tf.multiply(pooled.shape[1], pooled.shape[2])
-
-        ffeatures = tf.reshape(pooled,
-                              [-1, self.dataset.h_params['n_seq'], fshape])
-        #  features = tf.expand_dims(features, 0)
-        l1_lambda = self.optimizer.params['l1_lambda']
-        print('flat features:', ffeatures.shape)
-        self.lstm = LSTMv1(scope="lstm",
-                           size=self.specs['n_ls'],
-                           kernel_initializer='glorot_uniform',
-                           recurrent_initializer='orthogonal',
-                           recurrent_regularizer=k_reg.l1(l1_lambda),
-                           kernel_regularizer=k_reg.l2(l1_lambda),
-                           # bias_regularizer=None,
-                           # activity_regularizer= regularizers.l1(0.01),
-                           # kernel_constraint= constraints.UnitNorm(axis=0),
-                           # recurrent_constraint= constraints.NonNeg(),
-                           # bias_constraint=None,
-                           # dropout=0.1, recurrent_dropout=0.1,
-                           nonlin=tf.nn.tanh,
-                           unit_forget_bias=False,
-                           return_sequences=False,
-                           unroll=False)
-
-        lstm_out = self.lstm(ffeatures)
-        print('lstm_out:', lstm_out.shape)
-        # if 'n_seq' in self.dataset.h_params.keys():
-        #    lstm_out = tf.reshape(lstm_out, [-1,
-        #                                     self.dataset.h_params['n_seq'],
-        #                                     self.specs['n_ls']])
-
-        self.fin_fc = Dense(size=np.prod(self.y_shape),
-                            nonlin=tf.identity, dropout=0.)
-#        self.fin_fc = DeMixing(n_ls=np.prod(self.y_shape),
-#                               nonlin=tf.identity, axis=-1)
-        y_pred = self.fin_fc(lstm_out)
-        # print(y_pred)
-        return y_pred
+#class LFLSTM(LFCNN):
+#    # TODO! Gabi: check that the description describes the model
+#    """LF-CNN-LSTM
+#
+#    For details see [1].
+#
+#    Parameters
+#    ----------
+#    n_ls : int
+#        number of latent components
+#        Defaults to 32
+#
+#    filter_length : int
+#        length of spatio-temporal kernels in the temporal
+#        convolution layer. Defaults to 7
+#
+#    stride : int
+#        stride of the max pooling layer. Defaults to 1
+#
+#    pooling : int
+#        pooling factor of the max pooling layer. Defaults to 2
+#
+#    References
+#    ----------
+#        [1]  I. Zubarev, et al., Adaptive neural network classifier for
+#        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+#    """
+#
+#    def build_graph(self):
+#        self.scope = 'lf-cnn-lstm'
+#
+#        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
+#        dmx = self.demix(self.X)
+#        dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
+#                               self.specs['n_ls']])
+#        dmx = tf.expand_dims(dmx, -1)
+#        print('dmx-sqout:', dmx.shape)
+#
+#        self.tconv1 = LFTConv(scope="conv",
+#                              n_ls=self.specs['n_ls'],
+#                              nonlin=tf.nn.relu,
+#                              filter_length=self.specs['filter_length'],
+##                              stride=self.specs['stride'],
+##                              pooling=self.specs['pooling'],
+#                              padding=self.specs['padding'])
+#
+#        features = self.tconv1(dmx)
+#        pool1 = TempPooling(stride=self.specs['stride'],
+#                            pooling=self.specs['pooling'],
+#                            padding='SAME',
+#                            pool_type='max')
+#
+#        pool2 = TempPooling(stride=self.specs['stride'],
+#                            pooling=self.specs['pooling'],
+#                            padding='SAME',
+#                            pool_type='max')
+#
+#        pool3 = TempPooling(stride=self.specs['stride'],
+#                            pooling=self.specs['pooling'],
+#                            padding='SAME',
+#                            pool_type='avg')
+#
+#        print('features:', pool3.shape)
+#        pooled = pool3(pool2(pool1(features)))
+#
+#        fshape = tf.multiply(pooled.shape[1], pooled.shape[2])
+#
+#        ffeatures = tf.reshape(pooled,
+#                              [-1, self.dataset.h_params['n_seq'], fshape])
+#        #  features = tf.expand_dims(features, 0)
+#        l1_lambda = self.optimizer.params['l1_lambda']
+#        print('flat features:', ffeatures.shape)
+#        self.lstm = LSTMv1(scope="lstm",
+#                           size=self.specs['n_ls'],
+#                           kernel_initializer='glorot_uniform',
+#                           recurrent_initializer='orthogonal',
+#                           recurrent_regularizer=k_reg.l1(l1_lambda),
+#                           kernel_regularizer=k_reg.l2(l1_lambda),
+#                           # bias_regularizer=None,
+#                           # activity_regularizer= regularizers.l1(0.01),
+#                           # kernel_constraint= constraints.UnitNorm(axis=0),
+#                           # recurrent_constraint= constraints.NonNeg(),
+#                           # bias_constraint=None,
+#                           # dropout=0.1, recurrent_dropout=0.1,
+#                           nonlin=tf.nn.tanh,
+#                           unit_forget_bias=False,
+#                           return_sequences=False,
+#                           unroll=False)
+#
+#        lstm_out = self.lstm(ffeatures)
+#        print('lstm_out:', lstm_out.shape)
+#        # if 'n_seq' in self.dataset.h_params.keys():
+#        #    lstm_out = tf.reshape(lstm_out, [-1,
+#        #                                     self.dataset.h_params['n_seq'],
+#        #                                     self.specs['n_ls']])
+#
+#        self.fin_fc = Dense(size=np.prod(self.y_shape),
+#                            nonlin=tf.identity, dropout=0.)
+##        self.fin_fc = DeMixing(n_ls=np.prod(self.y_shape),
+##                               nonlin=tf.identity, axis=-1)
+#        y_pred = self.fin_fc(lstm_out)
+#        # print(y_pred)
+#        return y_pred
 
 
 class INV_LFCNN(LFCNN):
