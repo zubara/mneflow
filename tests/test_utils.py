@@ -7,6 +7,8 @@ Unit tests for utils.py.
 """
 
 import os
+import pathlib
+import glob
 import time
 import unittest
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -19,7 +21,63 @@ import mne
 
 from mneflow import utils
 
+# Change current directory to the one this file resides in
+os.chdir(pathlib.Path(__file__).parent.absolute())
 
+
+# --- Auxiliary functions ---
+def check_meta_trial_class():
+    return dict(train_paths=[], val_paths=[], test_paths=[],
+                data_id='', val_size=0, savepath='',
+                target_type='', input_type='', fs=0,
+                class_proportions=dict(), orig_classes=dict(),
+                y_shape=tuple(), n_ch=0, n_t=0, test_size=0)
+
+
+def check_meta_seq_class():
+    return dict(train_paths=[], val_paths=[], test_paths=[],
+                data_id='', val_size=0, savepath='', n_seq=0,
+                target_type='', input_type='', fs=0,
+                class_proportions=dict(), orig_classes=dict(),
+                y_shape=tuple(), n_ch=0, n_t=0, test_size=0)
+
+
+def check_meta_trial_reg():
+    return dict(train_paths=[], val_paths=[], test_paths=[],
+                data_id='', val_size=0, savepath='',
+                target_type='', input_type='', fs=0,
+                y_shape=tuple(), n_ch=0, n_t=0, test_size=0)
+
+
+def check_meta_seq_reg():
+    return dict(train_paths=[], val_paths=[], test_paths=[],
+                data_id='', val_size=0, savepath='', n_seq=0,
+                target_type='', input_type='', fs=0,
+                y_shape=tuple(), n_ch=0, n_t=0, test_size=0)
+
+
+def check_tfrecords(path='./', pattern=''):
+    """Iterate over TFRecord files maching the pattern and checks for
+    corrupted records.
+
+    Adapted from keras_utils.py"""
+    import glob
+
+    total_files = 0
+    error_files = 0
+    train_files = sorted(glob.glob('%s*%s*.tfrecord' % (path, pattern)))
+    for f_i, file in enumerate(train_files):
+        try:
+            total_files += sum(
+                    [1 for _ in tf.python_io.tf_record_iterator(file)])
+        except IOError:
+            total_files += 1
+            error_files += 1
+
+    return total_files, error_files
+
+
+# --- UNIT TESTS ---
 class TestUtils(unittest.TestCase):
     """Unit test class for most functions contained in utils.py file."""
 
@@ -31,6 +89,71 @@ class TestUtils(unittest.TestCase):
         """Sanity check test #2."""
         pass
 
+    def test_partition(self):
+        """Placeholder for utils.partition"""
+        # data = np.arange(10000).reshape(100, 5, 20)
+        # data = data.astype(np.float32)
+        # events = np.arange(100).reshape(100, 1)
+
+        # idx = [(1, 2), (10, 11)]
+        # x1, x2 = utils.partition(data, idx)
+        # y1, y2 = utils.partition(events, idx)
+
+    def test_cont_split_indices(self):
+        """Unit test for utils.cont_split_indices"""
+        data = np.arange(1000).reshape(1, 10, 5, 20)
+
+        idx = utils.cont_split_indices(data, test_size=0.1, test_segments=2)
+        self.assertTrue(len(idx) == 2)
+        self.assertTrue(np.all([jj < data.shape[-1]
+                                for ii in idx for jj in ii]))
+
+    def test_create_example_fif(self):
+        from mne.datasets import multimodal
+
+        fname = 'example-epo.fif'
+        if not os.path.exists(fname):
+            mne.set_log_level(verbose='CRITICAL')
+            rname = os.path.join(multimodal.data_path(), 'multimodal_raw.fif')
+            raw = mne.io.read_raw_fif(rname)
+            cond = raw.acqparser.get_condition(
+                raw, condition=['Auditory left', 'Auditory right'])
+            epochs_list = [mne.Epochs(raw, **c) for c in cond]
+            epochs = mne.concatenate_epochs(epochs_list)
+            epochs.save(fname, overwrite=False)
+            del raw, epochs, cond, epochs_list
+
+        epochs = mne.epochs.read_epochs(fname, preload=False)
+        self.assertTrue(epochs)
+
+    def test_create_example_npz(self):
+        fname = 'example_meg.npz'
+        if not os.path.exists('example_meg.npz'):
+            epochs = mne.read_epochs('example-epo.fif', preload=True)
+            data = epochs.get_data()
+            events = epochs.events[:, 2]
+            np.savez_compressed('example_meg', data=data, events=events)
+            del epochs, data, events
+
+        datafile = np.load(fname)
+        self.assertTrue(np.any(datafile['data']))
+        self.assertTrue(np.any(datafile['events']))
+
+    def test_create_example_mat(self):
+        import scipy.io as sio
+        fname = 'example_meg.mat'
+        if not os.path.exists(fname):
+            tmp = np.load('example_meg.npz')
+            adict = {}
+            adict['data'] = tmp['data']
+            adict['events'] = tmp['events']
+            sio.savemat(fname, adict)
+            del tmp, adict
+
+        datafile = sio.loadmat(fname)
+        self.assertTrue(np.any(datafile['data']))
+        self.assertTrue(np.any(datafile['events']))
+
     def test_onehot(self):
         """Unit test for utils._onehot function."""
         y = np.arange(0, 10, dtype='int')
@@ -38,13 +161,34 @@ class TestUtils(unittest.TestCase):
         y_true = np.eye(10, dtype='int')
         np.testing.assert_equal(y_, y_true)
 
-    def test_load_meta(self):
+    def test_load_meta_trials(self):
         """Unit test for utils._load_meta function."""
         with self.assertRaises(FileNotFoundError):
             s = utils._load_meta('', '')
 
-        s = utils._load_meta('./', 'example')
-        (isinstance(s, dict))
+        s = utils._load_meta('./', 'example_trials')
+        self.assertTrue(isinstance(s, dict))
+
+        tmp = check_meta_trial_class()
+
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+
+    def test_load_meta_seq(self):
+        """Unit test for utils._load_meta function."""
+
+        with self.assertRaises(FileNotFoundError):
+            s = utils._load_meta('', '')
+
+        s = utils._load_meta('./', 'example_seq')
+        self.assertTrue(isinstance(s, dict))
+
+        tmp = check_meta_seq_class()
+
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
 
     def test_scale_to_baseline_cont(self):
         """Test on a continuous signal (sigmoid) with std = 1 and mean = 0."""
@@ -109,82 +253,14 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(np.all(np.isin(tevents[keep_ind], new_avail_labels)))
         self.assertTrue(np.all(tevents[keep_ind] != 0))
 
-    def test_segment(self):
-        X = np.arange(1000).reshape(2, 1, 500)
 
-        # No options check
-        x = utils._segment(X)
-        np.testing.assert_equal(x, np.stack([X[0, :, 0:200], X[0, :, 200:400],
-                                             X[1, :, 0:200], X[1, :, 200:400]]
-                                            ))
-        f = np.arange(0, 10)
-
-        # small segment length
-        x = utils._segment(X, segment_length=10, augment=False)
-        X_true = np.stack([f+ii for ii in range(0, 1000, 10)], axis=0)
-        X_true = np.expand_dims(X_true, axis=1)
-        np.testing.assert_equal(x, X_true)
-
-        # small segment length and augment=true with default value
-        x = utils._segment(X, segment_length=10, augment=True)
-        X_true = np.stack([f+ii for ii in range(0, 1000, 25)], axis=0)
-        X_true = np.expand_dims(X_true, axis=1)
-        np.testing.assert_equal(x, X_true)
-
-        # small segment length and augment=true with custom value
-        x = utils._segment(X, segment_length=10, augment=True, stride=6)
-        X_true = np.vstack(([f+ii for ii in range(0, 490, 6)],
-                            [f+ii for ii in range(500, 990, 6)]))
-        X_true = np.expand_dims(X_true, axis=1)
-        np.testing.assert_equal(x, X_true)
-
-    def test_segment_seq(self):
-        X = np.arange(1000).reshape(2, 1, 500)
-
-        # No options check
-        x = utils._segment(X, input_type='seq')
-        X_t1 = np.array([X[0, :, 0:200], X[0, :, 200:400]])
-        X_t2 = np.array([X[1, :, 0:200], X[1, :, 200:400]])
-        X_true = np.array([X_t1, X_t2])
-        np.testing.assert_equal(x, X_true)
-
-        f = np.arange(0, 10)
-
-        # small segment length
-        x = utils._segment(X, input_type='seq', segment_length=10, augment=False)
-        X_t1 = np.stack([f+ii for ii in range(0, 500, 10)], axis=0)
-        X_t1 = np.expand_dims(X_t1, axis=1)
-
-        X_t2 = np.stack([f+ii for ii in range(500, 1000, 10)], axis=0)
-        X_t2 = np.expand_dims(X_t2, axis=1)
-        X_true = np.array([X_t1, X_t2])
-        np.testing.assert_equal(x, X_true)
-
-        # small segment length and augment=true with default value
-        x = utils._segment(X, input_type='seq', segment_length=10, augment=True)
-        X_t1 = np.stack([f+ii for ii in range(0, 500, 25)], axis=0)
-        X_t1 = np.expand_dims(X_t1, axis=1)
-
-        X_t2 = np.stack([f+ii for ii in range(500, 1000, 25)], axis=0)
-        X_t2 = np.expand_dims(X_t2, axis=1)
-        X_true = np.array([X_t1, X_t2])
-        np.testing.assert_equal(x, X_true)
-
-        # small segment length and augment=true with custom value
-        x = utils._segment(X, input_type='seq', segment_length=10,
-                           augment=True, stride=6)
-        X_t1 = np.stack([f+ii for ii in range(0, 490, 6)], axis=0)
-        X_t1 = np.expand_dims(X_t1, axis=1)
-
-        X_t2 = np.stack([f+ii for ii in range(500, 990, 6)], axis=0)
-        X_t2 = np.expand_dims(X_t2, axis=1)
-        X_true = np.array([X_t1, X_t2])
-        np.testing.assert_equal(x, X_true)
+class TestPreprocess(unittest.TestCase):
+    """Unit test class for utils.preprocess function."""
 
     def test_preprocess(self):
-        X = np.arange(1000).reshape(10, 5, 20)
-        y = np.arange(10)
-        data, events = utils.import_data((X, y))
+        data = np.arange(1000).reshape(10, 5, 20)
+        data = data.astype(np.float32)
+        events = np.arange(10).reshape(10, 1)
 
         # No options check
         x1, y1, x2, y2 = utils.preprocess(data, events)
@@ -192,6 +268,85 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(x1.shape[1:], data.shape[1:])
         self.assertEqual(x2.shape[1:], data.shape[1:])
         self.assertEqual(y1.shape[0] + y2.shape[0], events.shape[0])
+        self.assertEqual(y1.shape[1:], events.shape[1:])
+        self.assertEqual(y2.shape[1:], events.shape[1:])
+
+    def test_preprocess_trials(self):
+        data = np.arange(1000).reshape(10, 5, 20)
+        data = data.astype(np.float32)
+        events = np.arange(10).reshape(10, 1)
+
+        # trials
+        x1, y1, x2, y2 = utils.preprocess(data, events, input_type='trials')
+        self.assertEqual(x1.shape[0] + x2.shape[0], data.shape[0])
+        self.assertEqual(x1.shape[1:], data.shape[1:])
+        self.assertEqual(x2.shape[1:], data.shape[1:])
+        self.assertEqual(y1.shape[0] + y2.shape[0], events.shape[0])
+        self.assertEqual(y1.shape[1:], events.shape[1:])
+        self.assertEqual(y2.shape[1:], events.shape[1:])
+
+    def test_preprocess_seq(self):
+        data = np.arange(1000).reshape(10, 5, 20)
+        data = data.astype(np.float32)
+        events = np.arange(10).reshape(10, 1)
+
+        # seq
+        x1, y1, x2, y2 = utils.preprocess(data, events, input_type='seq')
+        self.assertEqual(x1.shape[0] + x2.shape[0], data.shape[0])
+        self.assertEqual(x1.shape[1:], data.shape[1:])
+        self.assertEqual(x2.shape[1:], data.shape[1:])
+        self.assertEqual(y1.shape[0] + y2.shape[0], events.shape[0])
+        self.assertEqual(y1.shape[1:], events.shape[1:])
+        self.assertEqual(y2.shape[1:], events.shape[1:])
+
+    def test_preprocess_scale(self):
+        data = np.arange(1000).reshape(10, 5, 20)
+        data = data.astype(np.float32)
+        events = np.arange(10).reshape(10, 1)
+
+        # scale
+        x1, y1, x2, y2 = utils.preprocess(data, events, scale=True)
+        self.assertEqual(x1.shape[0] + x2.shape[0], data.shape[0])
+        self.assertEqual(x1.shape[1:], data.shape[1:])
+        self.assertEqual(x2.shape[1:], data.shape[1:])
+
+        self.assertEqual(y1.shape[0] + y2.shape[0], events.shape[0])
+        self.assertEqual(y1.shape[1:], events.shape[1:])
+        self.assertEqual(y2.shape[1:], events.shape[1:])
+
+    def test_preprocess_decimate(self):
+        data = np.arange(1000).reshape(10, 5, 20)
+        data = data.astype(np.float32)
+        events = np.arange(10).reshape(10, 1)
+
+        # decimate
+        x1, y1, x2, y2 = utils.preprocess(data, events, decimate=2)
+        self.assertEqual(x1.shape[0] + x2.shape[0], data.shape[0])
+        self.assertEqual(x1.shape[1], data.shape[1])
+        self.assertEqual(x1.shape[2], data.shape[2]/2)
+
+        self.assertEqual(x2.shape[1], data.shape[1])
+        self.assertEqual(x2.shape[2], data.shape[2]/2)
+
+        self.assertEqual(y1.shape[0] + y2.shape[0], events.shape[0])
+        self.assertEqual(y1.shape[1:], events.shape[1:])
+        self.assertEqual(y2.shape[1:], events.shape[1:])
+
+    def test_preprocess_segment(self):
+        data = np.arange(1000).reshape(10, 5, 20)
+        data = data.astype(np.float32)
+        events = np.arange(10).reshape(10, 1)
+
+        # segment
+        x1, y1, x2, y2 = utils.preprocess(data, events, segment=10)
+        self.assertEqual(x1.shape[0] + x2.shape[0], 2*data.shape[0])
+        self.assertEqual(x1.shape[1], data.shape[1])
+        self.assertEqual(x1.shape[2], data.shape[2]/2)
+
+        self.assertEqual(x2.shape[1], data.shape[1])
+        self.assertEqual(x2.shape[2], data.shape[2]/2)
+
+        self.assertEqual(y1.shape[0] + y2.shape[0], 2*events.shape[0])
         self.assertEqual(y1.shape[1:], events.shape[1:])
         self.assertEqual(y2.shape[1:], events.shape[1:])
 
@@ -330,6 +485,98 @@ class TestSplitSets(unittest.TestCase):
         self.assertEqual(y2.shape[2], y.shape[2])
 
 
+class TestSegment(unittest.TestCase):
+    """Unit test class for utils._segment function."""
+
+    def test_segment(self):
+        X = np.arange(1000).reshape(2, 1, 500)
+
+        # No options check
+        x = utils._segment(X)
+        np.testing.assert_equal(x, np.stack([X[0, :, 0:200], X[0, :, 200:400],
+                                             X[1, :, 0:200], X[1, :, 200:400]]
+                                            ))
+
+    def test_segment_sl(self):
+        X = np.arange(1000).reshape(2, 1, 500)
+        f = np.arange(0, 10)
+
+        # small segment length
+        x = utils._segment(X, segment_length=10, augment=False)
+        X_true = np.stack([f+ii for ii in range(0, 1000, 10)], axis=0)
+        X_true = np.expand_dims(X_true, axis=1)
+        np.testing.assert_equal(x, X_true)
+
+    def test_segment_aug_def(self):
+        X = np.arange(1000).reshape(2, 1, 500)
+        f = np.arange(0, 10)
+
+        # small segment length and augment=true with default value
+        x = utils._segment(X, segment_length=10, augment=True)
+        X_true = np.stack([f+ii for ii in range(0, 1000, 25)], axis=0)
+        X_true = np.expand_dims(X_true, axis=1)
+        np.testing.assert_equal(x, X_true)
+
+    def test_segment_aug_custom(self):
+        X = np.arange(1000).reshape(2, 1, 500)
+        f = np.arange(0, 10)
+        # small segment length and augment=true with custom value
+        x = utils._segment(X, segment_length=10, augment=True, stride=6)
+        X_true = np.vstack(([f+ii for ii in range(0, 490, 6)],
+                            [f+ii for ii in range(500, 990, 6)]))
+        X_true = np.expand_dims(X_true, axis=1)
+        np.testing.assert_equal(x, X_true)
+
+    def test_segment_seq(self):
+        X = np.arange(1000).reshape(2, 1, 500)
+
+        # No options check
+        x = utils._segment(X, input_type='seq')
+        X_t1 = np.array([X[0, :, 0:200], X[0, :, 200:400]])
+        X_t2 = np.array([X[1, :, 0:200], X[1, :, 200:400]])
+        X_true = np.array([X_t1, X_t2])
+        np.testing.assert_equal(x, X_true)
+
+    def test_segment_seq_sl(self):
+        X = np.arange(1000).reshape(2, 1, 500)
+        f = np.arange(0, 10)
+
+        # small segment length
+        x = utils._segment(X, input_type='seq', segment_length=10, augment=False)
+        X_t1 = np.stack([f+ii for ii in range(0, 500, 10)], axis=0)
+        X_t1 = np.expand_dims(X_t1, axis=1)
+        X_t2 = np.stack([f+ii for ii in range(500, 1000, 10)], axis=0)
+        X_t2 = np.expand_dims(X_t2, axis=1)
+        X_true = np.array([X_t1, X_t2])
+        np.testing.assert_equal(x, X_true)
+
+    def test_segment_seq_aug_def(self):
+        X = np.arange(1000).reshape(2, 1, 500)
+        f = np.arange(0, 10)
+        # small segment length and augment=true with default value
+        x = utils._segment(X, input_type='seq', segment_length=10, augment=True)
+        X_t1 = np.stack([f+ii for ii in range(0, 500, 25)], axis=0)
+        X_t1 = np.expand_dims(X_t1, axis=1)
+        X_t2 = np.stack([f+ii for ii in range(500, 1000, 25)], axis=0)
+        X_t2 = np.expand_dims(X_t2, axis=1)
+        X_true = np.array([X_t1, X_t2])
+        np.testing.assert_equal(x, X_true)
+
+    def test_segment_seq_aug_custom(self):
+        X = np.arange(1000).reshape(2, 1, 500)
+        f = np.arange(0, 10)
+        # small segment length and augment=true with custom value
+        x = utils._segment(X, input_type='seq', segment_length=10,
+                           augment=True, stride=6)
+        X_t1 = np.stack([f+ii for ii in range(0, 490, 6)], axis=0)
+        X_t1 = np.expand_dims(X_t1, axis=1)
+
+        X_t2 = np.stack([f+ii for ii in range(500, 990, 6)], axis=0)
+        X_t2 = np.expand_dims(X_t2, axis=1)
+        X_true = np.array([X_t1, X_t2])
+        np.testing.assert_equal(x, X_true)
+
+
 class TestMakeExampleProto(unittest.TestCase):
     """Unit test class for utils._make_example function."""
 
@@ -441,7 +688,10 @@ class TestWriteTFRecords(unittest.TestCase):
         """Unit test using numpy arrays, `trial` input and `int` targets."""
         X_ = np.arange(1000).reshape(10, 5, 20)
         y_ = np.arange(10).reshape(10, 1)
-        fname = time.strftime('%Y%m%d_%H%M%S_')+'example.tfrecord'
+        savepath = './tmptfr/'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+        fname = savepath+time.strftime('%Y%m%d_%H%M%S_')+'example.tfrecord'
 
         def _parse_tfrecords_trial_int(example_proto):
             kk = dict()
@@ -471,7 +721,10 @@ class TestWriteTFRecords(unittest.TestCase):
         """Unit test using numpy arrays, `trial` input and `float` targets."""
         X_ = np.arange(1000).reshape(10, 5, 20)
         y_ = np.arange(10).reshape(10, 1)
-        fname = time.strftime('%Y%m%d_%H%M%S_')+'example.tfrecord'
+        savepath = './tmptfr/'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+        fname = savepath+time.strftime('%Y%m%d_%H%M%S_')+'example.tfrecord'
 
         def _parse_tfrecords_trial_float(example_proto):
             kk = dict()
@@ -501,7 +754,10 @@ class TestWriteTFRecords(unittest.TestCase):
         """Unit test using numpy arrays, `seq` input and `int` targets."""
         X_ = np.arange(1000).reshape(10, 5, 20)
         y_ = np.arange(10).reshape(10, 1)
-        fname = time.strftime('%Y%m%d_%H%M%S_')+'example.tfrecord'
+        savepath = './tmptfr/'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+        fname = savepath+time.strftime('%Y%m%d_%H%M%S_')+'example.tfrecord'
 
         def _parse_tfrecords_seq_int(example_proto):
             kk = dict()
@@ -531,7 +787,10 @@ class TestWriteTFRecords(unittest.TestCase):
         """Unit test using numpy arrays, `seq` input and `float` targets."""
         X_ = np.arange(1000).reshape(10, 5, 20)
         y_ = np.arange(10).reshape(10, 1)
-        fname = time.strftime('%Y%m%d_%H%M%S_')+'example.tfrecord'
+        savepath = './tmptfr/'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+        fname = savepath+time.strftime('%Y%m%d_%H%M%S_')+'example.tfrecord'
 
         def _parse_tfrecords_seq_float(example_proto):
             kk = dict()
@@ -565,24 +824,25 @@ class TestImportData(unittest.TestCase):
         """Test data import using a mne.Epochs file."""
         epochs = mne.read_epochs('example-epo.fif', preload=True)
         picks = mne.pick_types(epochs.info, meg='grad')
+        # picks = np.arange(0, 204)
 
         # All channels
         data, events = utils.import_data(epochs)
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 316, 361), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 316, 361), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
         # Pick channels
         data, events = utils.import_data(epochs, picks=picks)
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 204, 361), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 204, 361), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
         # Transpose data
         data, events = utils.import_data(epochs, transpose=['X', 'y'])
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 361, 316), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 361, 316), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
     def test_import_data_tuple(self):
         """Test data import using a tuple."""
@@ -615,21 +875,21 @@ class TestImportData(unittest.TestCase):
         # All channels
         data, events = utils.import_data('example-epo.fif')
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 316, 361), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 316, 361), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
         # Pick channels
         data, events = utils.import_data('example-epo.fif', picks=picks)
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 204, 361), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 204, 361), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
         # Transpose data
         data, events = utils.import_data('example-epo.fif',
                                          transpose=['X', 'y'])
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 361, 316), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 361, 316), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
     def test_import_data_npz(self):
         """Test data import using the name of a .npz file."""
@@ -639,22 +899,22 @@ class TestImportData(unittest.TestCase):
         # All channels
         data, events = utils.import_data('example_meg.npz', array_keys=kk)
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 204, 361), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 316, 361), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
         # Pick channels
         data, events = utils.import_data('example_meg.npz', array_keys=kk,
                                          picks=picks)
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 102, 361), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 102, 361), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
         # Transpose data
         data, events = utils.import_data('example_meg.npz', array_keys=kk,
                                          transpose=['X', 'y'])
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 361, 204), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 361, 316), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
     def test_import_data_mat(self):
         """Test data import using the name of a .mat file."""
@@ -664,31 +924,433 @@ class TestImportData(unittest.TestCase):
         # All channels
         data, events = utils.import_data('example_meg.mat', array_keys=kk)
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 204, 361), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 316, 361), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
         # Pick channels
         data, events = utils.import_data('example_meg.mat', array_keys=kk,
                                          picks=picks)
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 102, 361), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 102, 361), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
         # Transpose data
         data, events = utils.import_data('example_meg.mat', array_keys=kk,
                                          transpose=['X', 'y'])
         self.assertEqual(data.ndim, 3)
-        self.assertEqual((940, 361, 204), data.shape)
-        self.assertEqual((940, 1), events.shape)
+        self.assertEqual((221, 361, 316), data.shape)
+        self.assertEqual((221, 1), events.shape)
 
 
 class TestProduceTFRecords(unittest.TestCase):
     """Unit test class for utils.produce_tfrecords function."""
 
-    # def test_produce_tfrecords(self):
-    #     pass
+    def test_produce_tfrecords(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        # no optional inputs
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_trial_reg()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            print(ii)
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    # ---- TRIALS ----
+    # -- classification ---
+    def test_produce_tfrecords_trials_int_holdout(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='trials',
+            target_type='int',
+            test_set='holdout',
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_trial_class()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    def test_produce_tfrecords_trials_int_loso(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='trials',
+            target_type='int',
+            test_set='loso',
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_trial_class()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221*2)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    def test_produce_tfrecords_trials_int_none(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='trials',
+            target_type='int',
+            test_set=None,
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_trial_class()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    # --- reg ---
+    def test_produce_tfrecords_trials_float_holdout(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='trials',
+            target_type='float',
+            test_set='holdout',
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_trial_reg()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    def test_produce_tfrecords_trials_float_loso(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='trials',
+            target_type='float',
+            test_set='loso',
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_trial_reg()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221*2)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    def test_produce_tfrecords_trials_float_none(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='trials',
+            target_type='float',
+            test_set=None,
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_trial_reg()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    # --- SEQ ---
+    # -- int ---
+    def test_produce_tfrecords_seq_int_holdout(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='seq',
+            target_type='int',
+            test_set='holdout',
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_seq_class()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    def test_produce_tfrecords_seq_int_loso(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='seq',
+            target_type='int',
+            test_set='loso',
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_seq_class()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221*2)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    def test_produce_tfrecords_seq_int_none(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='seq',
+            target_type='int',
+            test_set=None,
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_seq_class()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    # --- reg ---
+    def test_produce_tfrecords_seq_float_holdout(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='seq',
+            target_type='float',
+            test_set='holdout',
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_seq_reg()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    def test_produce_tfrecords_seq_float_loso(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='seq',
+            target_type='float',
+            test_set='loso',
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_seq_reg()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221*2)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+    def test_produce_tfrecords_seq_float_none(self):
+        inp_fname = 'example-epo.fif'
+        savepath = './tmptfr/'
+        out_name = time.strftime('%Y%m%d_%H%M%S_')+'example'
+        if not os.path.exists(savepath):
+            os.mkdir(savepath)
+
+        opts = dict(
+            input_type='seq',
+            target_type='float',
+            test_set=None,
+            overwrite=True,
+            fs=600)
+
+        # trials int holdout
+        meta = utils.produce_tfrecords(inp_fname, savepath, out_name, **opts)
+        s = utils._load_meta(savepath+out_name)
+        self.assertEqual(meta, s)
+        tmp = check_meta_seq_reg()
+        self.assertEqual(set(s.keys()), set(tmp.keys()))
+        for ii in s.keys():
+            self.assertEqual(type(tmp[ii]), type(s[ii]))
+        os.remove(savepath+out_name+'_meta.pkl')
+
+        t, e = check_tfrecords(path=savepath, pattern=out_name)
+        self.assertEqual(t, 221)
+        self.assertEqual(e, 0)
+        for f in sorted(glob.glob('%s*%s*.tfrecord' % (savepath, out_name))):
+            os.remove(f)
+
+
+class TestFinalCleanup(unittest.TestCase):
+    """Clean up after all unit tests."""
+
+    def test_cleanup(self):
+        import os
+        import shutil
+
+        for root, dirs, files in os.walk('./tfr/'):
+            for f in files:
+                os.unlink(os.path.join(root, f))
+            for d in dirs:
+                shutil.rmtree(os.path.join(root, d))
 
 
 # --- MAIN ---
 if __name__ == '__main__':
-    unittest.main()
+    # unittest.main()
+    print('Loaded')
