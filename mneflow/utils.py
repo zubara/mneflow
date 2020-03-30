@@ -297,6 +297,8 @@ def import_data(inp, picks=None, target_picks=None,
     """
     if isinstance(inp, mnepochs.BaseEpochs):
         print('processing epochs')
+        if isinstance(picks, dict):
+            picks = pick_types(inp.info, include=picks)
         inp.load_data()
         data = inp.get_data()
         events = inp.events[:, 2]
@@ -350,9 +352,9 @@ def import_data(inp, picks=None, target_picks=None,
     while events.ndim < 2:
         events = np.expand_dims(events, -1)
 
-    if picks is not None:
+    if isinstance(picks, (np.ndarray, list, tuple)):
         picks = np.asarray(picks)
-        if np.any(data.shape[1] <= picks):
+        if np.any([data.shape[1] <= picks]):
             raise ValueError("Invalid picks.")
         data = data[:, picks, :]
 
@@ -429,7 +431,7 @@ def produce_labels(y, return_stats=True):
 #    return y
 
 
-def produce_tfrecords(inputs, savepath, out_name, fs,
+def produce_tfrecords(inputs, savepath, out_name, fs=0,
                       input_type='trials', target_type='float',
                       array_keys={'X': 'X', 'y': 'y'}, val_size=0.2,
                       scale=False, scale_interval=None, crop_baseline=False,
@@ -491,7 +493,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         Whether to crop baseline specified by 'scale_interval'
         after scaling. Defaults to False.
 
-    bp_filter : bool, tuple, optinal
+    bp_filter : bool, tuple, optional
         Band pass filter. Tuple of int or NoneType.
 
     decimate : False, int, optional
@@ -543,7 +545,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         'holdout' saves 50% of the validation set
         'loso' saves the whole dataset in original order for
         leave-one-subject-out cross-validation.
-        'none' does not leave a separate test set. Defaults to None.
+        None does not leave a separate test set. Defaults to None.
 
     Returns
     -------
@@ -572,12 +574,12 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         os.mkdir(savepath)
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
 
-        meta = dict(train_paths=[], val_paths=[], test_paths=[],
+        meta = dict(train_paths=[], val_paths=[], test_paths=[], fs=fs,
                     data_id=out_name, val_size=0, savepath=savepath,
-                    target_type=target_type, input_type=input_type)
+                    target_type=target_type, input_type=input_type,
+                    test_size=0)
         jj = 0
         # i = 0
-        meta['fs'] = fs
         if not isinstance(inputs, list):
             inputs = [inputs]
         for inp in inputs:
@@ -611,14 +613,18 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
             if test_set == 'holdout':
                 x_val, y_val, x_test, y_test = _split_sets(x_val, y_val,
                                                            val=.5)
-            if input_type in ['trials', 'iid']:
+            if input_type in ['trials', 'iid', 'seq']:
                 meta['y_shape'] = y_train[0].shape
             else:
                 meta['y_shape'] = y_train[0].shape[-1]
 
             if input_type == 'seq':
-                meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
-                meta['y_shape'] = y_train[0].shape
+                if x_train.ndim == 3:
+                    meta['n_ch'], meta['n_t'] = x_train[0].shape
+                    meta['n_seq'] = 1
+                else:
+                    meta['n_seq'], meta['n_ch'], meta['n_t'] = x_train[0].shape
+
             else:
                 _, meta['n_ch'], meta['n_t'] = x_train.shape
 
