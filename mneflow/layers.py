@@ -111,8 +111,8 @@ class TempPooling():
     def __init__(self, scope="pool", stride=2, pooling=2,
                        padding='SAME', pool_type='max', **args):
         self.scope = '_'.join([pool_type, scope])
-        self.strides = [1, stride, 1, 1]
-        self.kernel = [1, pooling,  1, 1]
+        self.strides = [1, 1, stride,  1]
+        self.kernel = [1, 1, pooling,  1]
         self.padding = padding
         self.pool_type = pool_type
 
@@ -173,7 +173,7 @@ class LFTConv():
                     return conv
                 except(AttributeError):
                     self.filters = weight_variable(
-                            [self.filter_length, 1, x.shape[-1].value, 1],
+                            [1, self.filter_length, x.shape[-1].value, 1],
                             name='tconv_')
                     self.b = bias_variable([x.shape[-1].value])
                     print(self.scope, 'init : OK')
@@ -237,7 +237,7 @@ class VARConv():
 
 class DeMixing():
     """Reduce dimensions across one domain."""
-    def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity, axis=2):
+    def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity, axis=3):
         self.scope = scope
         self.size = n_ls
         self.nonlin = nonlin

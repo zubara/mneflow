@@ -105,7 +105,7 @@ class Dataset(object):
         """Pick a subset of channels specified by self.channel_subset."""
         example_proto['X'] = tf.gather(example_proto['X'],
                                        tf.constant(self.channel_subset),
-                                       axis=0)
+                                       axis=3)
         return example_proto
 
     def class_weights(self):
@@ -118,7 +118,7 @@ class Dataset(object):
         """Downsample data."""
         example_proto['X'] = tf.gather(example_proto['X'],
                                        self.timepoints,
-                                       axis=-1)
+                                       axis=2)
         return example_proto
 
     def _get_n_samples(self, path):
@@ -143,14 +143,11 @@ class Dataset(object):
         """
         keys_to_features = {}
 
-        if self.h_params['input_type'] in ['trials', 'iid']:
-            x_sh = (self.h_params['n_ch'], self.h_params['n_t'])
+        if self.h_params['input_type'] in ['trials', 'seq']:
+            x_sh = (self.h_params['n_seq'], self.h_params['n_t'],
+                    self.h_params['n_ch'])
             y_sh = self.h_params['y_shape']
 
-        elif self.h_params['input_type'] in ['seq']:
-            x_sh = (self.h_params['n_seq'], self.h_params['n_ch'],
-                    self.h_params['n_t'])
-            y_sh = (self.h_params['y_shape'])
         else:
             raise ValueError('Invalid input type.')
 
