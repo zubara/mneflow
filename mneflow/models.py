@@ -25,7 +25,7 @@ from mne import channels, evoked, create_info
 
 from scipy.signal import freqz, welch
 from scipy.stats import spearmanr
-from spectrum import aryule
+#from spectrum import aryule
 
 from sklearn.covariance import ledoit_wolf
 from sklearn.metrics import confusion_matrix
@@ -1102,7 +1102,7 @@ class LFCNN(Model):
             Component sorting heuristics. Defaults to 'l2'.
             See model._sorting
 
-        norm_sepctra : None, str {'welch', 'ar'}
+        norm_sepctra : None, str {'welch'}
             Whether to apply normalization for extracted spectra.
             Defaults to None.
 
@@ -1124,12 +1124,12 @@ class LFCNN(Model):
                 fr, psd = welch(self.lat_tcs, fs=self.fs, nperseg=256)
                 self.d_psds = psd[:, :-1]
 
-            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
-                ar = []
-                for i, ltc in enumerate(self.lat_tcs):
-                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
-                    ar.append(coef[None, :])
-                self.ar = np.concatenate(ar)
+#            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
+#                ar = []
+#                for i, ltc in enumerate(self.lat_tcs):
+#                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
+#                    ar.append(coef[None, :])
+#                self.ar = np.concatenate(ar)
 
         order, ts = self._sorting(sorting)
         uorder = uniquify(order.ravel())
