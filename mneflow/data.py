@@ -74,7 +74,13 @@ class Dataset(object):
 
 
         if not n_batch:
-            n_batch = self._get_n_samples(path)
+            if all('val' in x for x in path):
+                n_batch = self.h_params['val_size']
+            elif all('val' in x for x in path):
+                n_batch = self.h_params['test_size']
+            else:
+                print("setting batch size to default (100)")
+                n_batch = 100
 
 
         dataset = tf.data.TFRecordDataset(path)
@@ -100,7 +106,7 @@ class Dataset(object):
 #            dataset = dataset.repeat(bat)
 
         dataset = dataset.map(self._unpack)
-        dataset.n_samples = self._get_n_samples(path)
+        #dataset.n_samples = self._get_n_samples(path)
         print('ds batch size:', n_batch)
         return dataset
 
@@ -124,17 +130,10 @@ class Dataset(object):
                                        axis=2)
         return example_proto
 
-    def _get_n_samples(self, path):
-        """Count number of samples in TFRecord files specified by path."""
-        ns = 0
-        if isinstance(path, (list, tuple)):
-            for fn in path:
-                for record in tf.python_io.tf_record_iterator(fn):
-                    ns += 1
-        elif isinstance(path, str):
-            for record in tf.python_io.tf_record_iterator(path):
-                ns += 1
-        return ns
+#    def _get_n_samples(self, path):
+#        """Count number of samples in TFRecord files specified by path."""
+#        ns = path
+#        return ns
 
     def _parse_function(self, example_proto):
         """Restore data shape from serialized records.
@@ -164,7 +163,7 @@ class Dataset(object):
         else:
             raise ValueError('Invalid target type.')
 
-        parsed_features = tf.parse_single_example(example_proto,
+        parsed_features = tf.io.parse_single_example(example_proto,
                                                   keys_to_features)
         return parsed_features
 

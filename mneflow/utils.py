@@ -283,6 +283,9 @@ def import_data(inp, picks=None, target_picks=None,
         inp.load_data()
         data = inp.get_data()
         events = inp.events[:, 2]
+        if isinstance(picks, dict):
+            print("Converting picks")
+            picks = pick_types(inp.info, picks)
 
     elif isinstance(inp, tuple) and len(inp) == 2:
         print('importing from tuple')
