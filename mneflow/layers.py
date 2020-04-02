@@ -13,6 +13,77 @@ import tensorflow as tf
 # tf.disable_v2_behavior()
 from numpy import prod, sqrt
 
+class NewLayer(tf.keras.layers.Layer):
+    def __init__(self, size, scope='new_lftc', dropout=0, nonlin=tf.nn.relu,
+#                  kernel_regularizer, bias_regularizer,
+                **args):
+        super(Dense, self).__init__(name=scope, **args)
+        self.scope = scope
+        self.size = size
+        self.dropout = dropout
+        self.nonlin = nonlin
+#        self.kernel_regularizer = kernel_regularizer
+#        self.bias_regularizer = bias_regularizer
+        print(self.scope, 'init : OK')
+
+    def __call__(self, x):
+        with tf.name_scope(self.scope):
+            while True:
+                # reuse weights if already initialized
+                try:
+                    print('lf-inp', x.shape)
+                    conv = tf.nn.depthwise_conv2d(x,
+                                                  self.filters,
+                                                  padding=self.padding,
+                                                  strides=[1, 1, 1, 1],
+                                                  data_format='NHWC')
+                    conv = self.nonlin(conv + self.b)
+
+                    if self.pool_type == 'avg':
+                        conv = tf.nn.avg_pool2d(
+                                conv,
+                                ksize=[1, self.pooling,  1, 1],
+                                strides=[1, self.stride, 1, 1],
+                                padding=self.padding,
+                                data_format='NHWC')
+                    else:
+                        conv = tf.nn.max_pool2d(
+                                conv,
+                                ksize=[1, self.pooling,  1, 1],
+                                strides=[1, self.stride, 1, 1],
+                                padding=self.padding,
+                                data_format='NHWC')
+                    print('f:', self.filters.shape)
+                    print('lf-out', conv.shape)
+                    return conv
+
+                except(AttributeError):
+                    input_shape = x.shape
+                    self.build(input_shape)
+                    print(self.scope, 'building from __call__ : OK')
+    def call(self, x):
+        self.__call__(x)
+
+    def build(self, input_shape):
+#        self.filters = weight_variable([self.filter_length, 1, x.shape[-1].value, 1],
+#                            name='tconv_')
+#        self.b = bias_variable([x.shape[-1].value])
+        shape = [self.filter_length, 1, self.size, 1]
+        self.filters = self.add_weight(shape=shape,
+                                       initializer='he_uniform',
+                                       regularizer=self.kernel_regularizer,
+                                       trainable=True,
+                                       name='tconv_weights',
+                                       dtype=tf.float32)
+
+        self.b = self.add_weight(shape=([self.size]),
+                                 initializer=Constant(0.1),
+                                 regularizer=self.bias_regularizer,
+                                 trainable=True,
+                                 name='bias',
+                                 dtype=tf.float32)
+
+
 
 def compose(f, g):
     return lambda *a, **kw: f(g(*a, **kw))
