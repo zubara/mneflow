@@ -4,6 +4,9 @@ Defines mneflow.layers for mneflow.models.
 
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
+#TODO: keras compatible layers
+#TODO: pooling layer
+
 import functools
 import tensorflow as tf
 # import tensorflow.compat.v1 as tf
@@ -131,6 +134,7 @@ class TempPooling():
                                 strides=self.strides,
                                 padding=self.padding,
                                 data_format='NHWC')
+        print(self.scope, ":", pooled.shape)
         return pooled
 
 
@@ -145,9 +149,6 @@ class LFTConv():
 #        super(LFTConv, self).__init__(name=scope, **args)
         self.size = n_ls
         self.filter_length = filter_length
-#        self.stride = stride
-#        self.pooling = pooling
-#        self.pool_type = pool_type
         self.nonlin = nonlin
         self.padding = padding
 
@@ -179,7 +180,7 @@ class LFTConv():
                     print(self.scope, 'init : OK')
 
 
-class VARConv():
+class VARConv(tf.keras.layers.Layer):
     """Stackable spatio-temporal convolutional Layer (VAR)."""
     def __init__(self, scope="var-conv", n_ls=32,  nonlin=tf.nn.relu,
                  filter_length=7, padding='SAME',
@@ -206,9 +207,7 @@ class VARConv():
                                         strides=[1, 1, 1, 1],
                                         data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-#                    conv = tf.nn.max_pool(conv, ksize=[1, self.pooling, 1, 1],
-#                                          strides=[1, self.stride, 1, 1],
-#                                          padding=self.padding)
+
                     if self.pool_type == 'avg':
                         conv = tf.nn.avg_pool2d(
                                 conv,
@@ -252,9 +251,6 @@ class DeMixing():
                             tf.tensordot(x, self.W, axes=[[self.axis], [0]],
                                          name='de-mix')
                             + self.b_in)
-#                    if self.axis == 2:
-#                        x_reduced = tf.transpose(x_reduced, perm = [0,1,3,2])
-
                     print('dmx', x_reduced.shape)
                     return x_reduced
                 except(AttributeError):

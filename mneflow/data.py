@@ -6,6 +6,9 @@ Defines mneflow.Dataset object.
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
 import tensorflow as tf
+#TODO: fix batching/epoching with training
+#TODO: dataset size form h_params
+
 # import tensorflow.compat.v1 as tf
 # tf.disable_v2_behavior()
 import numpy as np

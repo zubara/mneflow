@@ -6,6 +6,11 @@ parent class.
 
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
+
+#TODO: update the rest of model pool graphs for new shape
+#TODO: update vizualizations
+#TODO: v2 integration
+
 import os
 import warnings
 import itertools

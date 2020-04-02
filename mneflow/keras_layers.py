@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-mneflow.Layers implementation compatible with keras models
+mneflow.Layers implementation using keras layers
 
 @author: Gavriela Vranou
 """
@@ -12,9 +12,13 @@ from tensorflow.keras import layers
 from tensorflow.keras.initializers import Constant
 from tensorflow.keras.activations import relu
 
+# TODO: add vgg_block layer
 
-class Dense(tf.keras.layers.Layer):
-    """Fully-connected layer."""
+
+class Dense(layers.Layer):
+    """
+    Fully-connected layer
+    """
     def __init__(self, scope="fc", size=None, dropout=.5, nonlin=tf.identity,
                  kernel_regularizer=None, bias_regularizer=None, **args):
         assert size, "Must specify layer size (num nodes)"
@@ -66,7 +70,7 @@ class Dense(tf.keras.layers.Layer):
                 # print(self.flatsize)
                 x = tf.reshape(x, [-1, self.flatsize])
 
-            tmprate = self.dropout if training else 0.0
+            tmprate = 0.5 if training else 0.0
             tmpw = tf.nn.dropout(self.w, rate=tmprate)
 
             tmp = tf.matmul(x, tmpw)
@@ -79,7 +83,9 @@ class Dense(tf.keras.layers.Layer):
 
 
 class LFTConv(layers.Layer):
-    """Stackable temporal convolutional layer, interpretable (LF)."""
+    """
+    Stackable temporal convolutional layer, interpreatble (LF)
+    """
     def __init__(self, scope="lf-conv", n_ls=32,  nonlin=tf.nn.relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME',
                  pool_type='max', kernel_regularizer=None,
@@ -155,7 +161,7 @@ class LFTConv(layers.Layer):
 
 
 class VARConv(layers.Layer):
-    """Stackable spatio-temporal convolutional Layer(VAR)."""
+    """Stackable spatio-temporal convolutional Layer (VAR)."""
     def __init__(self, scope="var-conv", n_ls=32, nonlin=relu,
                  filter_length=7, stride=1, pooling=2, padding='SAME',
                  pool_type='max', kernel_regularizer=None,
@@ -232,7 +238,9 @@ class VARConv(layers.Layer):
 
 
 class DeMixing(layers.Layer):
-    """Spatial demixing Layer."""
+    """
+    Spatial demixing Layer
+    """
     def __init__(self, scope="de-mix", n_ls=32,  axis=2, nonlin=tf.identity,
                  kernel_regularizer=None, bias_regularizer=None, **args):
         super(DeMixing, self).__init__(name=scope, **args)
@@ -283,7 +291,9 @@ class DeMixing(layers.Layer):
 
 
 class ConvDSV(layers.Layer):
-    """Standard/Depthwise/Spearable Convolutional Layer constructor."""
+    """
+    Standard/Depthwise/Spearable Convolutional Layer constructor
+    """
 
     def __init__(self, scope="conv", n_ls=None, nonlin=None, inch=None,
                  domain=None, padding='SAME', filter_length=5, stride=1,
@@ -392,9 +402,10 @@ class ConvDSV(layers.Layer):
 
 
 class DeConvLayer(layers.Layer):
-    """DeConvolution Layer."""
+    # Migrated from dev.py
+    """DeConvolution Layer"""
     def __init__(self, n_ls, y_shape, scope="deconv", flat_out=False,
-                 filter_length=5, dropout=0.0, kernel_regularizer=None,
+                 filter_length=5, kernel_regularizer=None,
                  bias_regularizer=None, **args):
         super(DeConvLayer, self).__init__(name=scope, **args)
         self.scope = scope
@@ -402,7 +413,6 @@ class DeConvLayer(layers.Layer):
         self.size = n_ls
         self.filter_length = filter_length
         self.flat_out = flat_out
-        self.dropout = dropout
         self.kernel_regularizer = kernel_regularizer
         self.bias_regularizer = bias_regularizer
 
@@ -459,22 +469,21 @@ class DeConvLayer(layers.Layer):
     @tf.function
     def call(self, x, training=None):
 
-        tmprate = self.dropout if training else 0.0
+        tmprate = 0.5 if training else 0.0
         tmpW = tf.nn.dropout(self.W, rate=tmprate)
 
         tmp = tf.tensordot(x, tmpW, axes=[[1], [0]])
         latent = tf.nn.relu(tmp + self.b_in)
-        print('x_reduced', latent.shape)
 
+        # print('x_reduced', latent.shape)
         x_perm = tf.expand_dims(latent, 1)
         print('x_perm', x_perm.shape)
 
         conv_ = tf.einsum('lij, ki -> lkj', x_perm, self.filters)
-        print('deconv:', conv_.shape)
-
+        # print('deconv:', conv_.shape)
         tmpdemix = tf.nn.dropout(self.demixing, rate=tmprate)
         out = tf.einsum('lkj, jm -> lmk', conv_, tmpdemix)
-        out = out + self.b_out
+        out = out
 
         if self.flat_out:
             return tf.reshape(out, [-1, self.n_t*self.n_ch])
