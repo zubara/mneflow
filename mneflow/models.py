@@ -11,15 +11,8 @@ parent class.
 #TODO: update vizualizations
 #TODO: v2 integration
 
-import os
-import warnings
-import itertools
-import csv
-
 import tensorflow as tf
 
-# import tensorflow.compat.v1 as tf
-# tf.disable_v2_behavior()
 import numpy as np
 
 from mne import channels, evoked, create_info
@@ -35,7 +28,7 @@ from matplotlib import pyplot as plt
 from matplotlib import patches as ptch
 from matplotlib import collections
 
-from .layers import LFTConv, VARConv, DeMixing, Dense# TempPooling
+from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling
 from tensorflow.keras.layers import Flatten
 #from .layers import LSTMv1
 from tensorflow.keras import regularizers as k_reg, constraints, layers
@@ -84,17 +77,19 @@ class BaseModel():
         self.rate = specs.setdefault('dropout', 0.0)
         #self.optimizer = Optimizer
         self.trained = False
+        self.y_pred = self.build_graph()
 
 
     def build(self):
         """Compile a model."""
         # Initialize computational graph
-        self.y_pred = self.build_graph()
+
 
         self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
         # Initialize optimizer
+        loss_f = tf.compat.v1.losses.softmax_cross_entropy
         self.km.compile(optimizer='adam',
-                     loss='categorical_crossentropy',
+                     loss=loss_f,
                      metrics=['accuracy'])
 
         print('Input shape:', self.input_shape)
@@ -119,16 +114,8 @@ class BaseModel():
         """
 
 
-        warnings.warn('Specify a model! Set to linear classifier', UserWarning)
-        self.dmx = DeMixing(size=self.specs['n_latent'],
-                            nonlin=tf.identity,
-                            axis=3)(self.inputs)
-        self.tconv = LFTConv(size=self.specs['n_latent'],
-                             nonlin=self.specs['nonlin'],
-                             filter_length=self.specs['filter_length'],
-                             padding=self.specs['padding']
-                             )(self.dmx)
-        flat = Flatten()(self.tconv)
+
+        flat = Flatten()(self.inputs)
         self.fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
                         specs=self.specs)
         y_pred = self.fc(flat)
@@ -187,62 +174,6 @@ class BaseModel():
                                epochs=n_epochs, steps_per_epoch=eval_step,
                                shuffle=True, validation_steps=validation_steps,
                                callbacks=[stop_early], verbose=1)
-#        if not self.trained:
-#            self.sess.run(tf.global_variables_initializer())
-#            print('GLOBAL INIT')
-#            self.min_val_loss = np.inf
-#            self.t_hist = []
-#        if not early_stopping:
-#            early_stopping = np.inf
-#        patience_cnt = 0
-#        for i in range(n_iter+1):
-#            _ = self.sess.run([self.train_step],
-#                              feed_dict={self.handle: self.train_handle,
-#                                         self.rate: self.specs['dropout']})
-#            if i % eval_step == 0:
-#                self.dataset.train.shuffle(buffer_size=10000)
-#                t_loss, acc = self.sess.run([self.cost, self.accuracy],
-#                                            feed_dict={self.handle:
-#                                                       self.train_handle,
-#                                                       self.rate: 0.})
-#                self.v_acc, v_loss = self.sess.run([self.accuracy, self.cost],
-#                                                   feed_dict={self.handle:
-#                                                              self.val_handle,
-#                                                              self.rate: 0.})
-#                self.t_hist.append([t_loss, v_loss])
-#
-#                if self.min_val_loss >= v_loss + min_delta:
-#                    self.min_val_loss = v_loss
-#                    v_acc = self.v_acc
-#                    self.saver.save(self.sess,
-#                                    ''.join([self.model_path,
-#                                            self.scope, '-',
-#                                            self.dataset.h_params['data_id']]))
-#                else:
-#                    patience_cnt += 1
-#                    print('* Patience count {}'.format(patience_cnt))
-#
-#                    if (prune_weights and patience_cnt == early_stopping - 3):
-#                        print('Setting dropout to 1.')
-#                        self.specs['dropout'] = 0.
-#
-#                if patience_cnt >= early_stopping:
-#                    print("early stopping...")
-#                    self.saver.restore(
-#                            self.sess,
-#                            ''.join([self.model_path, self.scope, '-',
-#                                     self.dataset.h_params['data_id']]))
-#
-#                    self.train_params = (eval_step, early_stopping, i)
-#                    print('stopped at: epoch %d, val loss %g, val acc %g'
-#                          % (i,  self.min_val_loss, v_acc))
-#                    break
-#
-#                print('i %d, tr_loss %g, tr_acc %g v_loss %g, v_acc %g'
-#                      % (i, t_loss, acc, v_loss, self.v_acc))
-#
-#        self.train_params = (eval_step, early_stopping, i)
-#        self.trained = True
 
     def plot_hist(self):
         """Plot loss history during training."""
@@ -683,33 +614,26 @@ class LFCNN(BaseModel):
             Output of the forward pass of the computational graph.
             Prediction of the target variable.
         """
-        self.scope = 'lf-cnn'
-
-        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=3)
-
-        self.tconv1 = LFTConv(scope="conv",
-                              n_ls=self.specs['n_ls'],
-                              nonlin=self.specs['nonlin'],
-                              filter_length=self.specs['filter_length'],
-#                              stride=self.specs['stride'],
-#                              pooling=self.specs['pooling'],
-#                              pool_type=self.specs['pool_type'],
-                              padding=self.specs['padding'])
-
-        pool = TempPooling(stride=self.specs['stride'],
-                            pooling=self.specs['pooling'],
-                            padding='SAME',
-                            pool_type='max')
-        dmx_out = self.demix(self.X)
-        print('dmx out:', dmx_out.shape)
-        self.tconv_out = self.tconv1(dmx_out)
-        print("tconv out:", self.tconv_out.shape)
-        pooled = pool(self.tconv_out)
-        self.fin_fc = Dense(size=np.prod(self.y_shape),
+        self.dmx = DeMixing(size=self.specs['n_latent'],
                             nonlin=tf.identity,
-                            dropout=self.rate)
+                            axis=3)(self.inputs)
+        self.tconv = LFTConv(size=self.specs['n_latent'],
+                             nonlin=self.specs['nonlin'],
+                             filter_length=self.specs['filter_length'],
+                             padding=self.specs['padding']
+                             )(self.dmx)
 
-        y_pred = self.fin_fc(pooled)
+        self.pooled = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type=self.specs['pool_type'],
+                                  stride=self.specs['stride'],
+                                  padding=self.specs['padding']
+                                  )(self.tconv)
+
+        #flat = Flatten()(self.pooled)
+        self.fin_fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
+                        specs=self.specs)
+
+        y_pred = self.fin_fc(self.pooled)
         # y_pred = tf.reshape(y_pred, [-1, *self.y_shape])
 
         return y_pred
