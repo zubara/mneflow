@@ -170,6 +170,57 @@ class VARConv(layers.Layer):
             return conv
 
 
+class DeMixing(layers.Layer):
+    """
+    Spatial demixing Layer
+    """
+    def __init__(self, scope="de-mix", n_ls=32,  axis=2, nonlin=tf.identity,
+                 kernel_regularizer=None, bias_regularizer=None, **args):
+        super(DeMixing, self).__init__(name=scope, **args)
+        self.scope = scope
+        self.size = n_ls
+        self.nonlin = nonlin
+        self.axis = axis
+        self.kernel_regularizer = kernel_regularizer
+        self.bias_regularizer = bias_regularizer
+
+        print(self.scope, 'init : OK')
+
+    def get_config(self):
+        config = super(DeMixing, self).get_config()
+        config.update({'scope': self.scope, 'size': self.size,
+                       'nonlin': self.nonlin, 'axis': self.axis})
+        return config
+
+    def build(self, input_shape):
+
+        super(DeMixing, self).build(input_shape)
+        self.W = self.add_weight(
+                shape=(input_shape[self.axis].value, self.size),
+                initializer='he_uniform',
+                regularizer=self.kernel_regularizer,
+                trainable=True,
+                name='dmx_weights',
+                dtype=tf.float32)
+
+        self.b_in = self.add_weight(shape=([self.size]),
+                                    initializer=Constant(0.1),
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    name='bias',
+                                    dtype=tf.float32)
+        print(self.scope, 'built : OK')
+
+    @tf.function
+    def call(self, x, training=None):
+        with tf.name_scope(self.scope):
+            demix = tf.tensordot(x, self.W, axes=[[self.axis], [0]],
+                                 name='de-mix')
+            demix = self.nonlin(demix + self.b_in)
+            # x_reduced = tf.expand_dims(demix, -2)
+
+            print('dmx', demix.shape)
+            return demix
 
 
 class ConvDSV(layers.Layer):

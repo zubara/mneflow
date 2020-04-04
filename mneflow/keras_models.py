@@ -10,7 +10,7 @@ import warnings
 import itertools
 
 import tensorflow as tf
-from tensorflow.keras.regularizers import l1_l2
+from tensorflow.keras.regularizers import l1_l2, l2, l1
 # tf.enable_eager_execution()
 
 import numpy as np

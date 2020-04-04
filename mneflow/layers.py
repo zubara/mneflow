@@ -11,6 +11,7 @@ Defines mneflow.layers for mneflow.models.
 import tensorflow as tf
 from tensorflow.keras.initializers import Constant
 from tensorflow.keras.activations import relu
+from tensorflow.keras import constraints as k_con, regularizers as k_reg
 # import tensorflow.compat.v1 as tf
 # tf.disable_v2_behavior()
 import numpy as np
@@ -24,13 +25,14 @@ class BaseLayer(tf.keras.layers.Layer):
         self.specs.setdefault("dropout", 0.)
         self.specs.setdefault("l1", 0.)
         self.specs.setdefault("l2", 0.)
-        self.specs.setdefault("kernel_regularizer", "l2")
-        self.specs.setdefault("bias_regularizer", "l1")
-        # self.specs.setdefault("kernel_constraint", "l2")
+        self.specs.setdefault("l1_scope", [])
+        self.specs.setdefault("l2_scope", [])
+        self.specs.setdefault("maxnorm_scope", [])
+        #print(self.specs)
+        #print(self.scope, 'init : OK')
 
-        print(self.scope, 'init : OK')
-
-    def call(self, x):
+    @tf.function
+    def call(self, x, training=None):
         while True:
             with tf.name_scope(self.scope):
                 try:
@@ -44,6 +46,25 @@ class BaseLayer(tf.keras.layers.Layer):
     def build(self, input_shape):
         print("Building: {} input: {}".format(self.scope, input_shape))
 
+    def _set_regularizer(self):
+        if self.scope in self.specs['l1_scope']:
+            reg = k_reg.l1(self.specs['l1'])
+            print('Setting reg for {}, to l1'.format(self.scope))
+        elif self.scope in self.specs['l2_scope']:
+            reg = k_reg.l1(self.specs['l1'])
+            print('Setting reg for {}, to l2'.format(self.scope))
+        else:
+            reg = None
+        return reg
+
+    def _set_constraints(self):
+        if self.scope in self.specs['maxnorm_scope']:
+            constr = k_con.MaxNorm(2.)
+            print('Setting constraint for {}, to MaxNorm'.format(self.scope))
+        else:
+            constr = None
+        return constr
+
 
 class Dense(BaseLayer, tf.keras.layers.Layer):
     """
@@ -55,6 +76,8 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
         super(Dense, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
         self.dropout = self.specs['dropout']
+        self.constraint = self._set_constraints()
+        self.reg = self._set_regularizer()
 #        print(self.scope, 'init : OK')
 
     def get_config(self):
@@ -71,52 +94,60 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
 
         self.w = self.add_weight(shape=[self.flatsize, self.size],
                                  initializer='he_uniform',
-                                 #regularizer=self.kernel_regularizer,
+                                 regularizer=self.reg,
+                                 constraint=self.constraint,
                                  trainable=True,
                                  name='fc_weights',
                                  dtype=tf.float32)
 
         self.b = self.add_weight(shape=[self.size],
                                  initializer=Constant(0.1),
-                                 #regularizer=self.bias_regularizer,
+                                 regularizer=None,
                                  trainable=True,
                                  name='fc_bias',
                                  dtype=tf.float32)
 
         print(self.scope, 'build : OK')
 
-
+    @tf.function
     def call(self, x, training=None):
         """Dense layer currying, to apply layer to any input tensor `x`"""
         while True:
             with tf.name_scope(self.scope):
-                try:
-                    if len(x.shape) > 2:  # flatten if input is not 2d array
-                        # print(self.flatsize)
-                        x = tf.reshape(x, [-1, self.flatsize])
-                    rate = self.dropout if training else 0.0
-                    tmpw = tf.nn.dropout(self.w, rate=rate)
+                #try:
+                if len(x.shape) > 2:  # flatten if input is not 2d array
+                    # print(self.flatsize)
+                    x = tf.reshape(x, [-1, self.flatsize])
 
-                    tmp = tf.matmul(x, tmpw) + self.b
-                    tmp = self.nonlin(tmp, name='out')
-                    return tmp
-                except(AttributeError):
-                    input_shape = x.shape
-                    self.build(input_shape)
-                    print(self.scope, 'building from call')
+                rate = self.dropout if training else 0.0
+                print("Dropout:", rate)
+                tmpw = tf.nn.dropout(self.w, rate=rate)
+
+                tmp = tf.matmul(x, tmpw) + self.b
+                tmp = self.nonlin(tmp, name='out')
+                return tmp
+#                except(AttributeError):
+#                    input_shape = x.shape
+#                    self.build(input_shape)
+#                    print(self.scope, 'building from call')
 
 
 class DeMixing(BaseLayer):
     """
     Spatial demixing Layer
     """
-    def __init__(self, scope="de-mix", size=None, nonlin=tf.identity, axis=-1,
-                 specs={},
-                 **args):
+    def __init__(self, scope="demix", size=None, nonlin=tf.identity, axis=-1,
+                 specs={},  **args):
         self.scope = scope
+        #self.specs = specs
         super(DeMixing, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
+        self.constraint = self._set_constraints()
+        self.reg = self._set_regularizer()
         self.axis = axis
+
+
+
 #        print(self.scope, 'init : OK')
 
     def get_config(self):
@@ -131,19 +162,21 @@ class DeMixing(BaseLayer):
         self.W = self.add_weight(
                 shape=(input_shape[self.axis].value, self.size),
                 initializer='he_uniform',
-                regularizer=self.specs['kernel_regularizer'],
+                regularizer=self.reg,
+                constraint = self.constraint,
                 trainable=True,
                 name='dmx_weights',
                 dtype=tf.float32)
 
         self.b_in = self.add_weight(shape=([self.size]),
                                     initializer=Constant(0.1),
-                                    regularizer=self.specs['bias_regularizer'],
+                                    regularizer=None,
                                     trainable=True,
                                     name='bias',
                                     dtype=tf.float32)
         #print(self.scope, 'built : OK')
 
+    @tf.function
     def call(self, x, training=None):
         while True:
             with tf.name_scope(self.scope):
@@ -151,22 +184,25 @@ class DeMixing(BaseLayer):
                     demix = tf.tensordot(x, self.W, axes=[[self.axis], [0]],
                                          name='de-mix')
                     demix = self.nonlin(demix + self.b_in)
-                    print('dmx', demix.shape)
+                    #print('dmx', demix.shape)
                     return demix
                 except(AttributeError):
                     input_shape = x.shape
                     self.build(input_shape)
-                    print(self.scope, 'building from call')
+                    #print(self.scope, 'building from call')
 
 
 class LFTConv(BaseLayer):
     """
     Stackable temporal convolutional layer, interpreatble (LF)
     """
-    def __init__(self, scope="lf-conv", size=32,  nonlin=tf.nn.relu,
+    def __init__(self, scope="lf_conv", size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
+        self.specs = specs
+        self.constraint = self._set_constraints()
+        self.reg = self._set_regularizer()
         super(LFTConv, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
         self.size = size
@@ -186,19 +222,21 @@ class LFTConv(BaseLayer):
         shape = [1, self.filter_length, input_shape[-1].value, 1]
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
-                                       regularizer=self.specs['kernel_regularizer'],
+                                       regularizer=self.reg,
+                                       constraint=self.constraint,
                                        trainable=True,
                                        name='tconv_weights',
                                        dtype=tf.float32)
 
         self.b = self.add_weight(shape=([input_shape[-1].value]),
                                  initializer=Constant(0.1),
-                                 regularizer=self.specs['bias_regularizer'],
+                                 regularizer=None,
                                  trainable=True,
                                  name='bias',
                                  dtype=tf.float32)
         print(self.scope, 'build : OK')
 
+    @tf.function
     def call(self, x, training=None):
         while True:
             with tf.name_scope(self.scope):
@@ -209,26 +247,29 @@ class LFTConv(BaseLayer):
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-                    print('lf-out', conv.shape)
+                    print(self.scope, ": built :", conv.shape)
                     return conv
                 except(AttributeError):
                     input_shape = x.shape
                     self.build(input_shape)
-                    print(self.scope, 'building from call')
+
 
 class VARConv(BaseLayer):
     """
     Stackable temporal convolutional layer, interpreatble (LF)
     """
-    def __init__(self, scope="var-conv", size=32,  nonlin=tf.nn.relu,
+    def __init__(self, scope="var_conv", size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
+        self.specs = specs
         super(VARConv, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
         self.size = size
         self.filter_length = filter_length
         self.padding = padding
+        self.constraint = self._set_constraints()
+        self.reg = self._set_regularizer()
 
     def get_config(self):
 
@@ -243,19 +284,21 @@ class VARConv(BaseLayer):
         shape = [1, self.filter_length, input_shape[-1].value, self.size]
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
-                                       regularizer=self.specs['kernel_regularizer'],
+                                       regularizer=self.reg,
+                                       constraint=self.constraint,
                                        trainable=True,
                                        name='tconv_weights',
                                        dtype=tf.float32)
 
         self.b = self.add_weight(shape=([input_shape[-1].value]),
                                  initializer=Constant(0.1),
-                                 regularizer=self.specs['bias_regularizer'],
+                                 regularizer=None,
                                  trainable=True,
                                  name='bias',
                                  dtype=tf.float32)
         print(self.scope, 'build : OK')
 
+    @tf.function
     def call(self, x, training=None):
         while True:
             with tf.name_scope(self.scope):
@@ -266,12 +309,12 @@ class VARConv(BaseLayer):
                                         data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
                     conv = self.nonlin(conv + self.b)
-                    print('var-out', conv.shape)
+                    print(self.scope, ": built :", conv.shape)
                     return conv
                 except(AttributeError):
                     input_shape = x.shape
                     self.build(input_shape)
-                    print(self.scope, 'building from call')
+                    #print(self.scope, 'building from call')
 
 
 class TempPooling(BaseLayer):
@@ -279,12 +322,13 @@ class TempPooling(BaseLayer):
                  padding='SAME', pool_type='max', **args):
         self.scope = '_'.join([pool_type, scope])
         super(TempPooling, self).__init__(size=None, nonlin=None, specs=specs,
-             **args)
+                                          **args)
         self.strides = [1, 1, stride,  1]
         self.kernel = [1, 1, pooling,  1]
         self.padding = padding
         self.pool_type = pool_type
 
+    @tf.function
     def call(self, x):
         if self.pool_type == 'avg':
             pooled = tf.nn.avg_pool2d(
@@ -313,6 +357,7 @@ class TempPooling(BaseLayer):
                        'stride': self.strides, 'pooling': self.pooling,
                        'padding': self.padding})
         return config
+
 
 
 #def compose(f, g):
