@@ -31,7 +31,7 @@ class BaseLayer(tf.keras.layers.Layer):
         #print(self.specs)
         #print(self.scope, 'init : OK')
 
-    @tf.function
+    #@tf.function
     def call(self, x, training=None):
         while True:
             with tf.name_scope(self.scope):
@@ -109,7 +109,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
 
         print(self.scope, 'build : OK')
 
-    @tf.function
+    #@tf.function
     def call(self, x, training=None):
         """Dense layer currying, to apply layer to any input tensor `x`"""
         while True:
@@ -176,7 +176,7 @@ class DeMixing(BaseLayer):
                                     dtype=tf.float32)
         #print(self.scope, 'built : OK')
 
-    @tf.function
+    #@tf.function
     def call(self, x, training=None):
         while True:
             with tf.name_scope(self.scope):
@@ -236,7 +236,7 @@ class LFTConv(BaseLayer):
                                  dtype=tf.float32)
         print(self.scope, 'build : OK')
 
-    @tf.function
+    #@tf.function
     def call(self, x, training=None):
         while True:
             with tf.name_scope(self.scope):
@@ -298,7 +298,7 @@ class VARConv(BaseLayer):
                                  dtype=tf.float32)
         print(self.scope, 'build : OK')
 
-    @tf.function
+    #@tf.function
     def call(self, x, training=None):
         while True:
             with tf.name_scope(self.scope):
@@ -328,7 +328,7 @@ class TempPooling(BaseLayer):
         self.padding = padding
         self.pool_type = pool_type
 
-    @tf.function
+    #@tf.function
     def call(self, x):
         if self.pool_type == 'avg':
             pooled = tf.nn.avg_pool2d(
