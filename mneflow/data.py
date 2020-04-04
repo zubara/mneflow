@@ -106,6 +106,7 @@ class Dataset(object):
 #            dataset = dataset.repeat(bat)
 
         dataset = dataset.map(self._unpack)
+        dataset.shuffle(n_batch)
         #dataset.n_samples = self._get_n_samples(path)
         print('ds batch size:', n_batch)
         return dataset
