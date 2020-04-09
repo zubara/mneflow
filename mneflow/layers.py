@@ -22,29 +22,11 @@ class BaseLayer(tf.keras.layers.Layer):
         self.size = size
         self.nonlin = nonlin
         self.specs = specs
-        self.specs.setdefault("dropout", 0.)
         self.specs.setdefault("l1", 0.)
         self.specs.setdefault("l2", 0.)
         self.specs.setdefault("l1_scope", [])
         self.specs.setdefault("l2_scope", [])
         self.specs.setdefault("maxnorm_scope", [])
-        #print(self.specs)
-        #print(self.scope, 'init : OK')
-
-    #@tf.function
-    def call(self, x, training=None):
-        while True:
-            with tf.name_scope(self.scope):
-                try:
-                    print("BaseLayer: called")
-                    return x
-                except(AttributeError):
-                    input_shape = x.shape
-                    self.build(input_shape)
-                    print(self.scope, 'building from call : OK')
-
-    def build(self, input_shape):
-        print("Building: {} input: {}".format(self.scope, input_shape))
 
     def _set_regularizer(self):
         if self.scope in self.specs['l1_scope']:
@@ -75,22 +57,20 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
         self.scope = scope
         super(Dense, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
-        self.dropout = self.specs['dropout']
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
-#        print(self.scope, 'init : OK')
 
     def get_config(self):
         config = self.get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                       'dropout': self.dropout, 'nonlin': self.nonlin})
+                       'nonlin': self.nonlin})
         return config
 
     def build(self, input_shape):
         super(Dense, self).build(input_shape)
         # print(input_shape)
         self.flatsize = np.prod(input_shape[1:]).value
-        print(self.scope, ':::', self.flatsize, self.size)
+        print(self.scope, ':::', )
 
         self.w = self.add_weight(shape=[self.flatsize, self.size],
                                  initializer='he_uniform',
@@ -107,29 +87,18 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
                                  name='fc_bias',
                                  dtype=tf.float32)
 
-        print(self.scope, 'build : OK')
+        print("Built: {} input: {}".format(self.scope, input_shape))
 
-    #@tf.function
     def call(self, x, training=None):
         """Dense layer currying, to apply layer to any input tensor `x`"""
         while True:
             with tf.name_scope(self.scope):
-                #try:
                 if len(x.shape) > 2:  # flatten if input is not 2d array
-                    # print(self.flatsize)
                     x = tf.reshape(x, [-1, self.flatsize])
-
-                rate = self.dropout if training else 0.0
-                print("Dropout:", rate)
-                tmpw = tf.nn.dropout(self.w, rate=rate)
-
-                tmp = tf.matmul(x, tmpw) + self.b
+                tmp = tf.matmul(x, self.w) + self.b
                 tmp = self.nonlin(tmp, name='out')
+                print(self.scope, ": output :", tmp.shape)
                 return tmp
-#                except(AttributeError):
-#                    input_shape = x.shape
-#                    self.build(input_shape)
-#                    print(self.scope, 'building from call')
 
 
 class DeMixing(BaseLayer):
@@ -139,16 +108,9 @@ class DeMixing(BaseLayer):
     def __init__(self, scope="demix", size=None, nonlin=tf.identity, axis=-1,
                  specs={},  **args):
         self.scope = scope
-        #self.specs = specs
+        self.axis = axis
         super(DeMixing, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
-        self.constraint = self._set_constraints()
-        self.reg = self._set_regularizer()
-        self.axis = axis
-
-
-
-#        print(self.scope, 'init : OK')
 
     def get_config(self):
         config = super(DeMixing, self).get_config()
@@ -159,6 +121,9 @@ class DeMixing(BaseLayer):
     def build(self, input_shape):
 
         super(DeMixing, self).build(input_shape)
+        self.constraint = self._set_constraints()
+        self.reg = self._set_regularizer()
+
         self.W = self.add_weight(
                 shape=(input_shape[self.axis].value, self.size),
                 initializer='he_uniform',
@@ -174,7 +139,7 @@ class DeMixing(BaseLayer):
                                     trainable=True,
                                     name='bias',
                                     dtype=tf.float32)
-        #print(self.scope, 'built : OK')
+        print("Built: {} input: {}".format(self.scope, input_shape))
 
     #@tf.function
     def call(self, x, training=None):
@@ -184,7 +149,7 @@ class DeMixing(BaseLayer):
                     demix = tf.tensordot(x, self.W, axes=[[self.axis], [0]],
                                          name='de-mix')
                     demix = self.nonlin(demix + self.b_in)
-                    #print('dmx', demix.shape)
+                    print(self.scope, ": output :", demix.shape)
                     return demix
                 except(AttributeError):
                     input_shape = x.shape
@@ -200,9 +165,6 @@ class LFTConv(BaseLayer):
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
-        self.specs = specs
-        self.constraint = self._set_constraints()
-        self.reg = self._set_regularizer()
         super(LFTConv, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
         self.size = size
@@ -219,6 +181,8 @@ class LFTConv(BaseLayer):
 
     def build(self, input_shape):
         super(LFTConv, self).build(input_shape)
+        self.constraint = self._set_constraints()
+        self.reg = self._set_regularizer()
         shape = [1, self.filter_length, input_shape[-1].value, 1]
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
@@ -234,7 +198,7 @@ class LFTConv(BaseLayer):
                                  trainable=True,
                                  name='bias',
                                  dtype=tf.float32)
-        print(self.scope, 'build : OK')
+        print("Built: {} input: {}".format(self.scope, input_shape))
 
     #@tf.function
     def call(self, x, training=None):
@@ -247,7 +211,7 @@ class LFTConv(BaseLayer):
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-                    print(self.scope, ": built :", conv.shape)
+                    print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
                     input_shape = x.shape
@@ -262,14 +226,12 @@ class VARConv(BaseLayer):
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
-        self.specs = specs
         super(VARConv, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
         self.size = size
         self.filter_length = filter_length
         self.padding = padding
-        self.constraint = self._set_constraints()
-        self.reg = self._set_regularizer()
+
 
     def get_config(self):
 
@@ -281,6 +243,8 @@ class VARConv(BaseLayer):
 
     def build(self, input_shape):
         super(VARConv, self).build(input_shape)
+        self.constraint = self._set_constraints()
+        self.reg = self._set_regularizer()
         shape = [1, self.filter_length, input_shape[-1].value, self.size]
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
@@ -296,7 +260,7 @@ class VARConv(BaseLayer):
                                  trainable=True,
                                  name='bias',
                                  dtype=tf.float32)
-        print(self.scope, 'build : OK')
+        print("Built: {} input: {}".format(self.scope, input_shape))
 
     #@tf.function
     def call(self, x, training=None):
@@ -309,7 +273,7 @@ class VARConv(BaseLayer):
                                         data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
                     conv = self.nonlin(conv + self.b)
-                    print(self.scope, ": built :", conv.shape)
+                    print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
                     input_shape = x.shape
@@ -344,10 +308,11 @@ class TempPooling(BaseLayer):
                                 strides=self.strides,
                                 padding=self.padding,
                                 data_format='NHWC')
-        print(self.scope, ":", pooled.shape)
+        print(self.scope, ": output :", pooled.shape)
         return pooled
 
     def build(self, input_shape):
+        super(TempPooling, self).build(input_shape)
         self.built = True
 
     def get_config(self):
