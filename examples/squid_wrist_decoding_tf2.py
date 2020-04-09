@@ -61,24 +61,20 @@ import_opt = dict(fs=500, savepath=path+'/tfr/', out_name='s02_gradtf2', input_t
 
 meta = mneflow.produce_tfrecords([], **import_opt)
 
-dataset = mneflow.Dataset(meta, train_batch=50, class_subset=None,
+dataset = mneflow.Dataset(meta, train_batch=250, class_subset=None,
                           pick_channels=None, decim=None)
 #%%
-lf_params = dict(n_latent=25, #number of latent factors
-                  filter_length=10, #convolutional filter length in time samples
-
-                  #nonlin = tf.nn.relu,
-                  padding = 'VALID',
-
-                  pooling = 3,#pooling factor
-                  stride = 3, #stride parameter for pooling layer
-                  #pool_type='max',
-
-
+lf_params = dict(n_latent=32, #number of latent factors
+                  filter_length=32, #convolutional filter length in time samples
+                  nonlin = tf.nn.relu,
+                  padding = 'SAME',
+                  pooling = 24,#pooling factor
+                  stride = 16, #stride parameter for pooling layer
+                  pool_type='max',
                   model_path = import_opt['savepath'],
-                  #dropout = .5,
+                  dropout = .5,
                   l1_scope = ["fc"],
-                  l2_scope = ["lf_conv"],
+                  l2_scope = ["lf_conv", "dmx"],
                   l1=3e-4,
                   l2=3e-2,
                   maxnorm_scope=["demix"]) #path for storing the saved model
@@ -86,7 +82,7 @@ lf_params = dict(n_latent=25, #number of latent factors
 model = mneflow.models.Deep4(dataset, lf_params)
 model.build()
 #%%
-model.train(3, eval_step=10, val_batch=None, min_delta=1e-6,
+model.train(30, eval_step=100, val_batch=None, min_delta=1e-6,
               early_stopping=10)
 
 #optimizer_params = dict(l1_lambda=3e-3, learn_rate=3e-4, task='classification')
