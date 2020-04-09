@@ -280,6 +280,8 @@ def import_data(inp, picks=None, target_picks=None,
     """
     if isinstance(inp, mnepochs.BaseEpochs):
         print('processing epochs')
+        if isinstance(picks, dict):
+            picks = pick_types(inp.info, include=picks)
         inp.load_data()
         data = inp.get_data()
         events = inp.events[:, 2]
@@ -332,7 +334,7 @@ def import_data(inp, picks=None, target_picks=None,
         #(x, y) -> (1, x, y)
         data = np.expand_dims(data, 0)
 
-    if picks is not None:
+    if isinstance(picks, (np.ndarray, list, tuple)):
         picks = np.asarray(picks)
         if np.any(data.shape[1] <= picks):
             raise ValueError("Invalid picks {} for n_channels {} ".format(
@@ -393,7 +395,8 @@ def produce_labels(y, return_stats=True):
         return inv
 
 
-def produce_tfrecords(inputs, savepath, out_name, fs,
+
+def produce_tfrecords(inputs, savepath, out_name, fs=0,
                       input_type='trials', target_type='float',
                       array_keys={'X': 'X', 'y': 'y'}, val_size=0.2,
                       scale=False, scale_interval=None, crop_baseline=False,
@@ -456,7 +459,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         Whether to crop baseline specified by 'scale_interval'
         after scaling. Defaults to False.
 
-    bp_filter : bool, tuple, optinal
+    bp_filter : bool, tuple, optional
         Band pass filter. Tuple of int or NoneType.
 
     decimate : False, int, optional
@@ -508,7 +511,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs,
         'holdout' saves 50% of the validation set
         'loso' saves the whole dataset in original order for
         leave-one-subject-out cross-validation.
-        'none' does not leave a separate test set. Defaults to None.
+        None does not leave a separate test set. Defaults to None.
 
     Returns
     -------
