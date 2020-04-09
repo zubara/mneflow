@@ -29,7 +29,8 @@ from matplotlib import patches as ptch
 from matplotlib import collections
 
 from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling
-from tensorflow.keras.layers import Flatten
+from tensorflow.keras.layers import Flatten, Dropout, Conv2D, DepthwiseConv2D
+from tensorflow.keras.initializers import Constant
 #from .layers import LSTMv1
 from tensorflow.keras import regularizers as k_reg, constraints, layers
 
@@ -503,12 +504,13 @@ class LFCNN(BaseModel):
                                   padding=self.specs['padding'],
                                   )(self.tconv)
 
-        #flat = Flatten()(self.pooled)
+        dropout = Dropout(self.specs['dropout'],
+                          noise_shape=None)(self.pooled)
+
         self.fin_fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
                         specs=self.specs)
 
-        y_pred = self.fin_fc(self.pooled)
-        # y_pred = tf.reshape(y_pred, [-1, *self.y_shape])
+        y_pred = self.fin_fc(dropout)
 
         return y_pred
 
@@ -1005,8 +1007,99 @@ class LFCNN(BaseModel):
                 ax[i, jj].legend()
                 ax[i, jj].set_xlim(0, 125.)
 
+
+class VARCNN(BaseModel):
+    """VAR-CNN.
+
+    For details see [1].
+
+    Parameters
+    ----------
+    n_ls : int
+        Number of latent components.
+        Defaults to 32.
+
+    nonlin : callable
+        Activation function of the temporal Convolution layer.
+        Defaults to tf.nn.relu
+
+    filter_length : int
+        Length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7.
+
+    pooling : int
+        Pooling factor of the max pooling layer. Defaults to 2
+
+    pool_type : str {'avg', 'max'}
+        Type of pooling operation. Defaults to 'max'.
+
+    padding : str {'SAME', 'FULL', 'VALID'}
+        Convolution padding. Defaults to 'SAME'.
+
+    stride : int
+        Stride of the max pooling layer. Defaults to 1.
+
+
+    References
+    ----------
+        [1] I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+    """
+    def __init__(self, Dataset, specs):
+        specs.setdefault('filter_length', 7)
+        specs.setdefault('n_latent', 32)
+        specs.setdefault('pooling', 2)
+        specs.setdefault('stride', 2)
+        specs.setdefault('pool_type', 'SAME')
+        specs.setdefault('nonlin', tf.nn.relu)
+        specs.setdefault('l1', 3e-4)
+        specs.setdefault('l2', 0)
+        specs.setdefault('l1_scope', ['fc', 'demix', 'var_conv'])
+        specs.setdefault('l2_scope', [])
+        specs.setdefault('maxnorm_scope', [])
+        super(LFCNN, self).__init__(Dataset, specs)
+
+
+
+    def build_graph(self):
+        """Build computational graph using defined placeholder `self.X`
+        as input.
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
+        self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
+                            axis=3, specs=self.specs)(self.inputs)
+
+        self.tconv = VARConv(size=self.specs['n_latent'],
+                             nonlin=self.specs['nonlin'],
+                             filter_length=self.specs['filter_length'],
+                             padding=self.specs['padding'],
+                             specs=self.specs
+                             )(self.dmx)
+
+        self.pooled = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type=self.specs['pool_type'],
+                                  stride=self.specs['stride'],
+                                  padding=self.specs['padding'],
+                                  )(self.tconv)
+
+        dropout = Dropout(self.specs['dropout'],
+                          noise_shape=None)(self.pooled)
+
+        self.fin_fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
+                            specs=self.specs)
+
+        y_pred = self.fin_fc(dropout)
+
+        return y_pred
+
+
 class LFCNN3(LFCNN):
-    """LF-CNN. Includes basic parameter interpretation options.
+    """Time-Invaraint LFCNN.
 
     For details see [1].
 
@@ -1085,86 +1178,104 @@ class LFCNN3(LFCNN):
                                   )(self.tconv)
 
         self.pooled2 = TempPooling(pooling=self.specs['pooling'],
-                                  pool_type=self.specs['pool_type'],
-                                  stride=self.specs['stride'],
-                                  padding=self.specs['padding'],
-                                  )(self.pooled)
+                                   pool_type=self.specs['pool_type'],
+                                   stride=self.specs['stride'],
+                                   padding=self.specs['padding'],
+                                   )(self.pooled)
 
         self.pooled3 = TempPooling(pooling=self.specs['pooling'],
-                                  pool_type='avg',
-                                  stride=self.specs['stride'],
-                                  padding=self.specs['padding'],
-                                  )(self.pooled2)
+                                   pool_type='max',
+                                   stride=self.specs['stride'],
+                                   padding=self.specs['padding'],
+                                   )(self.pooled2)
 
-        #flat = Flatten()(self.pooled)
+        dropout = Dropout(self.specs['dropout'],
+                          noise_shape=None)(self.pooled3)
+
         self.fin_fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
-                        specs=self.specs)
+                            specs=self.specs)
 
-        y_pred = self.fin_fc(self.pooled3)
-        # y_pred = tf.reshape(y_pred, [-1, *self.y_shape])
+        y_pred = self.fin_fc(dropout)
 
         return y_pred
 
-#class VARCNN(Model):
-#    """VAR-CNN.
-#
-#    For details see [1].
-#
-#    n_ls : int
-#        Number of latent components.
-#        Defaults to 32.
-#
-#    nonlin : callable
-#        Activation function of the temporal Convolution layer.
-#        Defaults to tf.nn.relu
-#
-#    filter_length : int
-#        Length of spatio-temporal kernels in the temporal
-#        convolution layer. Defaults to 7
-#
-#    pooling : int
-#        Pooling factor of the max pooling layer. Defaults to 2
-#
-#    pool_type : str {'avg', 'max'}
-#        Type of pooling operation. Defaults to 'max'
-#
-#    padding : str {'SAME', 'FULL', 'VALID'}
-#        Convolution padding. Defaults to 'SAME'
-#
-#    stride : int
-#        Stride of the max pooling layer. Defaults to 1
-#
-#    References
-#    ----------
-#        [1]  I. Zubarev, et al., Adaptive neural network classifier for
-#        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-#    """
-#    def build_graph(self):
-#        self.scope = 'var-cnn'
-#        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
-#
-#        self.tconv1 = VARConv(scope="conv",
-#                              n_ls=self.specs['n_ls'],
-#                              nonlin=tf.nn.relu,
-#                              filter_length=self.specs['filter_length'],
-##                              stride=self.specs['stride'],
-##                              pooling=self.specs['pooling'],
-#                              padding=self.specs['padding'],
-#                              #pool_type=self.specs['pool_type']
-#                              )
-#        pool = TempPooling(stride=self.specs['stride'],
-#                            pooling=self.specs['pooling'],
-#                            padding='SAME',
-#                            pool_type='max')
-#
-#        self.tconv_out = pool(self.tconv1(self.demix(self.X)))
-#
-#        self.fin_fc = Dense(size=np.prod(self.y_shape),
-#                            nonlin=tf.identity,
-#                            dropout=self.rate)
-#
-#        y_pred = self.fin_fc(self.tconv_out)
-#        return y_pred
+
+class FBCSP_ShallowNet(BaseModel):
+    """
+    Shallow ConvNet model from [1]_.
+    References
+    ----------
+    .. [1] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
+       Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. & Ball, T. (2017).
+       Deep learning with convolutional neural networks for EEG decoding and
+       visualization.
+       Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
+    """
+    def __init__(self, Dataset, specs):
+        self.scope = 'fbcsp-ShallowNet'
+        specs.setdefault('filter_length', 25)
+        specs.setdefault('n_latent', 40)
+        specs.setdefault('pooling', 75)
+        specs.setdefault('stride', 15)
+        specs.setdefault('pool_type', 'avg')
+        specs.setdefault('padding', 'SAME')
+        specs.setdefault('nonlin', tf.nn.relu)
+        specs.setdefault('l1', 3e-4)
+        specs.setdefault('l2', 3e-2)
+        specs.setdefault('l1_scope', [])
+        specs.setdefault('l2_scope', ['conv', 'fc'])
+        specs.setdefault('maxnorm_scope', [])
+        super(FBCSP_ShallowNet, self).__init__(Dataset, specs)
+
+    def build_graph(self):
+
+        """Temporal conv_1 25 10x1 kernels"""
+        #(self.inputs)
+        inputs = tf.transpose(self.inputs,[0,3,2,1])
+        #print(inputs.shape)
+        #df = "channels_first"
+        tconv1 = DepthwiseConv2D(
+                        kernel_size=(1, self.specs['filter_length']),
+                        depth_multiplier = self.specs['n_latent'],
+                        strides=1,
+                        padding="VALID",
+                        activation = tf.identity,
+                        kernel_initializer="he_uniform",
+                        bias_initializer=Constant(0.1),
+                        data_format="channels_last",
+                        kernel_regularizer=k_reg.l2(self.specs['l2'])
+                        #kernel_constraint="maxnorm"
+                        )
+
+        tconv1_out = tconv1(inputs)
+        print('tconv1: ', tconv1_out.shape) #should be n_batch, sensors, times, kernels
+
+        sconv1 = Conv2D(filters=self.specs['n_latent'],
+                        kernel_size=(self.dataset.h_params['n_ch'], 1),
+                        strides=1,
+                        padding="VALID",
+                        activation = tf.square,
+                        kernel_initializer="he_uniform",
+                        bias_initializer=Constant(0.1),
+                        data_format="channels_last",
+                        #data_format="channels_first",
+                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+
+
+        sconv1_out = sconv1(tconv1_out)
+        print('sconv1:',  sconv1_out.shape)
+
+        pool1 = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type="avg",
+                                  stride=self.specs['stride'],
+                                  padding='SAME',
+                                  )(sconv1_out)
+
+        print('pool1: ', pool1.shape)
+        fc_out = Dense(size=np.prod(self.y_shape),
+                       nonlin=tf.identity)
+        y_pred = fc_out(tf.keras.backend.log(pool1))
+        return y_pred
 #
 #
 ##class LFLSTM(LFCNN):
@@ -1272,218 +1383,247 @@ class LFCNN3(LFCNN):
 ##        return y_pred
 #
 #
-#class LFCNN2(LFCNN):
-#    """LF-CNN. Includes basic parameter interpretation options.
-#
-#    For details see [1].
-#
-#    Parameters
-#    ----------
-#    n_ls : int
-#        Number of latent components.
-#        Defaults to 32.
-#
-#    nonlin : callable
-#        Activation function of the temporal Convolution layer.
-#        Defaults to tf.nn.relu
-#
-#    filter_length : int
-#        Length of spatio-temporal kernels in the temporal
-#        convolution layer. Defaults to 7.
-#
-#    pooling : int
-#        Pooling factor of the max pooling layer. Defaults to 2
-#
-#    pool_type : str {'avg', 'max'}
-#        Type of pooling operation. Defaults to 'max'.
-#
-#    padding : str {'SAME', 'FULL', 'VALID'}
-#        Convolution padding. Defaults to 'SAME'.
-#
-#    stride : int
-#        Stride of the max pooling layer. Defaults to 1.
-#
-#
-#    References
-#    ----------
-#        [1] I. Zubarev, et al., Adaptive neural network classifier for
-#        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-#    """
-#
-#    def build_graph(self):
-#        """Build computational graph using defined placeholder `self.X`
-#        as input.
-#
-#        Returns
-#        --------
-#        y_pred : tf.Tensor
-#            Output of the forward pass of the computational graph.
-#            Prediction of the target variable.
-#        """
-#        self.scope = 'lf-cnn'
-#
-#        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
-#
-#        self.tconv1 = LFTConv(scope="conv",
-#                              n_ls=self.specs['n_ls'],
-#                              nonlin=self.specs['nonlin'],
-#                              filter_length=self.specs['filter_length'],
-##                              stride=self.specs['stride'],
-##                              pooling=self.specs['pooling'],
-##                              pool_type=self.specs['pool_type'],
-#                              padding=self.specs['padding'])
-#
-#
-#        self.tconv_out = self.tconv1(self.demix(self.X))
-#        #self.pooling = self.specs['pooling']
-#        #self.stride=self.specs['stride']
-#        #self.padding=self.specs['padding']
-#        pool1 = TempPooling(stride=self.specs['stride'],
-#                            pooling=self.specs['pooling'],
-#                            padding='SAME',
-#                            pool_type='max')
-#
-#        pool2 = TempPooling(stride=self.specs['stride'],
-#                            pooling=self.specs['pooling'],
-#                            padding='SAME',
-#                            pool_type='max')
-#
-#        pool3 = TempPooling(stride=self.specs['stride'],
-#                            pooling=self.specs['pooling'],
-#                            padding='SAME',
-#                            pool_type='avg')
-#
-#        self.fin_fc = Dense(size=np.prod(self.y_shape),
-#                            nonlin=tf.identity,
-#                            dropout=self.rate)
-#
-#        y_pred = self.fin_fc(pool3(pool2(pool1(self.tconv_out))))
-#
-#        return y_pred
-#
-#
-#class Deep4(Model):
-#    """
-#    Deep ConvNet model from [1]_.
-#    References
-#    ----------
-#    .. [1] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
-#       Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. & Ball, T. (2017).
-#       Deep learning with convolutional neural networks for EEG decoding and
-#       visualization.
-#       Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
-#    """
-#
-#    def build_graph(self):
-#        self.scope = 'deep4'
-#        """Temporal conv_1 25 10x1 kernels"""
-#        tconv1 = ConvDSV(n_ls=25, nonlin=tf.identity, inch=1,
-#                         filter_length=10, domain='time', scope='tconv1',
-#                         stride=1, pooling=1, padding='VALID', conv_type='2d')
-#
-#        tconv1_out = tconv1(self.X)
-#        print('tconv1: ', tconv1_out.shape) #should be n_batch, sensors, times, kernels
-#        sconv1 = ConvDSV(n_ls=25, nonlin=tf.nn.elu, inch=25,
-#                         filter_length=204, domain='space', scope='sconv1',
-#                         stride=1, pooling=1, padding='VALID', conv_type='2d')
-#
-#        sconv1_out = sconv1(tconv1_out)
-#        print('sconv1:',  sconv1_out.shape)
-#
-#        pool1 = tf.nn.max_pool2d(sconv1_out,
-#                                ksize=[1, 1, 3, 1],
-#                                strides=[1, 1, 3, 1],
-#                                padding='SAME',
-#                                data_format='NHWC')
-#        #pool1 = tf.transpose(pool1, [0, 2, 3, 1])
-#        print('pool1: ', pool1.shape)
-#
-#        tsconv2 = ConvDSV(n_ls=50, nonlin=tf.nn.elu, inch=25,
-#                         filter_length=10, domain='time', scope='tsconv2',
-#                         stride=1, pooling=1, padding='VALID', conv_type='2d')
-#        tsconv2_out = tsconv2(pool1)
-#        print('tsconv2:',  tsconv2_out.shape) #should be n_batch, 1, times, kernels
-#        pool2 = tf.nn.max_pool2d(tsconv2_out,
-#                                ksize=[1, 1, 3, 1],
-#                                strides=[1, 1, 3, 1],
-#                                padding='SAME',
-#                                data_format='NHWC')
-#        print('pool2: ', pool2.shape)
-#
-#        tsconv3 = ConvDSV(n_ls=100, nonlin=tf.nn.elu, inch=50,
-#                         filter_length=10, domain='time', scope='tsconv3',
-#                         stride=1, pooling=1, padding='VALID', conv_type='2d')
-#
-#        tsconv3_out = tsconv3(pool2)
-#        print('tsconv3:',  tsconv3_out.shape) #should be n_batch, sensors, times, kernels
-#        pool3 = tf.nn.max_pool2d(tsconv3_out,
-#                                ksize=[1, 1, 3, 1],
-#                                strides=[1, 1, 3, 1],
-#                                padding='SAME',
-#                                data_format='NHWC')
-#        print('pool3: ', pool3.shape)
-#
-#        tsconv4 = ConvDSV(n_ls=200, nonlin=tf.nn.elu, inch=100,
-#                         filter_length=10, domain='time', scope='tsconv4',
-#                         stride=1, pooling=1, padding='VALID', conv_type='2d')
-#
-#        tsconv4_out = tsconv4(pool3)
-#        print('tsconv4:',  tsconv4_out.shape) #should be n_batch, sensors, times, kernels
-#        pool4 = tf.nn.max_pool2d(tsconv4_out,
-#                                ksize=[1, 1, 3, 1],
-#                                strides=[1, 1, 3, 1],
-#                                padding='SAME',
-#                                data_format='NHWC')
-#        print('pool4: ', pool4.shape)
-#
-#        fc_out = Dense(size=np.prod(self.y_shape),
-#                       nonlin=tf.identity,
-#                       dropout=self.rate)
-#        y_pred = fc_out(pool4)
-#        return y_pred
-#
-#
-#class FBCSP_ShallowNet(Model):
-#    """
-#    Shallow ConvNet model from [1]_.
-#    References
-#    ----------
-#    .. [1] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
-#       Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. & Ball, T. (2017).
-#       Deep learning with convolutional neural networks for EEG decoding and
-#       visualization.
-#       Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
-#    """
-#
-#    def build_graph(self):
-#        self.scope = 'deep4'
-#        """Temporal conv_1 25 10x1 kernels"""
-#        tconv1 = ConvDSV(n_ls=40, nonlin=tf.identity, inch=1,
-#                         filter_length=25, domain='time', scope='tconv1',
-#                         stride=1, pooling=1, padding='VALID', conv_type='2d')
-#
-#        tconv1_out = tconv1(self.X)
-#        print('tconv1: ', tconv1_out.shape) #should be n_batch, sensors, times, kernels
-#        sconv1 = ConvDSV(n_ls=40, nonlin=tf.square, inch=40,
-#                         filter_length=204, domain='space', scope='sconv1',
-#                         stride=1, pooling=1, padding='VALID', conv_type='2d')
-#
-#        sconv1_out = sconv1(tconv1_out)
-#        print('sconv1:',  sconv1_out.shape)
-#
-#        pool1 = tf.nn.avg_pool2d(sconv1_out,
-#                                ksize=[1, 1, 75, 1],
-#                                strides=[1, 1, 15, 1],
-#                                padding='SAME',
-#                                data_format='NHWC')
-#        #pool1 = tf.transpose(pool1, [0, 2, 3, 1])
-#        print('pool1: ', pool1.shape)
-#        fc_out = Dense(size=np.prod(self.y_shape),
-#                       nonlin=tf.identity,
-#                       dropout=self.rate)
-#        y_pred = fc_out(tf.log(pool1))
-#        return y_pred
+class Deep4(BaseModel):
+    """
+    Deep ConvNet model from [1]_.
+    References
+    ----------
+    .. [1] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
+       Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. & Ball, T. (2017).
+       Deep learning with convolutional neural networks for EEG decoding and
+       visualization.
+       Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
+    """
+    def __init__(self, Dataset, specs):
+        self.scope = 'deep4'
+        specs.setdefault('filter_length', 10)
+        specs.setdefault('n_latent', 25)
+        specs.setdefault('pooling', 3)
+        specs.setdefault('stride', 3)
+        specs.setdefault('pool_type', 'max')
+        specs.setdefault('padding', 'VALID')
+        specs.setdefault('nonlin', tf.nn.elu)
+        specs.setdefault('l1', 3e-4)
+        specs.setdefault('l2', 3e-2)
+        specs.setdefault('l1_scope', [])
+        specs.setdefault('l2_scope', ['conv', 'fc'])
+        specs.setdefault('maxnorm_scope', [])
+        super(Deep4, self).__init__(Dataset, specs)
 
+    def build_graph(self):
+        self.scope = 'deep4'
+
+        inputs = tf.transpose(self.inputs,[0,3,2,1])
+
+        tconv1 = DepthwiseConv2D(
+                        kernel_size=(1, self.specs['filter_length']),
+                        depth_multiplier = self.specs['n_latent'],
+                        strides=1,
+                        padding=self.specs['padding'],
+                        activation = tf.identity,
+                        kernel_initializer="he_uniform",
+                        bias_initializer=Constant(0.1),
+                        data_format="channels_last",
+                        kernel_regularizer=k_reg.l2(self.specs['l2'])
+                        #kernel_constraint="maxnorm"
+                        )
+        tconv1_out = tconv1(inputs)
+        print('tconv1: ', tconv1_out.shape) #should be n_batch, sensors, times, kernels
+
+        sconv1 = Conv2D(filters=self.specs['n_latent'],
+                        kernel_size=(self.dataset.h_params['n_ch'], 1),
+                        strides=1,
+                        padding=self.specs['padding'],
+                        activation=self.specs['nonlin'],
+                        kernel_initializer="he_uniform",
+                        bias_initializer=Constant(0.1),
+                        data_format="channels_last",
+                        #data_format="channels_first",
+                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+        sconv1_out = sconv1(tconv1_out)
+        print('sconv1:',  sconv1_out.shape)
+
+        pool1 = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type="avg",
+                                  stride=self.specs['stride'],
+                                  padding='SAME',
+                                  )(sconv1_out)
+
+        print('pool1: ', pool1.shape)
+
+        ############################################################
+
+        tsconv2 = Conv2D(filters=self.specs['n_latent']*2,
+                        kernel_size=(1, self.specs['filter_length']),
+                        strides=1,
+                        padding=self.specs['padding'],
+                        activation=self.specs['nonlin'],
+                        kernel_initializer="he_uniform",
+                        bias_initializer=Constant(0.1),
+                        data_format="channels_last",
+                        #data_format="channels_first",
+                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+
+
+        tsconv2_out = tsconv2(pool1)
+        print('tsconv2:',  tsconv2_out.shape)
+
+        pool2 = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type="avg",
+                                  stride=self.specs['stride'],
+                                  padding='SAME',
+                                  )(tsconv2_out)
+
+        print('pool2: ', pool2.shape)
+
+
+        ############################################################
+
+        tsconv3 = Conv2D(filters=self.specs['n_latent']*4,
+                        kernel_size=(1, self.specs['filter_length']),
+                        strides=1,
+                        padding=self.specs['padding'],
+                        activation=self.specs['nonlin'],
+                        kernel_initializer="he_uniform",
+                        bias_initializer=Constant(0.1),
+                        data_format="channels_last",
+                        #data_format="channels_first",
+                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+
+
+        tsconv3_out = tsconv3(pool2)
+        print('tsconv3:',  tsconv3_out.shape)
+
+        pool3 = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type="avg",
+                                  stride=self.specs['stride'],
+                                  padding='SAME',
+                                  )(tsconv3_out)
+
+        print('pool3: ', pool3.shape)
+
+        ############################################################
+
+        tsconv4 = Conv2D(filters=self.specs['n_latent']*8,
+                        kernel_size=(1, self.specs['filter_length']),
+                        strides=1,
+                        padding=self.specs['padding'],
+                        activation=self.specs['nonlin'],
+                        kernel_initializer="he_uniform",
+                        bias_initializer=Constant(0.1),
+                        data_format="channels_last",
+                        #data_format="channels_first",
+                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+
+
+        tsconv4_out = tsconv4(pool3)
+        print('tsconv4:',  tsconv4_out.shape)
+
+        pool4 = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type="avg",
+                                  stride=self.specs['stride'],
+                                  padding='SAME',
+                                  )(tsconv4_out)
+
+        print('pool4: ', pool4.shape)
+
+
+        fc_out = Dense(size=np.prod(self.y_shape),
+                       nonlin=tf.identity)
+        y_pred = fc_out(pool4)
+        return y_pred
+#
+#
+
+class EEGNet(BaseModel):
+    """EEGNet.
+
+    Parameters
+    ----------
+    specs : dict
+
+        n_ls : int
+            Number of (temporal) convolution kernrels in the first layer.
+            Defaults to 8
+
+        filter_length : int
+            Length of temporal filters in the first layer.
+            Defaults to 32
+
+        stride : int
+            Stride of the average polling layers. Defaults to 4.
+
+        pooling : int
+            Pooling factor of the average polling layers. Defaults to 4.
+
+        dropout : float
+            Dropout coefficient.
+
+    References
+    ----------
+    [1] V.J. Lawhern, et al., EEGNet: A compact convolutional neural
+    network for EEG-based brain–computer interfaces 10 J. Neural Eng.,
+    15 (5) (2018), p. 056013
+
+    [2] Original EEGNet implementation by the authors can be found at
+    https://github.com/vlawhern/arl-eegmodels
+    """
+
+    def build_graph(self):
+        self.scope = 'eegnet'
+
+        X1 = self.X  # tf.expand_dims(self.X, -1)
+        vc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity, inch=1,
+                      filter_length=self.specs['filter_length'], domain='time',
+                      stride=1, pooling=1, conv_type='2d')
+        vc1o = vc1(X1)
+
+        bn1 = tf.layers.batch_normalization(vc1o)
+        dwc1 = ConvDSV(n_ls=1, nonlin=tf.identity, inch=self.specs['n_ls'],
+                       padding='VALID', filter_length=bn1.get_shape()[1].value,
+                       domain='space',  stride=1, pooling=1,
+                       conv_type='depthwise')
+        dwc1o = dwc1(bn1)
+
+        bn2 = tf.layers.batch_normalization(dwc1o)
+        out2 = tf.nn.elu(bn2)
+        out22 = tf.nn.dropout(out2, rate=self.rate)
+
+        sc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity,
+                      inch=self.specs['n_ls'],
+                      filter_length=self.specs['filter_length']//4,
+                      domain='time', stride=1, pooling=1,
+                      conv_type='separable')
+        sc1o = sc1(out22)
+
+        bn3 = tf.layers.batch_normalization(sc1o)
+        out3 = tf.nn.elu(bn3)
+
+        out4 = tf.nn.avg_pool(out3, [1, 1, self.specs['pooling'], 1],
+                              [1, 1, self.specs['stride'], 1], 'SAME')
+        out44 = tf.nn.dropout(out4, rate=self.rate)
+
+        sc2 = ConvDSV(n_ls=self.specs['n_ls']*2, nonlin=tf.identity,
+                      inch=self.specs['n_ls'],
+                      filter_length=self.specs['filter_length']//4,
+                      domain='time', stride=1, pooling=1,
+                      conv_type='separable')
+        sc2o = sc2(out44)
+
+        bn4 = tf.layers.batch_normalization(sc2o)
+        out5 = tf.nn.elu(bn4)
+
+        out6 = tf.nn.avg_pool(out5, [1, 1, self.specs['pooling'], 1],
+                              [1, 1, self.specs['stride'], 1], 'SAME')
+        out66 = tf.nn.dropout(out6, rate=self.rate)
+
+        out7 = tf.reshape(out66, [-1, np.prod(out66.shape[1:])])
+        fc_out = Dense(size=self.y_shape[0],
+                       nonlin=tf.identity,
+                       dropout=self.rate)
+        y_pred = fc_out(out7)
+
+        return y_pred
 # ----- Models -----
 #class VGG19(Model):
 #    """VGG-19 model.
@@ -1538,92 +1678,3 @@ class LFCNN3(LFCNN):
 #        return y_pred
 #
 #
-#class EEGNet(Model):
-#    """EEGNet.
-#
-#    Parameters
-#    ----------
-#    specs : dict
-#
-#        n_ls : int
-#            Number of (temporal) convolution kernrels in the first layer.
-#            Defaults to 8
-#
-#        filter_length : int
-#            Length of temporal filters in the first layer.
-#            Defaults to 32
-#
-#        stride : int
-#            Stride of the average polling layers. Defaults to 4.
-#
-#        pooling : int
-#            Pooling factor of the average polling layers. Defaults to 4.
-#
-#        dropout : float
-#            Dropout coefficient.
-#
-#    References
-#    ----------
-#    [1] V.J. Lawhern, et al., EEGNet: A compact convolutional neural
-#    network for EEG-based brain–computer interfaces 10 J. Neural Eng.,
-#    15 (5) (2018), p. 056013
-#
-#    [2] Original EEGNet implementation by the authors can be found at
-#    https://github.com/vlawhern/arl-eegmodels
-#    """
-#
-#    def build_graph(self):
-#        self.scope = 'eegnet'
-#
-#        X1 = self.X  # tf.expand_dims(self.X, -1)
-#        vc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity, inch=1,
-#                      filter_length=self.specs['filter_length'], domain='time',
-#                      stride=1, pooling=1, conv_type='2d')
-#        vc1o = vc1(X1)
-#
-#        bn1 = tf.layers.batch_normalization(vc1o)
-#        dwc1 = ConvDSV(n_ls=1, nonlin=tf.identity, inch=self.specs['n_ls'],
-#                       padding='VALID', filter_length=bn1.get_shape()[1].value,
-#                       domain='space',  stride=1, pooling=1,
-#                       conv_type='depthwise')
-#        dwc1o = dwc1(bn1)
-#
-#        bn2 = tf.layers.batch_normalization(dwc1o)
-#        out2 = tf.nn.elu(bn2)
-#        out22 = tf.nn.dropout(out2, rate=self.rate)
-#
-#        sc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity,
-#                      inch=self.specs['n_ls'],
-#                      filter_length=self.specs['filter_length']//4,
-#                      domain='time', stride=1, pooling=1,
-#                      conv_type='separable')
-#        sc1o = sc1(out22)
-#
-#        bn3 = tf.layers.batch_normalization(sc1o)
-#        out3 = tf.nn.elu(bn3)
-#
-#        out4 = tf.nn.avg_pool(out3, [1, 1, self.specs['pooling'], 1],
-#                              [1, 1, self.specs['stride'], 1], 'SAME')
-#        out44 = tf.nn.dropout(out4, rate=self.rate)
-#
-#        sc2 = ConvDSV(n_ls=self.specs['n_ls']*2, nonlin=tf.identity,
-#                      inch=self.specs['n_ls'],
-#                      filter_length=self.specs['filter_length']//4,
-#                      domain='time', stride=1, pooling=1,
-#                      conv_type='separable')
-#        sc2o = sc2(out44)
-#
-#        bn4 = tf.layers.batch_normalization(sc2o)
-#        out5 = tf.nn.elu(bn4)
-#
-#        out6 = tf.nn.avg_pool(out5, [1, 1, self.specs['pooling'], 1],
-#                              [1, 1, self.specs['stride'], 1], 'SAME')
-#        out66 = tf.nn.dropout(out6, rate=self.rate)
-#
-#        out7 = tf.reshape(out66, [-1, np.prod(out66.shape[1:])])
-#        fc_out = Dense(size=self.y_shape[0],
-#                       nonlin=tf.identity,
-#                       dropout=self.rate)
-#        y_pred = fc_out(out7)
-#
-#        return y_pred
