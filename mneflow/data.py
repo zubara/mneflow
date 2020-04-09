@@ -6,13 +6,19 @@ Defines mneflow.Dataset object.
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
 import tensorflow as tf
+#TODO: fix batching/epoching with training
+#TODO: dataset size form h_params
+
+# import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
 import numpy as np
 
 class Dataset(object):
     """TFRecords dataset from TFRecords files using the metadata."""
 
     def __init__(self, h_params, train_batch=200, class_subset=None,
-                 combine_classes=False, pick_channels=None, decim=None):
+                 combine_classes=False, pick_channels=None, decim=None,
+                 test_batch=None):
 
         r"""Initialize tf.data.TFRdatasets.
 
@@ -53,10 +59,11 @@ class Dataset(object):
         self.train = self._build_dataset(self.h_params['train_paths'],
                                          n_batch=train_batch)
         self.val = self._build_dataset(self.h_params['val_paths'],
-                                       n_batch=train_batch)
+                                       n_batch=test_batch)
         if 'test_paths' in self.h_params.keys():
-            self.test = self._build_dataset(self.h_params['test_paths'],
-                                            n_batch=None)
+            if len(self.h_params['test_paths']):
+                self.test = self._build_dataset(self.h_params['test_paths'],
+                                                n_batch=test_batch)
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
@@ -65,6 +72,15 @@ class Dataset(object):
         functions if specified.
         """
 
+
+        if not n_batch:
+            if all('val' in x for x in path):
+                n_batch = self.h_params['val_size']
+            elif all('val' in x for x in path):
+                n_batch = self.h_params['test_size']
+            else:
+                print("setting batch size to default (100)")
+                n_batch = 100
 
 
         dataset = tf.data.TFRecordDataset(path)
@@ -84,21 +100,22 @@ class Dataset(object):
             dataset = dataset.map(self._decimate)
 
 
-        if n_batch:
-            dataset = dataset.batch(batch_size=n_batch).repeat()
-        else:
-            dataset = dataset.repeat()
+#        if n_batch:
+        dataset = dataset.batch(batch_size=n_batch).repeat()
+#        else:
+#            dataset = dataset.repeat(bat)
 
         dataset = dataset.map(self._unpack)
-        dataset.n_samples = self._get_n_samples(path)
-        print(dataset.n_samples)
+        dataset.shuffle(n_batch)
+        #dataset.n_samples = self._get_n_samples(path)
+        print('ds batch size:', n_batch)
         return dataset
 
     def _select_channels(self, example_proto):
         """Pick a subset of channels specified by self.channel_subset."""
         example_proto['X'] = tf.gather(example_proto['X'],
                                        tf.constant(self.channel_subset),
-                                       axis=0)
+                                       axis=3)
         return example_proto
 
     def class_weights(self):
@@ -111,20 +128,13 @@ class Dataset(object):
         """Downsample data."""
         example_proto['X'] = tf.gather(example_proto['X'],
                                        self.timepoints,
-                                       axis=-1)
+                                       axis=2)
         return example_proto
 
-    def _get_n_samples(self, path):
-        """Count number of samples in TFRecord files specified by path."""
-        ns = 0
-        if isinstance(path, (list, tuple)):
-            for fn in path:
-                for record in tf.python_io.tf_record_iterator(fn):
-                    ns += 1
-        elif isinstance(path, str):
-            for record in tf.python_io.tf_record_iterator(path):
-                ns += 1
-        return ns
+#    def _get_n_samples(self, path):
+#        """Count number of samples in TFRecord files specified by path."""
+#        ns = path
+#        return ns
 
     def _parse_function(self, example_proto):
         """Restore data shape from serialized records.
@@ -136,14 +146,11 @@ class Dataset(object):
         """
         keys_to_features = {}
 
-        if self.h_params['input_type'] in ['trials', 'iid']:
-            x_sh = (self.h_params['n_ch'], self.h_params['n_t'])
+        if self.h_params['input_type'] in ['trials', 'seq']:
+            x_sh = (self.h_params['n_seq'], self.h_params['n_t'],
+                    self.h_params['n_ch'])
             y_sh = self.h_params['y_shape']
 
-        elif self.h_params['input_type'] in ['seq']:
-            x_sh = (self.h_params['n_seq'], self.h_params['n_ch'],
-                    self.h_params['n_t'])
-            y_sh = (self.h_params['y_shape'])
         else:
             raise ValueError('Invalid input type.')
 
@@ -157,7 +164,7 @@ class Dataset(object):
         else:
             raise ValueError('Invalid target type.')
 
-        parsed_features = tf.parse_single_example(example_proto,
+        parsed_features = tf.io.parse_single_example(example_proto,
                                                   keys_to_features)
         return parsed_features
 
