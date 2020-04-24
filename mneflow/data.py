@@ -67,7 +67,7 @@ class Dataset(object):
         if isinstance(self.decim, int):
             self.h_params['n_t'] /= self.decim
 
-    def _build_dataset(self, path, n_batch=None):
+    def _build_dataset(self, path, n_batch=None, repeat=True):
         """Produce a tf.Dataset object and apply preprocessing
         functions if specified.
         """
@@ -101,12 +101,12 @@ class Dataset(object):
 
 
 #        if n_batch:
-        dataset = dataset.batch(batch_size=n_batch).repeat()
+        dataset = dataset.shuffle(5).batch(batch_size=n_batch).repeat()
 #        else:
 #            dataset = dataset.repeat(bat)
 
         dataset = dataset.map(self._unpack)
-        dataset.shuffle(n_batch)
+        #dataset
         #dataset.n_samples = self._get_n_samples(path)
         print('ds batch size:', n_batch)
         return dataset
@@ -183,7 +183,6 @@ class Dataset(object):
 
     def _unpack(self, sample):
         return sample['X'], sample['y']
-
 
 def _onehot(y, n_classes=False):
     if not n_classes:

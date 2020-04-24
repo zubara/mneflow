@@ -69,7 +69,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
     def build(self, input_shape):
         super(Dense, self).build(input_shape)
         # print(input_shape)
-        self.flatsize = np.prod(input_shape[1:]).value
+        self.flatsize = np.prod(input_shape[1:])
         print(self.scope, ':::', )
 
         self.w = self.add_weight(shape=[self.flatsize, self.size],
@@ -124,8 +124,8 @@ class DeMixing(BaseLayer):
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
 
-        self.W = self.add_weight(
-                shape=(input_shape[self.axis].value, self.size),
+        self.w = self.add_weight(
+                shape=(input_shape[self.axis], self.size),
                 initializer='he_uniform',
                 regularizer=self.reg,
                 constraint = self.constraint,
@@ -146,7 +146,7 @@ class DeMixing(BaseLayer):
         while True:
             with tf.name_scope(self.scope):
                 try:
-                    demix = tf.tensordot(x, self.W, axes=[[self.axis], [0]],
+                    demix = tf.tensordot(x, self.w, axes=[[self.axis], [0]],
                                          name='de-mix')
                     demix = self.nonlin(demix + self.b_in)
                     print(self.scope, ": output :", demix.shape)
@@ -183,7 +183,7 @@ class LFTConv(BaseLayer):
         super(LFTConv, self).build(input_shape)
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
-        shape = [1, self.filter_length, input_shape[-1].value, 1]
+        shape = [1, self.filter_length, input_shape[-1], 1]
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
                                        regularizer=self.reg,
@@ -192,7 +192,7 @@ class LFTConv(BaseLayer):
                                        name='tconv_weights',
                                        dtype=tf.float32)
 
-        self.b = self.add_weight(shape=([input_shape[-1].value]),
+        self.b = self.add_weight(shape=([input_shape[-1]]),
                                  initializer=Constant(0.1),
                                  regularizer=None,
                                  trainable=True,
