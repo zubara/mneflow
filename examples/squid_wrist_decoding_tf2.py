@@ -13,8 +13,9 @@ Created on Wed Nov 27 12:17:48 2019
 #warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 import tensorflow as tf
+#tf.compat.v1.enable_resource_variables()
 #tf.get_logger().setLevel('ERROR')
-#tf.compat.v1.enable_eager_execution
+#tf.compat.v1.disable_eager_execution()
 import os
 import numpy as np
 os.chdir('/m/nbe/project/rtmeg/problearn/mneflow/')
@@ -69,22 +70,29 @@ lf_params = dict(n_latent=32, #number of latent factors
                   nonlin = tf.nn.relu,
                   padding = 'SAME',
                   pooling = 24,#pooling factor
-                  stride = 16, #stride parameter for pooling layer
+                  stride = 24, #stride parameter for pooling layer
                   pool_type='max',
                   model_path = import_opt['savepath'],
                   dropout = .5,
                   l1_scope = ["fc"],
                   l2_scope = ["lf_conv", "dmx"],
                   l1=3e-4,
-                  l2=3e-2,
+                  l2=3e-1,
                   maxnorm_scope=["demix"]) #path for storing the saved model
-#%%
+
 model = mneflow.models.LFCNN(dataset, lf_params)
 model.build()
 #%%
-model.train(30, eval_step=100, val_batch=None, min_delta=1e-6,
+model.train(3, eval_step=100, val_batch=None, min_delta=1e-6,
               early_stopping=10)
+#%%
+model.compute_patterns(meta['val_paths'])
+#%%
 
+#model.plot_out_weights()
+
+#model.plot_patterns('Vectorview-grad', sorting='best')
+model.plot_spectra(sorting='best', log=False, norm_spectra='welch')
 #optimizer_params = dict(l1_lambda=3e-3, learn_rate=3e-4, task='classification')
 #optim = tf.keras.optimizers.Adam(learning_rate=3e-4)
 #loss_f = tf.compat.v1.losses.softmax_cross_entropy
