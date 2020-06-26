@@ -90,9 +90,15 @@ class BaseModel():
 
         self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
         # Initialize optimizer
-        self.km.compile(optimizer='adam',
-                     loss=tf.nn.softmax_cross_entropy_with_logits,
-                     metrics=['accuracy'])
+        if self.dataset.h_params["target_type"] in ['float', 'signal']:
+            self.km.compile(optimizer='adam',
+                         loss=tf.keras.losses.MAE,
+                         metrics=['mse', 'mae'])
+        elif self.dataset.h_params["target_type"] in ['int']:
+            self.km.compile(optimizer='adam',
+                         loss=tf.nn.softmax_cross_entropy_with_logits,
+                         metrics=['accuracy'])
+
 
         print('Input shape:', self.input_shape)
         print('y_pred:', self.y_pred.shape)
@@ -532,52 +538,7 @@ class LFCNN(BaseModel):
         print('cov:', cov.shape)
         #tf.reduce_mean(n1_covs)
 
-    #@tf.function
-#    def compute_patterns(self, data_path=None, output='patterns'):
-#        """Computes spatial patterns from filter weights.
-#        Required for visualization.
-#
-#        Parameters
-#        ----------
-#        data_path : str or list of str
-#            Path to TFRecord files on which the patterns are estimated.
-#
-#        output : str {'patterns, 'filters', 'full_patterns'}
-#            String specifying the output.
-#
-#            'filters' - extracts weights of the spatial filters
-#
-#            'patterns' - extracts activation patterns, obtained by
-#            left-multipying the spatial filter weights by the (spatial)
-#            data covariance.
-#
-#            'full-patterns' - additionally multiplies activation
-#            patterns by the precision (inverse covariance) of the
-#            latent sources
-#
-#        Returns
-#        -------
-#        self.patterns
-#            spatial filters or activation patterns, depending on the
-#            value of 'output' parameter.
-#
-#        self.lat_tcs
-#            time courses of latent sourses.
-#
-#        self.filters
-#            temporal convolutional filter coefficients.
-#
-#        self.out_weights
-#            weights of the output layer.
-#
-#        self.rfocs
-#            feature relevances for the output layer.
-#            (See self.get_output_correlations)
-#
-#        Raises:
-#        -------
-#            AttributeError: If `data_path` is not specified.
-#        """
+
     def compute_patterns(self, data_path, output='patterns'):
         """Computes spatial patterns from filter weights.
         Required for visualization.
@@ -747,8 +708,9 @@ class LFCNN(BaseModel):
 
         flat_feats = self.tc_out.reshape(self.tc_out.shape[0], -1)
 
-        if self.dataset.h_params['target_type'] == 'float':
+        if self.dataset.h_params['target_type'] in ['float', 'signal']:
             for y_ in y_true.T:
+
                 rfocs = np.array([spearmanr(y_, f)[0] for f in flat_feats.T])
                 self.rfocs.append(rfocs.reshape(self.out_weights.shape[:-1]))
 
@@ -762,7 +724,7 @@ class LFCNN(BaseModel):
                 print('y.T:', y_.shape)
                 rfocs = 2. - np.sum(np.abs(flat_feats - y_[:, None]), 0)
                 self.rfocs.append(rfocs.reshape(self.out_weights.shape[:-1]))
-
+        print()
         self.rfocs = np.dstack(self.rfocs)
 
         if np.any(np.isnan(self.rfocs)):
