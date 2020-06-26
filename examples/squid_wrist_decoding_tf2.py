@@ -23,7 +23,7 @@ import mneflow
 print("Eager mode: ", tf.executing_eagerly())
 
 from mneflow.keras_utils import plot_output, plot_history
-import mne
+#import mne
 path = '/m/nbe/project/rtmeg/problearn/wrist_decoding/'
 #%%
 #
@@ -92,7 +92,7 @@ model.compute_patterns(meta['val_paths'])
 #model.plot_out_weights()
 
 #model.plot_patterns('Vectorview-grad', sorting='best')
-model.plot_spectra(sorting='best', log=False, norm_spectra='welch')
+#model.plot_spectra(sorting='best', log=False, norm_spectra='welch')
 #optimizer_params = dict(l1_lambda=3e-3, learn_rate=3e-4, task='classification')
 #optim = tf.keras.optimizers.Adam(learning_rate=3e-4)
 #loss_f = tf.compat.v1.losses.softmax_cross_entropy

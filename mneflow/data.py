@@ -118,6 +118,13 @@ class Dataset(object):
                                        axis=3)
         return example_proto
 
+    def _select_times(self, example_proto):
+        """Pick a subset of channels specified by self.channel_subset."""
+        example_proto['X'] = tf.gather(example_proto['X'],
+                                       tf.constant(self.times),
+                                       axis=2)
+        return example_proto
+
     def class_weights(self):
         """Weights take class proportions into account."""
         weights = np.array(
@@ -146,7 +153,7 @@ class Dataset(object):
         """
         keys_to_features = {}
 
-        if self.h_params['input_type'] in ['trials', 'seq']:
+        if self.h_params['input_type'] in ['trials', 'seq', 'continuous']:
             x_sh = (self.h_params['n_seq'], self.h_params['n_t'],
                     self.h_params['n_ch'])
             y_sh = self.h_params['y_shape']
@@ -158,7 +165,7 @@ class Dataset(object):
         if self.h_params['target_type'] == 'int':
             keys_to_features['y'] = tf.io.FixedLenFeature(y_sh, tf.int64)
 
-        elif self.h_params['target_type'] == 'float':
+        elif self.h_params['target_type'] in ['float', 'signal']:
             keys_to_features['y'] = tf.io.FixedLenFeature(y_sh, tf.float32)
 
         else:
