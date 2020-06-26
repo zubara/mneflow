@@ -166,7 +166,7 @@ def _make_example(X, y, target_type='int'):
     if target_type == 'int':
         feature['y'] = tf.train.Feature(
                 int64_list=tf.train.Int64List(value=y.flatten()))
-    elif target_type == 'float':
+    elif target_type in ['float', 'signal']:
         y = y.astype(np.float32)
         feature['y'] = tf.train.Feature(
                 float_list=tf.train.FloatList(value=y.flatten()))
@@ -345,11 +345,11 @@ def import_data(inp, picks=None, target_picks=None,
         assert isinstance(transpose, (list, tuple)), "Transpose should be list or tuple of str."
         if 'X' in transpose:
             data = np.swapaxes(data, -1, -2)
-#        if 'y' in transpose:
-#            if events.ndim >= 2:
-#                events = np.swapaxes(events, -1, -2)
-#            else:
-#                warnings.warn('Targets cannot be transposed.', UserWarning)
+        if 'y' in transpose:
+            if events.ndim >= 2:
+                events = np.swapaxes(events, -1, -2)
+            else:
+                warnings.warn('Targets cannot be transposed.', UserWarning)
 
     print('input shapes: X-', data.shape, 'targets-', events.shape)
     assert data.ndim == 3, "Import data panic: output.ndim != 3"
@@ -535,7 +535,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
 
     """
     assert input_type in ['trials', 'seq', 'continuous'], "Unknown input type."
-    assert target_type in ['int', 'float'], "Unknown target type."
+    assert target_type in ['int', 'float', 'signal'], "Unknown target type."
     if not os.path.exists(savepath):
         os.mkdir(savepath)
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
@@ -567,17 +567,23 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
 
                 events = _onehot(events)
 
+            elif target_type == 'signal':
+                print(data.shape, events.shape)
+
+
             x_train, y_train, x_val, y_val = preprocess(
                     data, events, input_type=input_type, scale=scale, fs=fs,
                     val_size=val_size, scale_interval=scale_interval,
                     segment=segment, aug_stride=aug_stride,
                     crop_baseline=crop_baseline, decimate=decimate,
-                    bp_filter=bp_filter, seq_length=seq_length)
+                    bp_filter=bp_filter, seq_length=seq_length,
+                    transform_targets=transform_targets)
 
             if test_set == 'holdout':
                 x_val, y_val, x_test, y_test = _split_sets(x_val, y_val,
                                                            val=.5)
                 meta['test_size'] += x_test.shape[0]
+
             meta['y_shape'] = y_train[0].shape
             _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = x_train.shape
             meta['train_size'] += _n
@@ -701,7 +707,9 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
     if not stride:
             stride = segment_length
 
+    #print(len(data), data[0].shape)
     for jj, xx in enumerate(data):
+        #print('xx :', xx.shape)
         n_ch, n_t = xx.shape
         last_segment_start = n_t - segment_length
         #print('last start:', last_segment_start)
@@ -720,78 +728,86 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
         else:
             x_new = np.stack(segments, axis=0)
             x_new = np.expand_dims(x_new, 1)
+            #print("x_new:", x_new.shape)
 #        if jj == len(data) - 1:
 #            print("n_segm:", seq_length)
 #            print("x_new:", x_new.shape)
         x_out.append(x_new)
-    X = np.concatenate(x_out)
-#    print("X:", X.shape)
+    #print(len(x_out))
+    if len(x_out) > 1:
+        X = np.concatenate(x_out)
+    else:
+        X = x_out[0]
+    print("X:", X.shape)
     return X
 
 
-#def cont_split_indices(X, test_size=.1, test_segments=5):
-#    """X - 3d data array."""
-#    raw_len = X.shape[-1]
-#    test_samples = int(test_size*raw_len//test_segments)
-#    interval = raw_len//(test_segments+1)
-#    data_intervals = np.arange(test_samples, raw_len-test_samples, interval)
-#
-#    test_start = [ds + np.random.randint(interval - test_samples)
-#                  for ds in data_intervals]
-#
-#    test_indices = [(t_strt, t_strt+test_samples)
-#                    for t_strt in test_start[:-1]]
-#    return test_indices
+def cont_split_indices(X, test_size=.1, test_segments=5):
+    """X - 3d data array."""
+    raw_len = X.shape[-1]
+    test_samples = int(test_size*raw_len//test_segments)
+    interval = raw_len//(test_segments+1)
+    data_intervals = np.arange(test_samples, raw_len-test_samples, interval)
+
+    test_start = [ds + np.random.randint(interval - test_samples)
+                  for ds in data_intervals]
+
+    test_indices = [(t_strt, t_strt+test_samples)
+                    for t_strt in test_start[:-1]]
+    #print("test_indices:", test_indices)
+    return test_indices
 
 
-#def partition(data, test_indices):
-#    """Partition data according to ranges defined by `test_indices`.
-#
-#    Parameters
-#    ----------
-#    data : list of ndarray
-#        Data array to be partitioned.
-#
-#    test_indices : list
-#        Contains pairs of values [start, end], indicating where the data
-#        will be partitioned.
-#
-#    Returns
-#    -------
-#    x_train, x_test: lists of ndarrays
-#        The data partitioned into two sets.
-#
-#    Raises
-#    ------
-#        ValueError: If the shape of`test_indices` is incorrect.
-#
-#        AttributeError: If `test_indices` is empty.
-#    """
-#    if any(test_indices):
-#        if np.ndim(test_indices) == 1 and np.max(test_indices) < data.shape[0]:
-#            x_out = [data[test_indices, ...],
-#                     np.delete(data, test_indices, axis=0)][::-1]
-#        elif np.ndim(test_indices) == 2:
-#            bins = sorted(np.ravel(test_indices))
-#            # data is a list of segments of different lengths
-#            x_out = np.split(data, bins, axis=-1)
-#        else:
-#            raise ValueError('Could not split the data, check test_indices!')
-#
-#        x_out = [xt - np.median(xt, axis=-1, keepdims=True) for xt in x_out]
-#        x_train = x_out[0::2]
-#        x_test = x_out[1::2]
-#
-#        # print([xt.shape for xt in x_train])
-#        return x_train, x_test
-#    else:
-#        raise AttributeError('No test indices provided')
+def partition(data, test_indices):
+    """Partition continuous data according to ranges defined by `test_indices`.
+
+    Parameters
+    ----------
+    data : list of ndarray
+        Data array to be partitioned.
+
+    test_indices : list
+        Contains pairs of values [start, end], indicating where the data
+        will be partitioned.
+
+    Returns
+    -------
+    x_train, x_test: lists of ndarrays
+        The data partitioned into two sets.
+
+    Raises
+    ------
+        ValueError: If the shape of`test_indices` is incorrect.
+
+        AttributeError: If `test_indices` is empty.
+    """
+    if any(test_indices):
+        if np.ndim(test_indices) == 1 and np.max(test_indices) < data.shape[0]:
+            x_out = [data[test_indices, ...],
+                     np.delete(data, test_indices, axis=0)][::-1]
+        elif np.ndim(test_indices) == 2:
+            bins = sorted(np.ravel(test_indices))
+            # data is a 3d array
+            data = np.squeeze(data)
+            x_out = np.split(data, bins, axis=-1)
+        else:
+            raise ValueError('Could not split the data, check test_indices!')
+
+        #x_out = [xt - np.median(xt, axis=-1, keepdims=True) for xt in x_out]
+        x_train = x_out[0::2]
+        x_test = x_out[1::2]
+
+        #print([xt.shape for xt in x_train])
+        #print([xt.shape for xt in x_test])
+        return x_train, x_test
+    else:
+        raise AttributeError('No test indices provided')
 
 
 def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
                fs=None, scale_interval=None, crop_baseline=False,
                decimate=False, bp_filter=False, picks=None, segment=False,
-               aug_stride=None, seq_length=None):
+               aug_stride=None, seq_length=None, transform_targets=None):
     """Preprocess input data.
 
     Parameters
@@ -824,6 +840,7 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
 
     if bp_filter:
         assert len(bp_filter) == 2, "Invalid bp_filter values."
+        data = data.astype(np.float64)
         data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
                                    h_freq=bp_filter[1],
                                    method='iir', verbose=False)
@@ -837,13 +854,13 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
     if decimate:
         data = data[..., ::decimate]
 
-#    if input_type in ['continuous']:
+    if input_type in ['continuous']:
 #        # Placeholder for future segmentation. Not unit_tested
-#        test_inds = cont_split_indices(data, test_size=val_size,
-#                                       test_segments=5)
-#        x_train, x_val = partition(data, test_inds)
-#        y_train, y_val = partition(events, test_inds)
-
+        test_inds = cont_split_indices(data, test_size=val_size,
+                                       test_segments=5)
+        x_train, x_val = partition(data, test_inds)
+        y_train, y_val = partition(events, test_inds)
+        #print("partition:", type(y_train), len(y_train), y_train[0].shape)
     else:
         # TODO (Gabi): Leaving this in as a reminder for the BCI dataset
         # if data.shape[0] == 1:
@@ -864,18 +881,28 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
         x_val = _segment(x_val, segment_length=segment, stride=aug_stride,
                          input_type=input_type, seq_length=seq_length)
 
-#        if y_train.ndim == 3 and y_val.ndim == 3:
-#            y_train = _segment(y_train, segment_length=segment,
-#                               augment=augment,
-#                               stride=aug_stride, input_type=input_type,
-#                               seq_length=seq_length)
-#            y_val = _segment(y_val, segment_length=segment, augment=augment,
-#                             stride=aug_stride, input_type=input_type,
-#                             seq_length=seq_length)
-#        else:
-        y_train = np.repeat(y_train, x_train.shape[0]//y_train.shape[0],
-                            axis=0)
-        y_val = np.repeat(y_val, x_val.shape[0]//y_val.shape[0], axis=0)
+        if isinstance(y_train, list) or np.ndim(y_train) > 2:
+            y_train = _segment(y_train, segment_length=segment,
+                               stride=aug_stride, input_type=input_type,
+                               seq_length=seq_length)
+            y_val = _segment(y_val, segment_length=segment,
+                             stride=aug_stride, input_type=input_type,
+                             seq_length=seq_length)
+            #TODO: add process_y
+            if callable(transform_targets):
+                print("Using transform_targets")
+                #print(type(y_train), y_train[0].shape)
+                y_train = transform_targets(np.squeeze(y_train))
+                y_val = transform_targets(np.squeeze(y_val))
+            else:
+                print("Applying default transform to 3d target variables y = y[:,0,-50:].mean(-1)")
+                y_train = _process_labels(y_train)
+                y_val = _process_labels(y_val)
+
+        else:
+            y_train = np.repeat(y_train, x_train.shape[0]//y_train.shape[0],
+                                axis=0)
+            y_val = np.repeat(y_val, x_val.shape[0]//y_val.shape[0], axis=0)
     else:
         x_train = np.expand_dims(x_train, 1)
         x_val = np.expand_dims(x_val, 1)
@@ -883,57 +910,18 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
     x_train = np.swapaxes(x_train, -2, -1)
     x_val = np.swapaxes(x_val, -2, -1)
 
-#    print('train preprocessed:', x_train.shape, y_train.shape)
+    print('train preprocessed:', x_train.shape, y_train.shape)
 #    print('val preprocessed:', x_val.shape, y_val.shape)
 
     return x_train, y_train, x_val, y_val
 
-# def process_labels(y, scale=False, decimate=False, normalize=False,
-#                   transpose=False, transform=False, segment=False):
-#    """Preprocess target variables."""
-#    if transpose:
-#        y = np.swapaxes(y, -2, -1)
-#
-#    if segment:
-#        y, _ = _segment(y, labels=None, segment_length=segment)
-#    if decimate:
-#        assert y.ndim == 3
-#        y = y[..., ::decimate]
-#    if normalize:
-#        y = scale_to_baseline(y, baseline=None, crop_baseline=False)
-#    y = np.mean(y**2, axis=-1)
-    # print('y', y.shape)
-#    if isinstance(transform, callable):
-#        y = transform(y)
-#    return y
+def _process_labels(y, scale=False, decimate=False, normalize=False,
+                   transpose=False, transform=False, segment=False):
 
-
-#def preprocess_continuous_labels(data, targets, scale=True, segment=200,
-#                                 augment=False, val_size=0.1, aug_stride=10,
-#                                 transform_targets=True, bp_filter=False,
-#                                 fs=None, decimate=None, input_type='trials',
-#                                 seq_length=None):
-#    """
-#    Returns
-#    -------
-#    x_train, x_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
-#    y_train, y_val - arrays or lists of arrays of dimensions [n_epochs, n_seq, n_targets]
-#    """
-#
-#    if transform_targets:
-#
-#        if input_type == 'seq':
-#            y_train = [np.mean(y_tr[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_tr in y_train]
-#            y_val = [np.mean(y_v[..., 0, -aug_stride:], axis=-1, keepdims=True) for y_v in y_val]
-##            y_train = [np.mean(y_tr[..., -aug_stride:], axis=-1) for y_tr in y_train]
-##            y_val = [np.mean(y_v[..., -aug_stride:], axis=-1) for y_v in y_val]
-#            print('preproc cont', len(x_train), x_train[0].shape, y_train[0].shape)
-#        else:
-#            y_train = np.mean(y_train[...,0, -aug_stride:], axis=-1, keepdims=True)
-#            y_val = np.mean(y_val[...,0, -aug_stride:], axis=-1, keepdims=True)
-##            y_train -= y_median[None,0, :]
-##            y_val -= y_median[None,0,  :]
-##            y_train /= qrange[None,0, :]
-##            y_val /= qrange[None, 0, :]
-#            print('preproc cont', x_train.shape, y_train.shape)
-#    return x_train, y_train, x_val, y_val
+    #    """Preprocess target variables."""
+    y_out = y[:, 0, -50:].mean(-1, keepdims=True)
+    #y_out = np.squeeze(np.concatenate(y_out))
+    if np.ndim(y_out) == 1:
+        y_out = np.expand_dims(y_out, -1)
+    print("_process_labels out:", y_out.shape)
+    return y_out
