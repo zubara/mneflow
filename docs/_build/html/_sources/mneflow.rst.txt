@@ -1,19 +1,19 @@
 MNEflow API
 ===========
 
-mneflow.models.Model class
-**************************
+mneflow.models.BaseModel class
+******************************
 
-.. autoclass:: mneflow.models.Model
+.. autoclass:: mneflow.models.BaseModel
     :members:
     :undoc-members:
     :show-inheritance:
 
 Implemented models
-------------------
+******************
 
 LFCNN
-*****
+-----
 
 .. autoclass:: mneflow.models.LFCNN
     :members:
@@ -21,7 +21,7 @@ LFCNN
     :show-inheritance:
 
 VARCNN
-******
+------
 
 .. autoclass:: mneflow.models.VARCNN
     :members:
@@ -29,31 +29,39 @@ VARCNN
     :show-inheritance:
 
 EEGNet
-******
+------
 
 .. autoclass:: mneflow.models.EEGNet
     :members:
     :undoc-members:
     :show-inheritance:
 
+FBCSP_ShallowNet
+----------------
+
+.. autoclass:: mneflow.models.FBCSP_ShallowNet
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+Deep4
+-----
+
+.. autoclass:: mneflow.models.Deep4
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 mneflow.Dataset
----------------
+***************
 
 .. autoclass:: mneflow.data.Dataset
     :members:
     :undoc-members:
     :show-inheritance:
 
-mneflow.Optimizer
------------------
-
-.. autoclass:: mneflow.optimize.Optimizer
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 mneflow.utils
--------------
+*************
 
 .. automodule:: mneflow.utils
     :members:
@@ -62,11 +70,10 @@ mneflow.utils
 
 
 mneflow.layers
---------------
+**************
 
 .. automodule:: mneflow.layers
     :members:
-    :undoc-members:
     :show-inheritance:
 
 
