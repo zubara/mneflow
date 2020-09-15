@@ -1,10 +1,10 @@
 MNEflow API
 ===========
 
-mneflow.models.Model class
-**************************
+mneflow.models.BaseModel class
+******************************
 
-.. autoclass:: mneflow.models.Model
+.. autoclass:: mneflow.models.BaseModel
     :members:
     :undoc-members:
     :show-inheritance:
@@ -36,18 +36,26 @@ EEGNet
     :undoc-members:
     :show-inheritance:
 
-mneflow.Dataset
-***************
+FBCSP_ShallowNet
+----------------
 
-.. autoclass:: mneflow.data.Dataset
+.. autoclass:: mneflow.models.FBCSP_ShallowNet
     :members:
     :undoc-members:
     :show-inheritance:
 
-mneflow.Optimizer
-*****************
+Deep4
+-----
 
-.. autoclass:: mneflow.optimize.Optimizer
+.. autoclass:: mneflow.models.Deep4
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+mneflow.Dataset
+***************
+
+.. autoclass:: mneflow.data.Dataset
     :members:
     :undoc-members:
     :show-inheritance:
