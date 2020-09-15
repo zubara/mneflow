@@ -84,14 +84,15 @@ model = mneflow.models.LFCNN(dataset, lf_params)
 model.build()
 #%%
 model.train(3, eval_step=100, val_batch=None, min_delta=1e-6,
-              early_stopping=10)
+              early_stopping=3)
 #%%
 model.compute_patterns(meta['val_paths'])
 #%%
 
-#model.plot_out_weights()
-
-#model.plot_patterns('Vectorview-grad', sorting='best')
+model.plot_patterns('Vectorview-grad', sorting='compwise_loss')
+#%%
+model.update_log()
+#%%
 #model.plot_spectra(sorting='best', log=False, norm_spectra='welch')
 #optimizer_params = dict(l1_lambda=3e-3, learn_rate=3e-4, task='classification')
 #optim = tf.keras.optimizers.Adam(learning_rate=3e-4)
