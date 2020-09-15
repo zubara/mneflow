@@ -33,7 +33,8 @@ from tensorflow.keras.layers import Flatten, Dropout, Conv2D, DepthwiseConv2D
 from tensorflow.keras.initializers import Constant
 #from .layers import LSTMv1
 from tensorflow.keras import regularizers as k_reg, constraints, layers
-
+import csv
+import os
 
 def uniquify(seq):
     un = []
@@ -56,9 +57,6 @@ class BaseModel():
         -----------
         Dataset : mneflow.Dataset
             `Dataset` object.
-
-        Optimizer : mneflow.Optimizer
-            `Optimizer` object.
 
         specs : dict
             Dictionary of model-specific hyperparameters. Must include
@@ -140,29 +138,21 @@ class BaseModel():
         Parameters
         -----------
 
-        n_iter : int
-            Maximum number of training iterations.
+        n_epochs : int
+            Maximum number of training eopchs.
 
-        eval_step : int
-            How often to evaluate model performance during training.
+        eval_step : int, None
+            iterations per epoch. If None each epoch passes the training set
+            exactly once
 
         early_stopping : int
             Patience parameter for early stopping. Specifies the number
-            of 'eval_step's during which validation cost is allowed to
+            of epochs's during which validation cost is allowed to
             rise before training stops.
 
         min_delta : float, optional
             Convergence threshold for validation cost during training.
             Defaults to 1e-6.
-
-        prune_weights : bool, optional
-            If set to True, the model will set disable dropout regularization
-            when patience count = early_stopping - 3. This can help reduce
-            redundancies and allow more straightforward model interpretation.
-            It can also affect predictive performance.
-            Defaults to False
-
-
         """
 
         stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
@@ -176,12 +166,14 @@ class BaseModel():
             validation_steps = max(1, val_size // val_batch)
         else:
             validation_steps = 1
+        self.train_params = [n_epochs, eval_step, early_stopping]
 
         self.t_hist = self.km.fit(self.dataset.train,
                                validation_data=self.dataset.val,
                                epochs=n_epochs, steps_per_epoch=eval_step,
                                shuffle=True, validation_steps=validation_steps,
                                callbacks=[stop_early], verbose=1)
+
 
     def plot_hist(self):
         """Plot loss history during training."""
@@ -208,116 +200,51 @@ class BaseModel():
 
 
 
-#    def _add_dataset(self, data_path):
-#        """Add as test dataset the one specified by `data_path`.
-#
-#        Parameters
-#        ----------
-#        data_path : str, list of str
-#            Path to .tfrecords file(s).
-#        """
-#        self.dataset.test = self.dataset._build_dataset(data_path,
-#                                                        n_batch=None)
-#        self.test_iter, self.test_handle = self._start_iterator(self.dataset.test)
+    def update_log(self):
+        """Logs experiment to self.model_path + self.scope + '_log.csv'.
 
-#    def evaluate_performance(self, data_path=None):
-#        """Compute performance metric on a TFR dataset specified by
-#        `data_path`.
-#
-#        Parameters
-#        ----------
-#        data_path : str, list of str
-#            path to .tfrecords file(s).
-#
-#        Raises:
-#        -------
-#            AttributeError: If `data_path` is not specified.
-#        """
-#        if not data_path:
-#            raise AttributeError('Specify data_path!')
-#
-#        # elif not hasattr(self.dataset, 'test'):
-#        self._add_dataset(data_path)
-#
-#        acc = self.sess.run(self.accuracy,
-#                            feed_dict={self.handle: self.test_handle,
-#                                       self.rate: 0.})
-#
-#        print('Finished: acc: %g +\\- %g' % (np.mean(acc), np.std(acc)))
-#        return np.mean(acc)
-#
-#    def predict(self, data_path):
-#        """Predict model output on a TFR dataset specified by
-#        `data_path`.
-#
-#        Parameters
-#        ----------
-#        data_path : str, list of str
-#            Path to .tfrecords file(s).
-#
-#        Returns:
-#        --------
-#        pred: int or float
-#            The model prediction.
-#
-#        true: int or float
-#            The true target value.
-#
-#        Raises:
-#        -------
-#            AttributeError: If `data_path` is not specified.
-#        """
-#        if not data_path:
-#            raise AttributeError('Specify data_path!')
-#        else:
-#            self._add_dataset(data_path)
-#            pred, true = self.sess.run(
-#                    [self.y_pred, self.y_],
-#                    feed_dict={self.handle: self.test_handle, self.rate: 0.})
-#            return pred, true
-#
-#    def update_log(self):
-#        """Logs experiment to self.model_path + self.scope + '_log.csv'.
-#
-#        If the file exists, appends a line to the existing file.
-#        """
-#        appending = os.path.exists(self.model_path + self.scope + '_log.csv')
-#
-#        log = dict()
-#        log['data_id'] = self.dataset.h_params['data_id']
-#        log['eval_step'], log['patience'], log['n_iter'] = self.train_params
-#        log['data_path'] = self.dataset.h_params['savepath']
-#        log['decim'] = str(self.dataset.decim)
-#
-#        if self.dataset.class_subset:
-#            log['class_subset'] = '-'.join(
-#                    str(self.dataset.class_subset).split(','))
-#        else:
-#            log['class_subset'] = 'all'
-#
-#        log['y_shape'] = np.prod(self.dataset.h_params['y_shape'])
-#        log['fs'] = str(self.dataset.h_params['fs'])
-#        log.update(self.optimizer.params)
-#        log.update(self.specs)
-#
-#        v_acc, v_loss = self.sess.run(
-#                [self.accuracy, self.cost],
-#                feed_dict={self.handle: self.val_handle, self.rate: 0.})
-#        log['v_acc'] = v_acc
-#        log['v_loss'] = v_loss
-#
-#        t_acc, t_loss = self.sess.run(
-#                [self.accuracy, self.cost],
-#                feed_dict={self.handle: self.train_handle, self.rate: 0.})
-#        log['train_acc'] = t_acc
-#        log['train_loss'] = t_loss
-#        self.log = log
-#
-#        with open(self.model_path + self.scope + '_log.csv', 'a') as csv_file:
-#            writer = csv.DictWriter(csv_file, fieldnames=self.log.keys())
-#            if not appending:
-#                writer.writeheader()
-#            writer.writerow(self.log)
+        If the file exists, appends a line to the existing file.
+        """
+        appending = os.path.exists(self.model_path + self.scope + '_log.csv')
+
+        log = dict()
+        log['data_id'] = self.dataset.h_params['data_id']
+        log['nepochs'], log['eval_step'], log['early_stopping'] = self.train_params
+        log['data_path'] = self.dataset.h_params['savepath']
+        log['decim'] = str(self.dataset.decim)
+
+        if self.dataset.class_subset:
+            log['class_subset'] = '-'.join(
+                    str(self.dataset.class_subset).split(','))
+        else:
+            log['class_subset'] = 'all'
+
+        log['y_shape'] = np.prod(self.dataset.h_params['y_shape'])
+        log['fs'] = str(self.dataset.h_params['fs'])
+        #log.update(self.optimizer.params)
+        log.update(self.specs)
+
+        #v_acc, v_loss = self.km.evaluate)
+        self.v_loss, self.v_perf = self.km.evaluate(self.dataset.val, steps=1, verbose=0)
+        log['v_perf'] = self.v_perf
+        log['v_loss'] = self.v_loss
+
+
+        self.tr_loss, self.tr_perf = self.km.evaluate(self.dataset.train, steps=10, verbose=0)
+        log['tr_perf'] = self.tr_perf
+        log['tr_loss'] = self.tr_loss
+
+        if hasattr(self.dataset, 'test'):
+            self.t_loss, self.t_perf = self.km.evaluate(self.dataset.test, steps=1, verbose=0)
+            log['test_acc'] = self.t_acc
+            log['test_loss'] = self.t_loss
+        self.log = log
+
+        with open(self.model_path + self.scope + '_log.csv', 'a') as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=self.log.keys())
+            if not appending:
+                writer.writeheader()
+            writer.writerow(self.log)
 #
 #    def evaluate_minibatches(self, data_path, batch_size=None, update=False):
 #        """Compute performance metric on a TFR dataset specified by path
@@ -360,116 +287,52 @@ class BaseModel():
 #
 #        return np.mean(batch_metrics), np.mean(batch_costs)
 #
-#    def plot_cm(self, dataset='validation', class_names=None, normalize=False):
-#
-#        """Plot a confusion matrix.
-#
-#        Parameters
-#        ----------
-#
-#        dataset : str {'training', 'validation'}
-#            Which dataset to use for plotting confusion matrix
-#
-#        class_names : list of str, optional
-#            `class_names` is used as axes ticks. If not provided, the
-#            class labels are used.
-#
-#        normalize : bool
-#            Whether to return percentages (if True) or counts (False).
-#
-#        Raises:
-#        -------
-#            ValueError: If `dataset` has an unsupported value.
-#
-#        Returns:
-#        --------
-#            f : Figure
-#                Figure handle.
-#        """
-#        if dataset == 'validation':
-#            feed_dict = {self.handle: self.val_handle, self.rate: 0.}
-#        elif dataset == 'training':
-#            feed_dict = {self.handle: self.train_handle, self.rate: 0.}
-#        elif dataset == 'test':
-#            feed_dict = {self.handle: self.test_handle, self.rate: 0.}
-#        else:
-#            raise ValueError('Invalid dataset type.')
-#
-#        y_true, y_pred = self.sess.run([self.y_, self.p_classes],
-#                                       feed_dict=feed_dict)
-#        y_pred = np.argmax(y_pred, 1)
-#        y_true = np.argmax(y_true, 1)
-#
-#        f = plt.figure()
-#        cm = confusion_matrix(y_true, y_pred)
-#        title = 'Confusion matrix: '+dataset.upper()
-#        if normalize:
-#            cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-#
-#        plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-#        plt.title(title)
-#        ax = f.gca()
-#        ax.set_ylabel('True label')
-#        ax.set_xlabel('Predicted label')
-#        plt.colorbar()
-#
-#        if not class_names:
-#            class_names = np.arange(len(np.unique(y_true)))
-#        tick_marks = np.arange(len(class_names))
-#        plt.xticks(tick_marks, class_names, rotation=45)
-#        plt.yticks(tick_marks, class_names)
-#        plt.ylim(-0.5, tick_marks[-1]+0.5)
-#
-#        fmt = '.2f' if normalize else 'd'
-#        thresh = cm.max() / 2.
-#        for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-#            plt.text(j, i, format(cm[i, j], fmt),
-#                     horizontalalignment="center",
-#                     color="white" if cm[i, j] > thresh else "black")
-#        return f
-
-
-
 
 
 class LFCNN(BaseModel):
     """LF-CNN. Includes basic parameter interpretation options.
 
     For details see [1].
-
-    Parameters
-    ----------
-    n_ls : int
-        Number of latent components.
-        Defaults to 32.
-
-    nonlin : callable
-        Activation function of the temporal Convolution layer.
-        Defaults to tf.nn.relu
-
-    filter_length : int
-        Length of spatio-temporal kernels in the temporal
-        convolution layer. Defaults to 7.
-
-    pooling : int
-        Pooling factor of the max pooling layer. Defaults to 2
-
-    pool_type : str {'avg', 'max'}
-        Type of pooling operation. Defaults to 'max'.
-
-    padding : str {'SAME', 'FULL', 'VALID'}
-        Convolution padding. Defaults to 'SAME'.
-
-    stride : int
-        Stride of the max pooling layer. Defaults to 1.
-
-
     References
     ----------
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
     def __init__(self, Dataset, specs):
+        """"
+
+        Parameters
+        ----------
+        Dataset : mneflow.Dataset
+
+        specs : dict
+                dictionary of model hyperparameters {
+
+        n_latent : int
+            Number of latent components.
+            Defaults to 32.
+
+        nonlin : callable
+            Activation function of the temporal convolution layer.
+            Defaults to tf.nn.relu
+
+        filter_length : int
+            Length of spatio-temporal kernels in the temporal
+            convolution layer. Defaults to 7.
+
+        pooling : int
+            Pooling factor of the max pooling layer. Defaults to 2
+
+        pool_type : str {'avg', 'max'}
+            Type of pooling operation. Defaults to 'max'.
+
+        padding : str {'SAME', 'FULL', 'VALID'}
+            Convolution padding. Defaults to 'SAME'.}
+            """"
+
+    stride : int
+        Stride of the max pooling layer. Defaults to 1.
+        self.scope = 'lfcnn'
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -526,6 +389,12 @@ class LFCNN(BaseModel):
 
     #@tf.function
     def _get_spatial_covariance(self, dataset):
+        """Compute spatial covariance matrcix from the dataset
+
+        Parameters:
+        -----------
+        dataset : tf.data.Dataset
+        """
         n1_covs = []
         for x, y in dataset.take(5):
             print('x:', x.shape)
@@ -599,22 +468,26 @@ class LFCNN(BaseModel):
             raise AttributeError('Specify dataset or data path.')
 
         X, y = [row for row in vis_dict.take(1)][0]
-        y = y.numpy()
+
+        self.out_w_flat = self.fin_fc.w.numpy()
+        self.out_weights = np.reshape(self.out_w_flat, [-1, self.dmx.size,
+                                              np.prod(self.y_shape)])
+        self.out_biases = self.fin_fc.b.numpy()
+        self.feature_relevances = self.get_component_relevances(X, y)
+
+
+
+        #compute temporal convolution layer outputs for vis_dics
         tc_out = self.pool(self.tconv(self.dmx(X)).numpy())
-        #X = tf.squeeze(X)
+
+        #compute data covariance
         X = X - tf.reduce_mean(X, axis=-2, keepdims=True)
         X = tf.transpose(X, [3, 0, 1, 2])
         X = tf.reshape(X, [X.shape[0], -1])
         self.dcov = tf.matmul(X, tf.transpose(X))
 
-        #X, y = X.numpy(), y.numpy()
-
-        # Spatial stuff
+        # get spatial extraction fiter weights
         demx = self.dmx.w.numpy()
-        #data = np.squeeze(X.transpose([1, 2, 3, 0]))
-        #data = data.reshape([data.shape[0], -1], order='F')
-
-        #self.dcov, _ = ledoit_wolf(data.T)
         self.lat_tcs = np.dot(demx.T, X)
         del X
 
@@ -629,73 +502,48 @@ class LFCNN(BaseModel):
 
         kern = self.tconv.filters.numpy()
 
-        out_w = self.fin_fc.w.numpy()
 
-        print('out_w:', out_w.shape)
+
+        print('self.out_w_flat:', self.out_w_flat.shape)
 
         #  Temporal conv stuff
         self.filters = np.squeeze(kern)
         self.tc_out = np.squeeze(tc_out)
-        self.out_weights = np.reshape(out_w, [-1, self.dmx.size,
-                                              np.prod(self.y_shape)])
+        self.corr_to_output = self.get_output_correlations(y)
 
         print('demx:', demx.shape,
               'kern:', self.filters.shape,
               'tc_out:', self.tc_out.shape,
-              'out_w:', self.out_weights.shape)
+              'out_weights:', self.out_weights.shape)
 
-        self.get_output_correlations(y)
 
-        self.out_biases = self.fin_fc.b.numpy()
-#        if data_path:
-#            vis_dataset = self.dataset._build_dataset(data_path, n_batch=None,
-#                                                      repeat=False)
-#            cov = self._get_spatial_covariance(vis_dataset)
-#            print(cov.shape)
-#            return
-#
-#        #elif not hasattr(self.dataset, 'test') and not data_path:
-#        #    raise AttributeError('Specify data path.')
-#
-#        #vis_dict = {self.handle: self.test_handle, self.rate: 0}
-#
-#        # Spatial stuff
-#        #data, demx = self.sess.run([self.X, self.demix.W], feed_dict=vis_dict)
-#        data = np.squeeze(data.transpose([1, 2, 3, 0]))
-#        data = data.reshape([data.shape[0], -1], order='F')
-#
-#        self.dcov, _ = ledoit_wolf(data.T)
-#        self.lat_tcs = np.dot(demx.T, data)
-#        del data
-#
-#        if 'patterns' in output:
-#            self.patterns = np.dot(self.dcov, demx)
-#            if 'full' in output:
-#                self.lat_cov = ledoit_wolf(self.lat_tcs)
-#                self.lat_prec = np.linalg.inv(self.lat_cov)
-#                self.patterns = np.dot(self.patterns, self.lat_prec)
-#        else:
-#            self.patterns = demx
-#
-#        kern, tc_out, out_w = self.sess.run(
-#                [self.tconv1.filters, self.tconv_out, self.fin_fc.w],
-#                feed_dict=vis_dict)
-#        print('out_w:', out_w.shape)
-#
-#        #  Temporal conv stuff
-#        self.filters = np.squeeze(kern)
-#        self.tc_out = np.squeeze(tc_out)
-#        self.out_weights = np.reshape(out_w, [-1, self.specs['n_ls'],
-#                                      np.prod(self.y_shape)])
-#
-#        print('demx:', demx.shape,
-#              'kern:', self.filters.shape,
-#              'tc_out:', self.tc_out.shape,
-#              'out_w:', self.out_weights.shape)
-#
-#        self.get_output_correlations()
-#
-#        self.out_biases = self.sess.run(self.fin_fc.b, feed_dict=vis_dict)
+    def get_component_relevances(self, X, y):
+        """Compute component relevances by recursive elimination
+        """"
+        model_weights = self.km.get_weights()
+        base_loss, base_performance = self.km.evaluate(X, y, verbose=0)
+        #if len(base_performance > 1):
+        #    base_performance = bbase_performance[0]
+        feature_relevances_loss = []
+        n_out_t = self.out_weights.shape[0]
+        n_out_y = self.out_weights.shape[-1]
+        zeroweights = np.zeros((n_out_t,))
+        for i in range(self.specs["n_latent"]):
+            loss_per_class = []
+            for jj in range(n_out_y):
+                new_weights = self.out_weights.copy()
+                new_bias = self.out_biases.copy()
+                new_weights[:, i, jj] = zeroweights
+                new_bias[jj] = 0
+                new_weights = np.reshape(new_weights, self.out_w_flat.shape)
+                model_weights[-2] = new_weights
+                model_weights[-1] = new_bias
+                self.km.set_weights(model_weights)
+                loss = self.km.evaluate(X, y, verbose=0)[0]
+                loss_per_class.append(base_loss - loss)
+            feature_relevances_loss.append(np.array(loss_per_class))
+            self.component_relevance_loss = np.array(feature_relevances_loss)
+
 
     def get_output_correlations(self, y_true):
         """Computes a similarity metric between each of the extracted
@@ -704,15 +552,15 @@ class LFCNN(BaseModel):
         The metric is a Manhattan distance for dicrete targets, and
         Spearman correlation for continuous targets.
         """
-        self.rfocs = []
-
+        corr_to_output = []
+        y_true = y_true.numpy()
         flat_feats = self.tc_out.reshape(self.tc_out.shape[0], -1)
 
         if self.dataset.h_params['target_type'] in ['float', 'signal']:
             for y_ in y_true.T:
 
                 rfocs = np.array([spearmanr(y_, f)[0] for f in flat_feats.T])
-                self.rfocs.append(rfocs.reshape(self.out_weights.shape[:-1]))
+                corr_to_output.append(rfocs.reshape(self.out_weights.shape[:-1]))
 
         elif self.dataset.h_params['target_type'] == 'int':
             y_true = y_true/np.linalg.norm(y_true, ord=1, axis=0)[None, :]
@@ -723,12 +571,13 @@ class LFCNN(BaseModel):
             for y_ in y_true.T:
                 print('y.T:', y_.shape)
                 rfocs = 2. - np.sum(np.abs(flat_feats - y_[:, None]), 0)
-                self.rfocs.append(rfocs.reshape(self.out_weights.shape[:-1]))
-        print()
-        self.rfocs = np.dstack(self.rfocs)
+                corr_to_output.append(rfocs.reshape(self.out_weights.shape[:-1]))
 
-        if np.any(np.isnan(self.rfocs)):
-            self.rfocs[np.isnan(self.rfocs)] = 0
+        corr_to_output = np.dstack(corr_to_output)
+
+        if np.any(np.isnan(corr_to_output)):
+            corr_to_output[np.isnan(corr_to_output)] = 0
+        return corr_to_output
 
     # --- LFCNN plot functions ---
     def plot_out_weights(self, pat=None, t=None, tmin=-0.1, sorting='weight'):
@@ -737,7 +586,7 @@ class LFCNN(BaseModel):
         Parameters
         ----------
 
-        pat : int [0, self.specs['n_ls'])
+        pat : int [0, self.specs['n_latent'])
             Index of the latent component to higlight
 
         t : int [0, self.h_params['n_t'])
@@ -754,12 +603,7 @@ class LFCNN(BaseModel):
             ax = [ax]
 
         for ii in range(len(ax)):
-            if 'weight' in sorting:
-                F = self.out_weights[..., ii].T
-            elif 'spear' in sorting:
-                F = self.rfocs[..., ii].T
-            else:
-                F = self.rfocs[..., ii].T * self.out_weights[..., ii].T
+            F = self.out_weights[..., ii].T
 
             tstep = self.specs['stride']/float(self.dataset.h_params['fs'])
             times = tmin+tstep*np.arange(F.shape[-1])
@@ -769,9 +613,8 @@ class LFCNN(BaseModel):
 
             r = []
             if np.any(pat) and np.any(t):
-                r = [ptch.Rectangle((times[tt], pp), width=tstep,
-                                    height=1, angle=0.0)
-                     for pp, tt in zip(pat[ii], t[ii])]
+                r = [ptch.Rectangle((times[tt], pat[ii]), width=tstep,
+                                    height=1, angle=0.0)for tt in t[ii]]
 
                 pc = collections.PatchCollection(r, facecolor='red', alpha=.5,
                                                  edgecolor='red')
@@ -850,7 +693,7 @@ class LFCNN(BaseModel):
 
         ax[1, 1].set_title('Feature relevance map')
 
-    def _sorting(self, sorting='best'):
+    def _sorting(self, sorting='compwise_loss'):
         """Specify which components to plot.
 
         Parameters
@@ -861,6 +704,10 @@ class LFCNN(BaseModel):
             'l2' - plots all components sorted by l2 norm of their
             spatial filters in descending order.
 
+            'commpwise_loss' - compute the effect of eliminating the latent
+            component on the validation loss. Perofrmed for each class
+            separately.
+
             'weight' - plots a single component that has a maximum
             weight for each class in the output layer.
 
@@ -868,13 +715,16 @@ class LFCNN(BaseModel):
             feature in the output layer that has maximum correlation
             with each target variable.
 
-            'best' - plots a single component, has maximum relevance
+            'weight_corr' - plots a single component, has maximum relevance
             value defined as output_layer_weught*correlation.
 
-            'best_spatial' - same as 'best', but the components
-            relevances are defined as the sum of all relevance scores
-            over all timepoints.
+        Returns:
+        --------
+        order : list of int
+            indices of relevant components
 
+        ts : list of int
+            indices of relevant timepoints
         """
         order = []
         ts = []
@@ -884,17 +734,17 @@ class LFCNN(BaseModel):
             self.F = self.out_weights[..., 0].T
             ts = None
 
-        elif sorting == 'best_spatial':
+        elif sorting == 'compwise_loss':
             for i in range(self.out_dim):
-                self.F = self.out_weights[..., i].T * self.rfocs[..., i].T
-                pat = np.argmax(self.F.sum(-1))
-                order.append(np.tile(pat, self.F.shape[1]))
+                self.F = self.out_weights[..., i].T
+                pat = np.argsort(self.component_relevance_loss[:, i])[:1]
+                order.append(np.array(pat))
                 ts.append(np.arange(self.F.shape[-1]))
 
-        elif sorting == 'best':
+        elif sorting == 'weight_corr':
             for i in range(self.out_dim):
                 self.F = np.abs(self.out_weights[..., i].T
-                                * self.rfocs[..., i].T)
+                                * self.corr_to_output[..., i].T)
                 pat, t = np.where(self.F == np.max(self.F))
                 print('Maximum spearman r * weight:', np.max(self.F))
                 order.append(pat)
@@ -910,30 +760,21 @@ class LFCNN(BaseModel):
 
         elif sorting == 'spear':
             for i in range(self.out_dim):
-                self.F = self.rfocs[..., i].T
+                self.F = self.corr_to_output[..., i].T
                 print('Maximum r_spear:', np.max(self.F))
                 pat, t = np.where(self.F == np.max(self.F))
                 order.append(pat)
                 ts.append(t)
-
-        elif isinstance(sorting, int):
-            for i in range(self.out_dim):
-                self.F = self.out_weights[..., i].T * self.rfocs[..., i].T
-                pat, t = np.where(self.F >= np.percentile(self.F, sorting))
-                order.append(pat)
-                ts.append(t)
-
         else:
-            print('ELSE!')
-            order = np.arange(self.specs['n_ls'])
-            self.F = self.out_weights[..., 0].T
+            print("Sorting {:s} not implemented".format(sorting))
+            return 0, 0
 
         order = np.array(order)
         ts = np.array(ts)
         return order, ts
 
     def plot_patterns(self, sensor_layout=None, sorting='l2', percentile=90,
-                      spectra=False, scale=False, names=False):
+                      scale=False, names=False):
         """Plot informative spatial activations patterns for each class
         of stimuli.
 
@@ -946,13 +787,6 @@ class LFCNN(BaseModel):
         sorting : str, optional
             Component sorting heuristics. Defaults to 'l2'.
             See model._sorting
-
-        spectra : bool, optional
-            If True will also plot frequency responses of the associated
-            temporal filters. Defaults to False.
-
-        fs : float
-            Sampling frequency.
 
         scale : bool, otional
             If True will min-max scale the output. Defaults to False.
@@ -972,12 +806,12 @@ class LFCNN(BaseModel):
             self.fake_evoked = evoked.EvokedArray(self.patterns, info)
 
         order, ts = self._sorting(sorting)
-        uorder = uniquify(order.ravel())
-        self.uorder = uorder
-        l_u = len(uorder)
+        #uorder = uniquify(order.ravel())
+        self.uorder = np.squeeze(order)
+        l_u = len(self.uorder)
 
         if sensor_layout:
-            self.fake_evoked.data[:, :l_u] = self.fake_evoked.data[:, uorder]
+            self.fake_evoked.data[:, :l_u] = self.fake_evoked.data[:, self.uorder]
             self.fake_evoked.crop(tmax=float(l_u))
             if scale:
                 _std = self.fake_evoked.data[:, :l_u].std(0)
@@ -1041,12 +875,12 @@ class LFCNN(BaseModel):
                 fr, psd = welch(self.lat_tcs, fs=self.fs, nperseg=256)
                 self.d_psds = psd[:, :-1]
 
-            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
-                ar = []
-                for i, ltc in enumerate(self.lat_tcs):
-                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
-                    ar.append(coef[None, :])
-                self.ar = np.concatenate(ar)
+#            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
+#                ar = []
+#                for i, ltc in enumerate(self.lat_tcs):
+#                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
+#                    ar.append(coef[None, :])
+#                self.ar = np.concatenate(ar)
 
         order, ts = self._sorting(sorting)
         uorder = uniquify(order.ravel())
@@ -1109,409 +943,11 @@ class LFCNN(BaseModel):
                 ax[i, jj].set_xlim(0, 125.)
         return f
 
-#    # --- LFCNN plot functions ---
-#    def plot_out_weights(self, pat=None, t=None, tmin=-0.1, sorting='weight'):
-#        """Plots the weights of the output layer.
-#
-#        Parameters
-#        ----------
-#
-#        pat : int [0, self.specs['n_ls'])
-#            Index of the latent component to higlight
-#
-#        t : int [0, self.h_params['n_t'])
-#            Index of timepoint to highlight
-#
-#        """
-#        vmin = np.min(self.out_weights)
-#        vmax = np.max(self.out_weights)
-#
-#        f, ax = plt.subplots(1, np.prod(self.y_shape))
-#        if not isinstance(ax, np.ndarray):
-#            ax = [ax]
-#
-#        for i in range(len(ax)):
-#            if 'weight' in sorting:
-#                F = self.out_weights[..., i].T
-#            elif 'spear' in sorting:
-#                F = self.rfocs[..., i].T
-#            else:
-#                F = self.rfocs[..., i].T * self.out_weights[..., i].T
-#
-#            tstep = self.specs['stride']/float(self.fs)
-#            times = tmin+tstep*np.arange(F.shape[-1])
-#
-#            im = ax[i].pcolor(times, np.arange(self.specs['n_ls'] + 1), F,
-#                              cmap='bone_r', vmin=vmin, vmax=vmax)
-#
-#            r = []
-#            if np.any(pat) and np.any(t):
-#                r = [ptch.Rectangle((times[t], p), width=tstep,
-#                                    height=1, angle=0.0)
-#                     for p, t in zip(pat[i], t[i])]
-#
-#                pc = collections.PatchCollection(r, facecolor='red', alpha=.5,
-#                                                 edgecolor='red')
-#                ax[i].add_collection(pc)
-#
-#        f.colorbar(im, ax=ax[-1])
-#        plt.show()
-#
-#    def plot_waveforms(self, tmin=0):
-#        """Plots timecourses of latent components.
-#
-#        Parameters
-#        ----------
-#        tmin : float
-#            Beginning of the MEG epoch with regard to reference event.
-#            Defaults to 0.
-#        """
-#        f, ax = plt.subplots(2, 2)
-#
-#        nt = self.dataset.h_params['n_t']
-#        self.waveforms = np.squeeze(
-#                self.lat_tcs.reshape([self.specs['n_ls'], -1, nt]).mean(1))
-#
-#        tstep = 1/float(self.fs)
-#        times = tmin + tstep*np.arange(nt)
-#        [ax[0, 0].plot(times, wf + 1e-1*i)
-#         for i, wf in enumerate(self.waveforms) if i not in self.uorder]
-#
-#        ax[0, 0].plot(times,
-#                      self.waveforms[self.uorder[0]] + 1e-1*self.uorder[0],
-#                      'k.')
-#        ax[0, 0].set_title('Latent component waveforms')
-#
-#        bias = self.sess.run(self.tconv1.b)[self.uorder[0]]
-#        ax[0, 1].stem(self.filters.T[self.uorder[0]], use_line_collection=True)
-#        ax[0, 1].hlines(bias, 0, len(self.filters.T[self.uorder[0]]),
-#                        linestyle='--', label='Bias')
-#        ax[0, 1].legend()
-#        ax[0, 1].set_title('Filter coefficients')
-#
-#        conv = np.convolve(self.filters.T[self.uorder[0]],
-#                           self.waveforms[self.uorder[0]], mode='same')
-#        vmin = conv.min()
-#        vmax = conv.max()
-#        ax[1, 0].plot(times + 0.5*self.specs['filter_length']/float(self.fs),
-#                      conv)
-#        ax[1, 0].hlines(bias, times[0], times[-1], linestyle='--', color='k')
-#
-#        tstep = float(self.specs['stride'])/self.fs
-#        strides = np.arange(times[0], times[-1] + tstep/2, tstep)[1:-1]
-#        pool_bins = np.arange(times[0],
-#                              times[-1] + tstep,
-#                              self.specs['pooling']/self.fs)[1:]
-#
-#        ax[1, 0].vlines(strides, vmin, vmax,
-#                        linestyle='--', color='c', label='Strides')
-#        ax[1, 0].vlines(pool_bins, vmin, vmax,
-#                        linestyle='--', color='m', label='Pooling')
-#        ax[1, 0].set_xlim(times[0], times[-1])
-#        ax[1, 0].legend()
-#        ax[1, 0].set_title('Convolution output')
-#
-#        if self.out_weights.shape[-1] == 1:
-#            ax[1, 1].pcolor(self.F)
-#            ax[1, 1].hlines(self.uorder[0] + .5, 0, self.F.shape[1], color='r')
-#        else:
-#            ax[1, 1].plot(self.out_weights[:, self.uorder[0], :], 'k*')
-#
-#        ax[1, 1].set_title('Feature relevance map')
-#
-#    def _sorting(self, sorting='best'):
-#        """Specify which compontens to plot.
-#
-#        Parameters
-#        ----------
-#        sorting : str
-#            Sorting heuristics.
-#
-#            'l2' - plots all components sorted by l2 norm of their
-#            spatial filters in descending order.
-#
-#            'weight' - plots a single component that has a maximum
-#            weight for each class in the output layer.
-#
-#            'spear' - plots a single component, which produces a
-#            feature in the output layer that has maximum correlation
-#            with each target variable.
-#
-#            'best' - plots a single component, has maximum relevance
-#            value defined as output_layer_weught*correlation.
-#
-#            'best_spatial' - same as 'best', but the components
-#            relevances are defined as the sum of all relevance scores
-#            over all timepoints.
-#
-#        """
-#        order = []
-#        ts = []
-#
-#        if sorting == 'l2':
-#            order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=2))
-#            self.F = self.out_weights[..., 0].T
-#            ts = None
-#
-#        elif sorting == 'best_spatial':
-#            for i in range(np.prod(self.y_shape)):
-#                self.F = self.out_weights[..., i].T * self.rfocs[..., i].T
-#                pat = np.argmax(self.F.sum(-1))
-#                order.append(np.tile(pat, self.F.shape[1]))
-#                ts.append(np.arange(self.F.shape[-1]))
-#
-#        elif sorting == 'best':
-#            for i in range(np.prod(self.y_shape)):
-#                self.F = np.abs(self.out_weights[..., i].T
-#                                * self.rfocs[..., i].T)
-#                pat, t = np.where(self.F == np.max(self.F))
-#                print('Maximum spearman r * weight:', np.max(self.F))
-#                order.append(pat)
-#                ts.append(t)
-#
-#        elif sorting == 'weight':
-#            for i in range(np.prod(self.y_shape)):
-#                self.F = self.out_weights[..., i].T
-#                pat, t = np.where(self.F == np.max(self.F))
-#                print('Maximum weight:', np.max(self.F))
-#                order.append(pat)
-#                ts.append(t)
-#
-#        elif sorting == 'spear':
-#            for i in range(np.prod(self.y_shape)):
-#                self.F = self.rfocs[..., i].T
-#                print('Maximum r_spear:', np.max(self.F))
-#                pat, t = np.where(self.F == np.max(self.F))
-#                order.append(pat)
-#                ts.append(t)
-#
-#        elif isinstance(sorting, int):
-#            for i in range(np.prod(self.y_shape)):
-#                self.F = self.out_weights[..., i].T * self.rfocs[..., i].T
-#                pat, t = np.where(self.F >= np.percentile(self.F, sorting))
-#                order.append(pat)
-#                ts.append(t)
-#
-#        else:
-#            print('ELSE!')
-#            order = np.arange(self.specs['n_ls'])
-#            self.F = self.out_weights[..., 0].T
-#
-#        order = np.array(order)
-#        ts = np.array(ts)
-#        return order, ts
-#
-#    def plot_patterns(self, sensor_layout=None, sorting='l2', percentile=90,
-#                      spectra=False, scale=False, names=False):
-#        """Plot informative spatial activations patterns for each class
-#        of stimuli.
-#
-#        Parameters
-#        ----------
-#
-#        sensor_layout : str or mne.channels.Layout
-#            Sensor layout. See mne.channels.read_layout for details
-#
-#        sorting : str, optional
-#            Component sorting heuristics. Defaults to 'l2'.
-#            See model._sorting
-#
-#        spectra : bool, optional
-#            If True will also plot frequency responses of the associated
-#            temporal filters. Defaults to False.
-#
-#        fs : float
-#            Sampling frequency.
-#
-#        scale : bool, otional
-#            If True will min-max scale the output. Defaults to False.
-#
-#        names : list of str, optional
-#            Class names.
-#
-#        Returns
-#        -------
-#
-#        Figure
-#
-#        """
-#        if sensor_layout:
-#            lo = channels.read_layout(sensor_layout)
-#            info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
-#            self.fake_evoked = evoked.EvokedArray(self.patterns, info)
-#
-#        order, ts = self._sorting(sorting)
-#        uorder = uniquify(order.ravel())
-#        self.uorder = uorder
-#        l_u = len(uorder)
-#
-#        if sensor_layout:
-#            self.fake_evoked.data[:, :l_u] = self.fake_evoked.data[:, uorder]
-#            self.fake_evoked.crop(tmax=float(l_u))
-#            if scale:
-#                _std = self.fake_evoked.data[:, :l_u].std(0)
-#                self.fake_evoked.data[:, :l_u] /= _std
-#
-#        nfilt = max(np.prod(self.y_shape), 8)
-#        nrows = max(1, l_u//nfilt)
-#        ncols = min(nfilt, l_u)
-#
-#        f, ax = plt.subplots(nrows, ncols, sharey=True)
-#        f.set_size_inches([16, 9])
-#        ax = np.atleast_2d(ax)
-#
-#        for i in range(nrows):
-#            fake_times = np.arange(i * ncols,  (i + 1) * ncols, 1.)
-#            vmax = np.percentile(self.fake_evoked.data[:, :l_u], 95)
-#            self.fake_evoked.plot_topomap(times=fake_times,
-#                                          axes=ax[i],
-#                                          colorbar=False,
-#                                          vmax=vmax,
-#                                          scalings=1,
-#                                          time_format='output # %g',
-#                                          title='Patterns ('+str(sorting)+')')
-#        if np.any(ts):
-#            self.plot_out_weights(pat=order, t=ts, sorting=sorting)
-#        else:
-#            self.plot_out_weights()
-#
-#        return None  # TODO! Gabi: is it supposed to return f, ax ?
-#
-#    def plot_spectra(self, fs=None, sorting='l2', norm_spectra=None,
-#                     log=False):
-#        """Plots frequency responses of the temporal convolution filters.
-#
-#        Parameters
-#        ----------
-#        fs : float
-#            Sampling frequency.
-#
-#        sorting : str optinal
-#            Component sorting heuristics. Defaults to 'l2'.
-#            See model._sorting
-#
-#        norm_sepctra : None, str {'welch'}
-#            Whether to apply normalization for extracted spectra.
-#            Defaults to None.
-#
-#        log : bool
-#            Apply log-transform to the spectra.
-#
-#        """
-#        if fs is not None:
-#            self.fs = fs
-#        elif self.dataset.h_params['fs']:
-#            self.fs = self.dataset.h_params['fs']
-#        else:
-#            warnings.warn('Sampling frequency not specified, setting to 1.',
-#                          UserWarning)
-#            self.fs = 1.
-#
-#        if norm_spectra:
-#            if norm_spectra == 'welch':
-#                fr, psd = welch(self.lat_tcs, fs=self.fs, nperseg=256)
-#                self.d_psds = psd[:, :-1]
-#
-##            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
-##                ar = []
-##                for i, ltc in enumerate(self.lat_tcs):
-##                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
-##                    ar.append(coef[None, :])
-##                self.ar = np.concatenate(ar)
-#
-#        order, ts = self._sorting(sorting)
-#        uorder = uniquify(order.ravel())
-#        self.uorder = uorder
-#        out_filters = self.filters[:, uorder]
-#        l_u = len(uorder)
-#
-#        nfilt = max(np.prod(self.y_shape), 8)
-#        nrows = max(1, l_u//nfilt)
-#        ncols = min(nfilt, l_u)
-#
-#        f, ax = plt.subplots(nrows, ncols, sharey=True)
-#        f.set_size_inches([16, 9])
-#        ax = np.atleast_2d(ax)
-#
-#        for i in range(nrows):
-#            for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
-#                if norm_spectra == 'ar':
-#                    # TODO! Gabi: Is this a redundant case?
-#                    # the plot functionality is commented out making it
-#                    # equivalent to the else case.
-#                    # Otherwise it is almost the same as plot_ar.
-#
-#                    w, h = freqz(flt, 1, worN=128)
-#                    # w, h0 = freqz(1, self.ar[jj], worN=128)
-#                    # ax[i, jj].plot(w/np.pi*self.fs/2,h0.T,label='Flt input')
-#                    # h = h*h0
-#
-#                elif norm_spectra == 'welch':
-#                    w, h = freqz(flt, 1, worN=128)
-#                    fr1 = w/np.pi*self.fs/2
-#                    h0 = self.d_psds[uorder[jj], :]*np.abs(h)
-#                    if log:
-#                        ax[i, jj].semilogy(fr1, self.d_psds[uorder[jj], :],
-#                                           label='Filter input')
-#                        ax[i, jj].semilogy(fr1, np.abs(h0),
-#                                           label='Fitler output')
-#                    else:
-#                        ax[i, jj].plot(fr1, self.d_psds[uorder[jj], :],
-#                                       label='Filter input')
-#                        ax[i, jj].plot(fr1, np.abs(h0), label='Fitler output')
-#                    print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
-#
-#                elif norm_spectra == 'plot_ar':
-#                    w0, h0 = freqz(flt, 1, worN=128)
-#                    w, h = freqz(self.ar[jj], 1, worN=128)
-#                    ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h0))
-#                    print(h0.shape, h.shape, w.shape)
-#
-#                else:
-#                    w, h = freqz(flt, 1, worN=128)
-#
-#                if log:
-#                    ax[i, jj].semilogy(w/np.pi*self.fs/2, np.abs(h),
-#                                       label='Freq response')
-#                else:
-#                    ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h),
-#                                   label='Freq response')
-#                ax[i, jj].legend()
-#                ax[i, jj].set_xlim(0, 125.)
-
-
 
 class VARCNN(BaseModel):
     """VAR-CNN.
 
     For details see [1].
-
-    Parameters
-    ----------
-    n_ls : int
-        Number of latent components.
-        Defaults to 32.
-
-    nonlin : callable
-        Activation function of the temporal Convolution layer.
-        Defaults to tf.nn.relu
-
-    filter_length : int
-        Length of spatio-temporal kernels in the temporal
-        convolution layer. Defaults to 7.
-
-    pooling : int
-        Pooling factor of the max pooling layer. Defaults to 2
-
-    pool_type : str {'avg', 'max'}
-        Type of pooling operation. Defaults to 'max'.
-
-    padding : str {'SAME', 'FULL', 'VALID'}
-        Convolution padding. Defaults to 'SAME'.
-
-    stride : int
-        Stride of the max pooling layer. Defaults to 1.
-
 
     References
     ----------
@@ -1519,6 +955,35 @@ class VARCNN(BaseModel):
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
     def __init__(self, Dataset, specs):
+        """
+                Parameters
+        ----------
+        Dataset : mneflow.Dataset
+
+        specs : dict
+                dictionary of model hyperparameters {
+
+        n_latent : int
+            Number of latent components.
+            Defaults to 32.
+
+        nonlin : callable
+            Activation function of the temporal convolution layer.
+            Defaults to tf.nn.relu
+
+        filter_length : int
+            Length of spatio-temporal kernels in the temporal
+            convolution layer. Defaults to 7.
+
+        pooling : int
+            Pooling factor of the max pooling layer. Defaults to 2
+
+        pool_type : str {'avg', 'max'}
+            Type of pooling operation. Defaults to 'max'.
+
+        padding : str {'SAME', 'FULL', 'VALID'}
+            Convolution padding. Defaults to 'SAME'.}
+        """
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -1531,8 +996,6 @@ class VARCNN(BaseModel):
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
         super(LFCNN, self).__init__(Dataset, specs)
-
-
 
     def build_graph(self):
         """Build computational graph using defined placeholder `self.X`
@@ -1576,39 +1039,41 @@ class LFCNN3(LFCNN):
 
     For details see [1].
 
-    Parameters
-    ----------
-    n_ls : int
-        Number of latent components.
-        Defaults to 32.
-
-    nonlin : callable
-        Activation function of the temporal Convolution layer.
-        Defaults to tf.nn.relu
-
-    filter_length : int
-        Length of spatio-temporal kernels in the temporal
-        convolution layer. Defaults to 7.
-
-    pooling : int
-        Pooling factor of the max pooling layer. Defaults to 2
-
-    pool_type : str {'avg', 'max'}
-        Type of pooling operation. Defaults to 'max'.
-
-    padding : str {'SAME', 'FULL', 'VALID'}
-        Convolution padding. Defaults to 'SAME'.
-
-    stride : int
-        Stride of the max pooling layer. Defaults to 1.
-
-
     References
     ----------
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
     def __init__(self, Dataset, specs):
+        """
+                Parameters
+        ----------
+        Dataset : mneflow.Dataset
+
+        specs : dict
+                dictionary of model hyperparameters {
+
+        n_latent : int
+            Number of latent components.
+            Defaults to 32.
+
+        nonlin : callable
+            Activation function of the temporal convolution layer.
+            Defaults to tf.nn.relu
+
+        filter_length : int
+            Length of spatio-temporal kernels in the temporal
+            convolution layer. Defaults to 7.
+
+        pooling : int
+            Pooling factor of the max pooling layer. Defaults to 2
+
+        pool_type : str {'avg', 'max'}
+            Type of pooling operation. Defaults to 'max'.
+
+        padding : str {'SAME', 'FULL', 'VALID'}
+            Convolution padding. Defaults to 'SAME'.}
+        """
         specs.setdefault('filter_length', 32)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 6)
@@ -1759,7 +1224,7 @@ class FBCSP_ShallowNet(BaseModel):
 ##
 ##    Parameters
 ##    ----------
-##    n_ls : int
+##    n_latent : int
 ##        number of latent components
 ##        Defaults to 32
 ##
@@ -1782,15 +1247,15 @@ class FBCSP_ShallowNet(BaseModel):
 ##    def build_graph(self):
 ##        self.scope = 'lf-cnn-lstm'
 ##
-##        self.demix = DeMixing(n_ls=self.specs['n_ls'], axis=1)
+##        self.demix = DeMixing(n_latent=self.specs['n_latent'], axis=1)
 ##        dmx = self.demix(self.X)
 ##        dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
-##                               self.specs['n_ls']])
+##                               self.specs['n_latent']])
 ##        dmx = tf.expand_dims(dmx, -1)
 ##        print('dmx-sqout:', dmx.shape)
 ##
 ##        self.tconv1 = LFTConv(scope="conv",
-##                              n_ls=self.specs['n_ls'],
+##                              n_latent=self.specs['n_latent'],
 ##                              nonlin=tf.nn.relu,
 ##                              filter_length=self.specs['filter_length'],
 ###                              stride=self.specs['stride'],
@@ -1824,7 +1289,7 @@ class FBCSP_ShallowNet(BaseModel):
 ##        l1_lambda = self.optimizer.params['l1_lambda']
 ##        print('flat features:', ffeatures.shape)
 ##        self.lstm = LSTMv1(scope="lstm",
-##                           size=self.specs['n_ls'],
+##                           size=self.specs['n_latent'],
 ##                           kernel_initializer='glorot_uniform',
 ##                           recurrent_initializer='orthogonal',
 ##                           recurrent_regularizer=k_reg.l1(l1_lambda),
@@ -1845,11 +1310,11 @@ class FBCSP_ShallowNet(BaseModel):
 ##        # if 'n_seq' in self.dataset.h_params.keys():
 ##        #    lstm_out = tf.reshape(lstm_out, [-1,
 ##        #                                     self.dataset.h_params['n_seq'],
-##        #                                     self.specs['n_ls']])
+##        #                                     self.specs['n_latent']])
 ##
 ##        self.fin_fc = Dense(size=np.prod(self.y_shape),
 ##                            nonlin=tf.identity, dropout=0.)
-###        self.fin_fc = DeMixing(n_ls=np.prod(self.y_shape),
+###        self.fin_fc = DeMixing(n_latent=np.prod(self.y_shape),
 ###                               nonlin=tf.identity, axis=-1)
 ##        y_pred = self.fin_fc(lstm_out)
 ##        # print(y_pred)
@@ -2015,7 +1480,7 @@ class EEGNet(BaseModel):
     ----------
     specs : dict
 
-        n_ls : int
+        n_latent : int
             Number of (temporal) convolution kernrels in the first layer.
             Defaults to 8
 
@@ -2046,13 +1511,13 @@ class EEGNet(BaseModel):
         self.scope = 'eegnet'
 
         X1 = self.X  # tf.expand_dims(self.X, -1)
-        vc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity, inch=1,
+        vc1 = ConvDSV(n_latent=self.specs['n_latent'], nonlin=tf.identity, inch=1,
                       filter_length=self.specs['filter_length'], domain='time',
                       stride=1, pooling=1, conv_type='2d')
         vc1o = vc1(X1)
 
         bn1 = tf.layers.batch_normalization(vc1o)
-        dwc1 = ConvDSV(n_ls=1, nonlin=tf.identity, inch=self.specs['n_ls'],
+        dwc1 = ConvDSV(n_latent=1, nonlin=tf.identity, inch=self.specs['n_latent'],
                        padding='VALID', filter_length=bn1.get_shape()[1].value,
                        domain='space',  stride=1, pooling=1,
                        conv_type='depthwise')
@@ -2062,8 +1527,8 @@ class EEGNet(BaseModel):
         out2 = tf.nn.elu(bn2)
         out22 = tf.nn.dropout(out2, rate=self.rate)
 
-        sc1 = ConvDSV(n_ls=self.specs['n_ls'], nonlin=tf.identity,
-                      inch=self.specs['n_ls'],
+        sc1 = ConvDSV(n_latent=self.specs['n_latent'], nonlin=tf.identity,
+                      inch=self.specs['n_latent'],
                       filter_length=self.specs['filter_length']//4,
                       domain='time', stride=1, pooling=1,
                       conv_type='separable')
@@ -2076,8 +1541,8 @@ class EEGNet(BaseModel):
                               [1, 1, self.specs['stride'], 1], 'SAME')
         out44 = tf.nn.dropout(out4, rate=self.rate)
 
-        sc2 = ConvDSV(n_ls=self.specs['n_ls']*2, nonlin=tf.identity,
-                      inch=self.specs['n_ls'],
+        sc2 = ConvDSV(n_latent=self.specs['n_latent']*2, nonlin=tf.identity,
+                      inch=self.specs['n_latent'],
                       filter_length=self.specs['filter_length']//4,
                       domain='time', stride=1, pooling=1,
                       conv_type='separable')
@@ -2107,7 +1572,7 @@ class EEGNet(BaseModel):
 #    """
 #    def __init__(self, Dataset, params, specs):
 #        super().__init__(Dataset, params, specs)
-#        self.specs = dict(n_ls=self.specs['n_ls'], nonlin=tf.nn.relu,
+#        self.specs = dict(n_latent=self.specs['n_latent'], nonlin=tf.nn.relu,
 #                          inch=1, padding='SAME', filter_length=(3, 3),
 #                          domain='2d', stride=1, pooling=1, conv_type='2d')
 #        self.scope = 'vgg19'
@@ -2123,22 +1588,22 @@ class EEGNet(BaseModel):
 #        vgg1 = vgg_block(2, ConvDSV, self.specs)
 #        out1 = vgg1(X1)
 #
-#        self.specs['inch'] = self.specs['n_ls']
-#        self.specs['n_ls'] *= 2
+#        self.specs['inch'] = self.specs['n_latent']
+#        self.specs['n_latent'] *= 2
 #        vgg2 = vgg_block(2, ConvDSV, self.specs)
 #        out2 = vgg2(out1)
 #
-#        self.specs['inch'] = self.specs['n_ls']
-#        self.specs['n_ls'] *= 2
+#        self.specs['inch'] = self.specs['n_latent']
+#        self.specs['n_latent'] *= 2
 #        vgg3 = vgg_block(4, ConvDSV, self.specs)
 #        out3 = vgg3(out2)
 #
-#        self.specs['inch'] = self.specs['n_ls']
-#        self.specs['n_ls'] *= 2
+#        self.specs['inch'] = self.specs['n_latent']
+#        self.specs['n_latent'] *= 2
 #        vgg4 = vgg_block(4, ConvDSV, self.specs)
 #        out4 = vgg4(out3)
 #
-#        self.specs['inch'] = self.specs['n_ls']
+#        self.specs['inch'] = self.specs['n_latent']
 #        vgg5 = vgg_block(4, ConvDSV, self.specs)
 #        out5 = vgg5(out4)
 #
