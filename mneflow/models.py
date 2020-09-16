@@ -299,7 +299,7 @@ class LFCNN(BaseModel):
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
     def __init__(self, Dataset, specs):
-        """"
+        """
 
         Parameters
         ----------
@@ -328,10 +328,10 @@ class LFCNN(BaseModel):
 
         padding : str {'SAME', 'FULL', 'VALID'}
             Convolution padding. Defaults to 'SAME'.}
-            """"
 
-    stride : int
+        stride : int
         Stride of the max pooling layer. Defaults to 1.
+        """
         self.scope = 'lfcnn'
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
@@ -519,7 +519,7 @@ class LFCNN(BaseModel):
 
     def get_component_relevances(self, X, y):
         """Compute component relevances by recursive elimination
-        """"
+        """
         model_weights = self.km.get_weights()
         base_loss, base_performance = self.km.evaluate(X, y, verbose=0)
         #if len(base_performance > 1):
@@ -956,7 +956,7 @@ class VARCNN(BaseModel):
     """
     def __init__(self, Dataset, specs):
         """
-                Parameters
+        Parameters
         ----------
         Dataset : mneflow.Dataset
 
@@ -982,8 +982,7 @@ class VARCNN(BaseModel):
             Type of pooling operation. Defaults to 'max'.
 
         padding : str {'SAME', 'FULL', 'VALID'}
-            Convolution padding. Defaults to 'SAME'.}
-        """
+            Convolution padding. Defaults to 'SAME'.}"""
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -1140,10 +1139,10 @@ class LFCNN3(LFCNN):
 
 class FBCSP_ShallowNet(BaseModel):
     """
-    Shallow ConvNet model from [1]_.
+    Shallow ConvNet model from [2a]_.
     References
     ----------
-    .. [1] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
+    .. [2a] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
        Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. & Ball, T. (2017).
        Deep learning with convolutional neural networks for EEG decoding and
        visualization.
@@ -1323,10 +1322,10 @@ class FBCSP_ShallowNet(BaseModel):
 #
 class Deep4(BaseModel):
     """
-    Deep ConvNet model from [1]_.
+    Deep ConvNet model from [2b]_.
     References
     ----------
-    .. [1] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
+    .. [2b] Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
        Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. & Ball, T. (2017).
        Deep learning with convolutional neural networks for EEG decoding and
        visualization.
@@ -1499,11 +1498,11 @@ class EEGNet(BaseModel):
 
     References
     ----------
-    [1] V.J. Lawhern, et al., EEGNet: A compact convolutional neural
+    [3] V.J. Lawhern, et al., EEGNet: A compact convolutional neural
     network for EEG-based brain–computer interfaces 10 J. Neural Eng.,
     15 (5) (2018), p. 056013
 
-    [2] Original EEGNet implementation by the authors can be found at
+    [4] Original EEGNet implementation by the authors can be found at
     https://github.com/vlawhern/arl-eegmodels
     """
 
