@@ -17,6 +17,7 @@ if __name__ == "__main__":
         version='0.1.1-beta',
         download_url='https://github.com/zubara/mneflow/archive/master.zip',
         long_description=codecs.open('README.md', encoding='utf8').read(),
+        long_description_content_type = 'text/markdown',
         classifiers=['Intended Audience :: Science/Research',
                      'Intended Audience :: Developers',
                      'License :: OSI Approved',
