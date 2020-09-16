@@ -1,9 +1,23 @@
 # MNEflow
 Neural networks for EEG-MEG decoding with MNE-python and Tensorflow.
 
+# Installation 
+
+```
+pip install mneflow
+```
+
+## Dependencies
+[MNE-Python](https://mne.tools/stable/index.html)>=0.14
+[Tensorflow](https://www.tensorflow.org/) >=1.12, >=2.1
+[NumPy](https://numpy.org/)
+[Scikit-Learn](https://scikit-learn.org/stable/)
+
 # Documentation
 
 API reference is avalable in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
+
+# Examples
 
 Also check the [example notebooks](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example.ipynb).
 
@@ -41,5 +55,23 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
   pages={056013},
   url={http://stacks.iop.org/1741-2552/15/i=5/a=056013},
   year={2018}
+}
+```
+
+### for Deep-4 and FBCSP-ShallowNet
+```
+@article{Schirrmeister2017DeepVisualization,
+    title = {{Deep learning with convolutional neural networks for EEG decoding and visualization}},
+    year = {2017},
+    journal = {Human Brain Mapping},
+    author = {Schirrmeister, Robin Tibor and Springenberg, Jost Tobias and Fiederer, Lukas Dominique Josef and Glasstetter, Martin and Eggensperger, Katharina and Tangermann, Michael and Hutter, Frank and Burgard, Wolfram and Ball, Tonio},
+    number = {11},
+    month = {11},
+    pages = {5391--5420},
+    volume = {38},
+    url = {http://doi.wiley.com/10.1002/hbm.23730},
+    doi = {10.1002/hbm.23730},
+    issn = {10659471},
+    keywords = {EEG analysis, brain, brain mapping, computer interface, electroencephalography, end‐to‐end learning, machine interface, machine learning, model interpretability}
 }
 ```
