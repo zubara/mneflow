@@ -1,0 +1,7 @@
+*.pyc
+*.pyo
+scripts/*
+examples/*.py
+build
+datasets
+dist
