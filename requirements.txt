@@ -1,0 +1,8 @@
+tensorflow>=1.12,<2
+numpydoc>=0.9.1
+mne>=0.14
+scikit-learn>=0.16
+nose>=1.1.2
+sphinx>=2.0.1
+coverage>=3.7.1
+sphinx_rtd_theme>=0.1.6
