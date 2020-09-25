@@ -19,7 +19,7 @@ API reference is avalable in the [Documentation](https://mneflow.readthedocs.io/
 
 # Examples
 
-Also check the [example notebooks](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example.ipynb).
+Also check the [example notebooks](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb).
 
 # References 
 When using the implemented models please cite: 
