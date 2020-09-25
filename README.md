@@ -1,6 +1,11 @@
 # MNEflow
 Neural networks for EEG-MEG decoding with MNE-python and Tensorflow.
 
+# Isnatllation
+```
+pip install mneflow
+```
+
 # Documentation
 
 API reference is avalable in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
