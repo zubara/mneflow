@@ -45,3 +45,22 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 	  url={http://stacks.iop.org/1741-2552/15/i=5/a=056013},
 	  year={2018}}``
 
+
+*for FBCSP-ShallowNet and Deep4*::
+
+	``@article{Schirrmeister2017DeepVisualization,
+	    title = {{Deep learning with convolutional neural networks for EEG decoding and visualization}},
+	    year = {2017},
+	    journal = {Human Brain Mapping},
+	    author = {Schirrmeister, Robin Tibor and Springenberg, Jost Tobias and Fiederer, Lukas Dominique Josef and Glasstetter, Martin and Eggensperger, Katharina and Tangermann, Michael and Hutter, Frank and Burgard, Wolfram and Ball, Tonio},
+	    number = {11},
+	    month = {11},
+	    pages = {5391--5420},
+	    volume = {38},
+	    url = {http://doi.wiley.com/10.1002/hbm.23730},
+	    doi = {10.1002/hbm.23730},
+	    issn = {10659471},
+	    keywords = {EEG analysis, brain, brain mapping, computer interface, electroencephalography, end‐to‐end learning, machine interface, machine learning, model interpretability}
+	}``
+
+
