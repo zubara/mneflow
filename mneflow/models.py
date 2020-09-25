@@ -126,7 +126,7 @@ class BaseModel():
                         specs=self.specs)
         y_pred = self.fc(flat)
         #y_pred = fc_1
-        print("Built graph: y_shape", y_pred.shape)
+        #print("Built graph: y_shape", y_pred.shape)
         return y_pred
 
     def train(self, n_epochs, eval_step=None, val_batch=None, min_delta=1e-6,
@@ -397,15 +397,16 @@ class LFCNN(BaseModel):
         """
         n1_covs = []
         for x, y in dataset.take(5):
-            print('x:', x.shape)
-            print('x[0,0]:', x[0,0].shape)
+            #print('x:', x.shape)
+            #print('x[0,0]:', x[0,0].shape)
             n1cov = tf.tensordot(x[0,0], x[0,0], axes=[[0], [0]])
-            print('n1cov:', n1cov.shape)
+            #print('n1cov:', n1cov.shape)
             n1_covs.append(n1cov)
-        print('len(n1_covs):', len(n1_covs))
+        #print('len(n1_covs):', len(n1_covs))
         cov = tf.reduce_mean(tf.stack(n1_covs, axis=0), axis=0)
-        print('cov:', cov.shape)
+        #print('cov:', cov.shape)
         #tf.reduce_mean(n1_covs)
+        return cov
 
 
     def compute_patterns(self, data_path, output='patterns'):
@@ -504,17 +505,17 @@ class LFCNN(BaseModel):
 
 
 
-        print('self.out_w_flat:', self.out_w_flat.shape)
+        #print('self.out_w_flat:', self.out_w_flat.shape)
 
         #  Temporal conv stuff
         self.filters = np.squeeze(kern)
         self.tc_out = np.squeeze(tc_out)
         self.corr_to_output = self.get_output_correlations(y)
 
-        print('demx:', demx.shape,
-              'kern:', self.filters.shape,
-              'tc_out:', self.tc_out.shape,
-              'out_weights:', self.out_weights.shape)
+#        print('demx:', demx.shape,
+#              'kern:', self.filters.shape,
+#              'tc_out:', self.tc_out.shape,
+#              'out_weights:', self.out_weights.shape)
 
 
     def get_component_relevances(self, X, y):
@@ -566,10 +567,10 @@ class LFCNN(BaseModel):
             y_true = y_true/np.linalg.norm(y_true, ord=1, axis=0)[None, :]
             flat_div = np.linalg.norm(flat_feats, 1, axis=0)[None, :]
             flat_feats = flat_feats/flat_div
-            print("ff:", flat_feats.shape)
-            print("y_true:", y_true.shape)
+            #print("ff:", flat_feats.shape)
+            #print("y_true:", y_true.shape)
             for y_ in y_true.T:
-                print('y.T:', y_.shape)
+                #print('y.T:', y_.shape)
                 rfocs = 2. - np.sum(np.abs(flat_feats - y_[:, None]), 0)
                 corr_to_output.append(rfocs.reshape(self.out_weights.shape[:-1]))
 
@@ -599,6 +600,7 @@ class LFCNN(BaseModel):
         vmax = np.max(self.out_weights)
 
         f, ax = plt.subplots(1, self.out_dim)
+        f.set_size_inches([16, 5])
         if not isinstance(ax, np.ndarray):
             ax = [ax]
 
@@ -641,6 +643,7 @@ class LFCNN(BaseModel):
             self.uorder = uorder
 
         f, ax = plt.subplots(2, 2)
+        f.set_size_inches([16, 5])
 
         nt = self.dataset.h_params['n_t']
         self.waveforms = np.squeeze(
@@ -746,7 +749,7 @@ class LFCNN(BaseModel):
                 self.F = np.abs(self.out_weights[..., i].T
                                 * self.corr_to_output[..., i].T)
                 pat, t = np.where(self.F == np.max(self.F))
-                print('Maximum spearman r * weight:', np.max(self.F))
+                #print('Maximum spearman r * weight:', np.max(self.F))
                 order.append(pat)
                 ts.append(t)
 
@@ -754,14 +757,14 @@ class LFCNN(BaseModel):
             for i in range(self.out_dim):
                 self.F = self.out_weights[..., i].T
                 pat, t = np.where(self.F == np.max(self.F))
-                print('Maximum weight:', np.max(self.F))
+                #print('Maximum weight:', np.max(self.F))
                 order.append(pat)
                 ts.append(t)
 
         elif sorting == 'spear':
             for i in range(self.out_dim):
                 self.F = self.corr_to_output[..., i].T
-                print('Maximum r_spear:', np.max(self.F))
+                #print('Maximum r_spear:', np.max(self.F))
                 pat, t = np.where(self.F == np.max(self.F))
                 order.append(pat)
                 ts.append(t)
@@ -822,7 +825,7 @@ class LFCNN(BaseModel):
         ncols = min(nfilt, l_u)
 
         f, ax = plt.subplots(nrows, ncols, sharey=True)
-        f.set_size_inches([16, 9])
+        f.set_size_inches([16, 5])
         ax = np.atleast_2d(ax)
 
         for ii in range(nrows):
@@ -893,7 +896,7 @@ class LFCNN(BaseModel):
         ncols = min(nfilt, l_u)
 
         f, ax = plt.subplots(nrows, ncols, sharey=True)
-        f.set_size_inches([16, 9])
+        f.set_size_inches([16, 6])
         ax = np.atleast_2d(ax)
 
         for i in range(nrows):
@@ -922,13 +925,13 @@ class LFCNN(BaseModel):
                         ax[i, jj].plot(fr1, self.d_psds[uorder[jj], :],
                                        label='Filter input')
                         ax[i, jj].plot(fr1, np.abs(h0), label='Fitler output')
-                    print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
+                    #print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
 
                 elif norm_spectra == 'plot_ar':
                     w0, h0 = freqz(flt, 1, worN=128)
                     w, h = freqz(self.ar[jj], 1, worN=128)
                     ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h0))
-                    print(h0.shape, h.shape, w.shape)
+                    #print(h0.shape, h.shape, w.shape)
 
                 else:
                     w, h = freqz(flt, 1, worN=128)
