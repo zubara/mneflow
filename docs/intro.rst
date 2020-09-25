@@ -5,9 +5,9 @@ MNEflow provides a convenient way to apply neural networks implemmented in Tenso
 
 Isnatllation
 ============
-```
+``
 pip install mneflow
-```
+``
 
 
 Examples
