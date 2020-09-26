@@ -177,11 +177,18 @@ class BaseModel():
 
     def plot_hist(self):
         """Plot loss history during training."""
-        plt.plot(np.array(self.t_hist))
-        plt.legend(['t_loss', 'v_loss'])
-        plt.title(self.scope.upper())
-        plt.xlabel('Epochs')
+        # "Loss"
+        plt.plot(self.t_hist.history['loss'])
+        plt.plot(self.t_hist.history['val_loss'])
+        plt.title('model loss')
+        plt.ylabel('loss')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'validation'], loc='upper left')
         plt.show()
+        #plt.legend(['t_loss', 'v_loss'])
+        #plt.title(self.scope.upper())
+        #plt.xlabel('Epochs')
+        #plt.show()
 
 #    def load(self):
 #        """Loads a pretrained model.
