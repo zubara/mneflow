@@ -10,7 +10,7 @@ pip install mneflow
 
 API reference is avalable in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
 
-Also check the [example notebooks](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb).
+Also check the [example notebooks](https://mneflow.readthedocs.io/en/latest/intro.html#examples).
 
 # References 
 When using the implemented models please cite: 
