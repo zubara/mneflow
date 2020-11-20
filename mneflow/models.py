@@ -607,7 +607,7 @@ class LFCNN(BaseModel):
         vmax = np.max(self.out_weights)
 
         f, ax = plt.subplots(1, self.out_dim)
-        f.set_size_inches([16, 5])
+        f.set_size_inches([16, 3])
         if not isinstance(ax, np.ndarray):
             ax = [ax]
 
@@ -631,6 +631,7 @@ class LFCNN(BaseModel):
 
         f.colorbar(im, ax=ax[-1])
         plt.show()
+        return f
 
     def plot_waveforms(self, tmin=0):
         """Plots timecourses of latent components.
@@ -646,11 +647,11 @@ class LFCNN(BaseModel):
 
         if not hasattr(self, 'uorder'):
             order, _ = self._sorting()
-            uorder = uniquify(order.ravel())
-            self.uorder = uorder
+            #uorder = uniquify(order.ravel())
+            self.uorder = np.squeeze(order)
 
         f, ax = plt.subplots(2, 2)
-        f.set_size_inches([16, 5])
+        f.set_size_inches([16, 3])
 
         nt = self.dataset.h_params['n_t']
         self.waveforms = np.squeeze(
@@ -832,7 +833,7 @@ class LFCNN(BaseModel):
         ncols = min(nfilt, l_u)
 
         f, ax = plt.subplots(nrows, ncols, sharey=True)
-        f.set_size_inches([16, 5])
+        f.set_size_inches([16, 3])
         ax = np.atleast_2d(ax)
 
         for ii in range(nrows):
@@ -849,6 +850,7 @@ class LFCNN(BaseModel):
             self.plot_out_weights(pat=order, t=ts, sorting=sorting)
         else:
             self.plot_out_weights()
+        return f
 
     def plot_spectra(self, fs=None, sorting='l2', norm_spectra=None,
                      log=False):
@@ -893,64 +895,47 @@ class LFCNN(BaseModel):
 #                self.ar = np.concatenate(ar)
 
         order, ts = self._sorting(sorting)
-        uorder = uniquify(order.ravel())
-        self.uorder = uorder
-        out_filters = self.filters[:, uorder]
-        l_u = len(uorder)
+        self.uorder = np.squeeze(order)
+        out_filters = self.filters[:, self.uorder]
+        l_u = len(self.uorder)
 
         nfilt = max(self.out_dim, 8)
         nrows = max(1, l_u//nfilt)
         ncols = min(nfilt, l_u)
 
         f, ax = plt.subplots(nrows, ncols, sharey=True)
-        f.set_size_inches([16, 6])
+        f.set_size_inches([16, 3])
         ax = np.atleast_2d(ax)
 
         for i in range(nrows):
             for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
-                if norm_spectra == 'ar':
-                    # TODO! Gabi: Is this a redundant case?
-                    # the plot functionality is commented out making it
-                    # equivalent to the else case.
-                    # Otherwise it is almost the same as plot_ar.
-
-                    w, h = freqz(flt, 1, worN=128)
-                    # w, h0 = freqz(1, self.ar[jj], worN=128)
-                    # ax[i, jj].plot(w/np.pi*self.fs/2,h0.T,label='Flt input')
-                    # h = h*h0
-
-                elif norm_spectra == 'welch':
-                    w, h = freqz(flt, 1, worN=128)
-                    fr1 = w/np.pi*self.fs/2
-                    h0 = self.d_psds[uorder[jj], :]*np.abs(h)
+                w, h = freqz(flt, 1, worN=128)
+                fr1 = w/np.pi*self.fs/2
+                if  norm_spectra == 'welch':    
+                    
+                    h0 = self.d_psds[self.uorder[jj], :]*np.abs(h)
                     if log:
-                        ax[i, jj].semilogy(fr1, self.d_psds[uorder[jj], :],
+                        ax[i, jj].semilogy(fr1, self.d_psds[self.uorder[jj], :],
                                            label='Filter input')
                         ax[i, jj].semilogy(fr1, np.abs(h0),
                                            label='Fitler output')
                     else:
-                        ax[i, jj].plot(fr1, self.d_psds[uorder[jj], :],
+                        ax[i, jj].plot(fr1, self.d_psds[self.uorder[jj], :],
                                        label='Filter input')
                         ax[i, jj].plot(fr1, np.abs(h0), label='Fitler output')
                     #print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
-
-                elif norm_spectra == 'plot_ar':
-                    w0, h0 = freqz(flt, 1, worN=128)
-                    w, h = freqz(self.ar[jj], 1, worN=128)
-                    ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h0))
-                    #print(h0.shape, h.shape, w.shape)
-
                 else:
-                    w, h = freqz(flt, 1, worN=128)
-
-                if log:
-                    ax[i, jj].semilogy(w/np.pi*self.fs/2, np.abs(h),
+    
+                    if log:
+                        ax[i, jj].semilogy(fr1, np.abs(h),
+                                           label='Freq response')
+                    else:
+                        ax[i, jj].plot(fr1, np.abs(h),
                                        label='Freq response')
-                else:
-                    ax[i, jj].plot(w/np.pi*self.fs/2, np.abs(h),
-                                   label='Freq response')
-                ax[i, jj].legend()
                 ax[i, jj].set_xlim(0, 125.)
+                ax[i, jj].set_xlim(0, 125.)
+                if i == 0 and jj == ncols-1:
+                    ax[i, jj].legend(frameon=False)
         return f
 
 
