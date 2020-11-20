@@ -15,8 +15,8 @@ import tensorflow as tf
 # tf.disable_v2_behavior()
 import scipy.io as sio
 
-from mne import filter as mnefilt
-from mne import epochs as mnepochs, pick_types
+import mne
+#from mne import epochs as mnepochs, pick_types
 
 from mneflow.data import Dataset
 from mneflow.optimize import Optimizer
@@ -104,7 +104,7 @@ def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
     return results
 
 
-def scale_to_baseline(X_, baseline=None, crop_baseline=False):
+def scale_to_baseline(X, baseline=None, crop_baseline=False):
     """Perform global scaling based on a specified baseline.
 
     Subtracts the mean and divides by the standard deviation of the
@@ -130,29 +130,20 @@ def scale_to_baseline(X_, baseline=None, crop_baseline=False):
         Scaled data array.
 
     """
-    X = X_.copy()
+    #X = X_.copy()
 
     if baseline is None:
-        X0 = X.reshape([X.shape[0], -1])
-        crop_baseline = False
-
+        print("No interval specified, using the whole epochs")
+        interval = np.arange(X.shape[-1])
     elif isinstance(baseline, tuple):
+        print("Scaling to interval {:.1f} - {:.1f}".format(*baseline))
         interval = np.arange(baseline[0], baseline[1])
-        X0 = X[..., interval].reshape([X.shape[0], -1])
-        if crop_baseline:
-            X = X[..., interval[-1]:]
+    X0m = X[..., interval].mean(axis=(1,2), keepdims=True)
+    X0sd = X[..., interval].std(axis=(1,2), keepdims=True)
 
-    X0m = X0.mean(-1, keepdims=True)
-    X0sd = X0.std(-1, keepdims=True)
-
-    while X0m.ndim < X.ndim:
-        X0m = np.expand_dims(X0m, -1)
-        X0sd = np.expand_dims(X0sd, -1)
-
-    # print(X0.shape)
     X -= X0m
     X /= X0sd
-
+    print("Scaling Done")
     return X
 
 
@@ -278,16 +269,16 @@ def import_data(inp, picks=None, target_picks=None,
         targets.shape =  [n_epochs, y_shape]
 
     """
-    if isinstance(inp, mnepochs.BaseEpochs):
+    if isinstance(inp, mne.epochs.BaseEpochs):
         print('processing epochs')
         if isinstance(picks, dict):
-            picks = pick_types(inp.info, include=picks)
+            picks = mne.pick_types(inp.info, include=picks)
         inp.load_data()
         data = inp.get_data()
         events = inp.events[:, 2]
         if isinstance(picks, dict):
             print("Converting picks")
-            picks = pick_types(inp.info, picks)
+            picks = mne.pick_types(inp.info, picks)
 
     elif isinstance(inp, tuple) and len(inp) == 2:
         print('importing from tuple')
@@ -297,7 +288,7 @@ def import_data(inp, picks=None, target_picks=None,
         # TODO: ADD CASE FOR RAW FILE
         fname = inp
         if fname[-3:] == 'fif':
-            epochs = mnepochs.read_epochs(fname, preload=True,
+            epochs = mne.epochs.read_epochs(fname, preload=True,
                                           verbose='CRITICAL')
             print(np.unique(epochs.events[:, 2]))
             events = epochs.events[:, 2]
@@ -492,8 +483,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
         during import.
         ('X'), does the same for data only. Default is False.
 
-    transform_targets : bool, optional
-        Whether to transform the targets.
+    transform_targets : callable, optional
+        custom function transforming target variables
 
     seq_length : int, optional
         Length of segment sequence.
@@ -567,9 +558,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
 
                 events = _onehot(events)
 
-            elif target_type == 'signal':
-                print(data.shape, events.shape)
-
+            #elif target_type == 'signal':
+            #    print(data.shape, events.shape)
 
             x_train, y_train, x_val, y_val = preprocess(
                     data, events, input_type=input_type, scale=scale, fs=fs,
@@ -834,25 +824,30 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
     y_train, y_val : ndarrays
         Label arrays of dimensions [n_epochs, n_seq, n_targets]
     """
+    print("Preprocessing:")
     if (data.ndim != 3) or (events.ndim < 2):
         warnings.warn('Input misshaped, using import_data.', UserWarning)
         data, events = import_data((data, events))
 
     if bp_filter:
-        assert len(bp_filter) == 2, "Invalid bp_filter values."
+        #assert len(bp_filter) == 2, "Invalid bp_filter values."
+        print('Filtering')
         data = data.astype(np.float64)
-        data = mnefilt.filter_data(data, fs, l_freq=bp_filter[0],
+        data = mne.filter.filter_data(data, fs, l_freq=bp_filter[0],
                                    h_freq=bp_filter[1],
                                    method='iir', verbose=False)
-    if scale:
-        data = scale_to_baseline(data, baseline=scale_interval,
-                                 crop_baseline=crop_baseline)
 
     if isinstance(picks, np.ndarray):
         data = data[:, picks, :]
 
     if decimate:
+        print("Decimating")
         data = data[..., ::decimate]
+
+    if scale:
+        print('Scaling')
+        data = scale_to_baseline(data, baseline=scale_interval,
+                                 crop_baseline=crop_baseline)
 
     if input_type in ['continuous']:
 #        # Placeholder for future segmentation. Not unit_tested
@@ -869,49 +864,56 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
         #   x_train, y_train, x_val, y_val = [ii.T for ii in [x_train, y_train,
         #                                                     x_val, y_val]]
         # else:
+        print("Splitting sets")
         x_train, y_train, x_val, y_val = _split_sets(data, events,
                                                      val=val_size)
-        print('training set: X-', x_train.shape, ' y-', y_train.shape)
-        print('validation set: X-', x_val.shape, ' y-', y_val.shape)
 
     if segment:
+        print("Segmenting X")
         x_train = _segment(x_train, segment_length=segment, stride=aug_stride,
                            input_type=input_type, seq_length=seq_length)
 
         x_val = _segment(x_val, segment_length=segment, stride=aug_stride,
                          input_type=input_type, seq_length=seq_length)
 
-        if isinstance(y_train, list) or np.ndim(y_train) > 2:
-            y_train = _segment(y_train, segment_length=segment,
-                               stride=aug_stride, input_type=input_type,
-                               seq_length=seq_length)
-            y_val = _segment(y_val, segment_length=segment,
-                             stride=aug_stride, input_type=input_type,
-                             seq_length=seq_length)
-            #TODO: add process_y
-            if callable(transform_targets):
-                print("Using transform_targets")
-                #print(type(y_train), y_train[0].shape)
-                y_train = transform_targets(np.squeeze(y_train))
-                y_val = transform_targets(np.squeeze(y_val))
-            else:
-                print("Applying default transform to 3d target variables y = y[:,0,-50:].mean(-1)")
-                y_train = _process_labels(y_train)
-                y_val = _process_labels(y_val)
-
+#        if isinstance(y_train, list) or np.ndim(y_train) > 2:
+#            y_train = _segment(y_train, segment_length=segment,
+#                               stride=aug_stride, input_type=input_type,
+#                               seq_length=seq_length)
+#            y_val = _segment(y_val, segment_length=segment,
+#                             stride=aug_stride, input_type=input_type,
+#                             seq_length=seq_length)
+        #TODO: add process_y
+        if callable(transform_targets):
+            print("Transforming targets")
+            #print(type(y_train), y_train[0].shape)
+            y_train = transform_targets(y_train)
+            y_val = transform_targets(y_val)
         else:
+            print("Replicating labels for segmented data")
+            #repeat label for all subsegments
             y_train = np.repeat(y_train, x_train.shape[0]//y_train.shape[0],
                                 axis=0)
             y_val = np.repeat(y_val, x_val.shape[0]//y_val.shape[0], axis=0)
     else:
+
         x_train = np.expand_dims(x_train, 1)
         x_val = np.expand_dims(x_val, 1)
+
+        if callable(transform_targets):
+            print("Transforming targets")
+            # print(type(y_train), y_train[0].shape)
+            y_train = transform_targets(y_train, decimate=decimate, )
+            y_val = transform_targets(y_val)
 
     x_train = np.swapaxes(x_train, -2, -1)
     x_val = np.swapaxes(x_val, -2, -1)
 
+
     print('train preprocessed:', x_train.shape, y_train.shape)
-#    print('val preprocessed:', x_val.shape, y_val.shape)
+    assert x_train.shape[0] == y_train.shape[0]
+    assert x_val.shape[0] == y_val.shape[0]
+    #    print('val preprocessed:', x_val.shape, y_val.shape)
 
     return x_train, y_train, x_val, y_val
 

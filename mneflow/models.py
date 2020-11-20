@@ -90,8 +90,8 @@ class BaseModel():
         # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
             self.km.compile(optimizer='adam',
-                         loss=tf.keras.losses.MAE,
-                         metrics=['mse', 'mae'])
+                         loss=tf.keras.losses.MSE,
+                         metrics=['mse'])
         elif self.dataset.h_params["target_type"] in ['int']:
             self.km.compile(optimizer='adam',
                          loss=tf.nn.softmax_cross_entropy_with_logits,
@@ -157,7 +157,8 @@ class BaseModel():
 
         stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
                                                       min_delta=min_delta,
-                                                      patience=early_stopping)
+                                                      patience=early_stopping,
+                                                      restore_best_weights=True)
         if not eval_step:
             train_size = self.dataset.h_params['train_size']
             eval_step = train_size // self.dataset.h_params['train_batch'] + 1
