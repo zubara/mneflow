@@ -242,10 +242,12 @@ class VARConv(BaseLayer):
         return config
 
     def build(self, input_shape):
+        print("input_shape:", input_shape)
         super(VARConv, self).build(input_shape)
+        
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
-        shape = [1, self.filter_length, input_shape[-1].value, self.size]
+        shape = [1, self.filter_length, input_shape[-1], self.size]
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
                                        regularizer=self.reg,
@@ -254,7 +256,7 @@ class VARConv(BaseLayer):
                                        name='tconv_weights',
                                        dtype=tf.float32)
 
-        self.b = self.add_weight(shape=([input_shape[-1].value]),
+        self.b = self.add_weight(shape=([input_shape[-1]]),
                                  initializer=Constant(0.1),
                                  regularizer=None,
                                  trainable=True,

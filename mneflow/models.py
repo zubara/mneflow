@@ -29,8 +29,10 @@ from matplotlib import patches as ptch
 from matplotlib import collections
 
 from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling
-from tensorflow.keras.layers import Flatten, Dropout, Conv2D, DepthwiseConv2D
+from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
+from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
 from tensorflow.keras.initializers import Constant
+
 #from .layers import LSTMv1
 from tensorflow.keras import regularizers as k_reg, constraints, layers
 import csv
@@ -51,7 +53,7 @@ class BaseModel():
     _set_optimizer methods.
     """
 
-    def __init__(self, Dataset, specs):
+    def __init__(self, Dataset, specs=dict()):
         """
         Parameters
         -----------
@@ -64,8 +66,10 @@ class BaseModel():
             See `Model` subclass definitions for details.
         """
         self.specs = specs
-        self.model_path = specs['model_path']
         self.dataset = Dataset
+        self.specs.setdefault('model_path', self.dataset.h_params['savepath'])
+        self.model_path = specs['model_path']
+        
         self.input_shape = (self.dataset.h_params['n_seq'],
                             self.dataset.h_params['n_t'],
                             self.dataset.h_params['n_ch'])
@@ -81,21 +85,38 @@ class BaseModel():
         self.y_pred = self.build_graph()
 
 
-    def build(self):
+    def build(self, optimizer="adam", loss=None, metrics=None, mapping=None):
         """Compile a model."""
         # Initialize computational graph
-
-
+        if mapping:
+            map_fun = tf.keras.activations.get(mapping)
+            self.y_pred= map_fun(self.y_pred)
+        
         self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
+        
+        params = {"optimizer": tf.optimizers.get("adam")}
+        
+        if loss:
+            params["loss"] = tf.keras.losses.get(loss)
+        
+        if metrics:
+            if not isinstance(metrics, list):
+                metrics = [metrics]
+            params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
+        
         # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
-            self.km.compile(optimizer='adam',
-                         loss=tf.keras.losses.MSE,
-                         metrics=['mse'])
+            params.setdefault("loss", tf.keras.losses.MSE)
+            params.setdefault("metrics", tf.keras.metrics.RootMeanSquaredError())
+            
         elif self.dataset.h_params["target_type"] in ['int']:
-            self.km.compile(optimizer='adam',
-                         loss=tf.nn.softmax_cross_entropy_with_logits,
-                         metrics=['accuracy'])
+            params.setdefault("loss", tf.nn.softmax_cross_entropy_with_logits)
+            params.setdefault("metrics", tf.keras.metrics.Accuracy())
+              
+        print(params)
+        self.km.compile(optimizer=params["optimizer"],
+                        loss=params["loss"],
+                        metrics=params["metrics"])
 
 
         print('Input shape:', self.input_shape)
@@ -122,7 +143,7 @@ class BaseModel():
 
 
         flat = Flatten()(self.inputs)
-        self.fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
+        self.fc = Dense(size=self.out_dim, nonlin=tf.identity,
                         specs=self.specs)
         y_pred = self.fc(flat)
         #y_pred = fc_1
@@ -253,6 +274,15 @@ class BaseModel():
             if not appending:
                 writer.writeheader()
             writer.writerow(self.log)
+            
+    def save(self):
+        print("Not implemented")
+        
+    def restore(self):
+        print("Not implemented")
+    
+    def predict(self, x):
+        print("Not implemented")
 #
 #    def evaluate_minibatches(self, data_path, batch_size=None, update=False):
 #        """Compute performance metric on a TFR dataset specified by path
@@ -306,7 +336,7 @@ class LFCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, Dataset, specs):
+    def __init__(self, Dataset, specs=dict()):
         """
 
         Parameters
@@ -345,13 +375,15 @@ class LFCNN(BaseModel):
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
         specs.setdefault('stride', 2)
-        specs.setdefault('pool_type', 'SAME')
+        specs.setdefault('padding', 'SAME')
+        specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
         specs.setdefault('l1', 3e-4)
         specs.setdefault('l2', 0)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
+        #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
         super(LFCNN, self).__init__(Dataset, specs)
 
 
@@ -388,7 +420,7 @@ class LFCNN(BaseModel):
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
 
-        self.fin_fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
+        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
 
         y_pred = self.fin_fc(dropout)
@@ -480,7 +512,7 @@ class LFCNN(BaseModel):
 
         self.out_w_flat = self.fin_fc.w.numpy()
         self.out_weights = np.reshape(self.out_w_flat, [-1, self.dmx.size,
-                                              np.prod(self.y_shape)])
+                                              self.out_dim])
         self.out_biases = self.fin_fc.b.numpy()
         self.feature_relevances = self.get_component_relevances(X, y)
 
@@ -519,6 +551,7 @@ class LFCNN(BaseModel):
         self.filters = np.squeeze(kern)
         self.tc_out = np.squeeze(tc_out)
         self.corr_to_output = self.get_output_correlations(y)
+        self.y_true = y
 
 #        print('demx:', demx.shape,
 #              'kern:', self.filters.shape,
@@ -818,9 +851,10 @@ class LFCNN(BaseModel):
             self.fake_evoked = evoked.EvokedArray(self.patterns, info)
 
         order, ts = self._sorting(sorting)
+        print(order, type(order))
         #uorder = uniquify(order.ravel())
         self.uorder = np.squeeze(order)
-        l_u = len(self.uorder)
+        l_u = len(order)
 
         if sensor_layout:
             self.fake_evoked.data[:, :l_u] = self.fake_evoked.data[:, self.uorder]
@@ -950,7 +984,7 @@ class VARCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, Dataset, specs):
+    def __init__(self, Dataset, specs=dict()):
         """
         Parameters
         ----------
@@ -983,14 +1017,15 @@ class VARCNN(BaseModel):
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
         specs.setdefault('stride', 2)
-        specs.setdefault('pool_type', 'SAME')
+        specs.setdefault('padding', 'SAME')
+        specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
         specs.setdefault('l1', 3e-4)
         specs.setdefault('l2', 0)
-        specs.setdefault('l1_scope', ['fc', 'demix', 'var_conv'])
+        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
-        super(LFCNN, self).__init__(Dataset, specs)
+        super(VARCNN, self).__init__(Dataset, specs)
 
     def build_graph(self):
         """Build computational graph using defined placeholder `self.X`
@@ -1004,7 +1039,8 @@ class VARCNN(BaseModel):
         """
         self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
                             axis=3, specs=self.specs)(self.inputs)
-
+        
+        
         self.tconv = VARConv(size=self.specs['n_latent'],
                              nonlin=self.specs['nonlin'],
                              filter_length=self.specs['filter_length'],
@@ -1021,7 +1057,7 @@ class VARCNN(BaseModel):
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
 
-        self.fin_fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
+        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
 
         y_pred = self.fin_fc(dropout)
@@ -1039,7 +1075,7 @@ class LFCNN3(LFCNN):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, Dataset, specs):
+    def __init__(self, Dataset, specs=dict()):
         """
                 Parameters
         ----------
@@ -1080,6 +1116,7 @@ class LFCNN3(LFCNN):
         specs.setdefault('l1_scope', ['fc'])
         specs.setdefault('l2_scope', ['demix', 'lf_conv'])
         specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('model_path', self.dataset.h_params['save_path'])
         super(LFCNN, self).__init__(Dataset, specs)
 
 
@@ -1125,7 +1162,7 @@ class LFCNN3(LFCNN):
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled3)
 
-        self.fin_fc = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
+        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
 
         y_pred = self.fin_fc(dropout)
@@ -1144,7 +1181,7 @@ class FBCSP_ShallowNet(BaseModel):
        visualization.
        Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
     """
-    def __init__(self, Dataset, specs):
+    def __init__(self, Dataset, specs=dict()):
         self.scope = 'fbcsp-ShallowNet'
         specs.setdefault('filter_length', 25)
         specs.setdefault('n_latent', 40)
@@ -1205,7 +1242,7 @@ class FBCSP_ShallowNet(BaseModel):
                                   )(sconv1_out)
 
         print('pool1: ', pool1.shape)
-        fc_out = Dense(size=np.prod(self.y_shape),
+        fc_out = Dense(size=self.out_dim,
                        nonlin=tf.identity)
         y_pred = fc_out(tf.keras.backend.log(pool1))
         return y_pred
@@ -1307,9 +1344,9 @@ class FBCSP_ShallowNet(BaseModel):
 ##        #                                     self.dataset.h_params['n_seq'],
 ##        #                                     self.specs['n_latent']])
 ##
-##        self.fin_fc = Dense(size=np.prod(self.y_shape),
+##        self.fin_fc = Dense(size=self.out_dim,
 ##                            nonlin=tf.identity, dropout=0.)
-###        self.fin_fc = DeMixing(n_latent=np.prod(self.y_shape),
+###        self.fin_fc = DeMixing(n_latent=self.out_dim,
 ###                               nonlin=tf.identity, axis=-1)
 ##        y_pred = self.fin_fc(lstm_out)
 ##        # print(y_pred)
@@ -1327,20 +1364,21 @@ class Deep4(BaseModel):
        visualization.
        Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
     """
-    def __init__(self, Dataset, specs):
+    def __init__(self, Dataset, specs=dict()):
         self.scope = 'deep4'
         specs.setdefault('filter_length', 10)
         specs.setdefault('n_latent', 25)
         specs.setdefault('pooling', 3)
         specs.setdefault('stride', 3)
         specs.setdefault('pool_type', 'max')
-        specs.setdefault('padding', 'VALID')
+        specs.setdefault('padding', 'SAME')
         specs.setdefault('nonlin', tf.nn.elu)
         specs.setdefault('l1', 3e-4)
         specs.setdefault('l2', 3e-2)
         specs.setdefault('l1_scope', [])
         specs.setdefault('l2_scope', ['conv', 'fc'])
         specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('model_path', './model/')
         super(Deep4, self).__init__(Dataset, specs)
 
     def build_graph(self):
@@ -1461,8 +1499,7 @@ class Deep4(BaseModel):
         print('pool4: ', pool4.shape)
 
 
-        fc_out = Dense(size=np.prod(self.y_shape),
-                       nonlin=tf.identity)
+        fc_out = Dense(size=self.out_dim, nonlin=tf.identity)
         y_pred = fc_out(pool4)
         return y_pred
 #
@@ -1501,61 +1538,73 @@ class EEGNet(BaseModel):
     [4] Original EEGNet implementation by the authors can be found at
     https://github.com/vlawhern/arl-eegmodels
     """
-
-    def build_graph(self):
+    def __init__(self, Dataset, specs=dict()):
         self.scope = 'eegnet'
+        specs.setdefault('filter_length', 64)
+        specs.setdefault('n_latent', 8)
+        specs.setdefault('pooling', 4)
+        specs.setdefault('stride', 4)
+        specs.setdefault('dropout', 0.5)
+        specs.setdefault('padding', 'same')
+        specs.setdefault('nonlin', 'elu')
+        specs.setdefault('maxnorm_rate', 0.25)
+        specs.setdefault('model_path', './model/')
+        super(EEGNet, self).__init__(Dataset, specs)
 
-        X1 = self.X  # tf.expand_dims(self.X, -1)
-        vc1 = ConvDSV(n_latent=self.specs['n_latent'], nonlin=tf.identity, inch=1,
-                      filter_length=self.specs['filter_length'], domain='time',
-                      stride=1, pooling=1, conv_type='2d')
-        vc1o = vc1(X1)
-
-        bn1 = tf.layers.batch_normalization(vc1o)
-        dwc1 = ConvDSV(n_latent=1, nonlin=tf.identity, inch=self.specs['n_latent'],
-                       padding='VALID', filter_length=bn1.get_shape()[1].value,
-                       domain='space',  stride=1, pooling=1,
-                       conv_type='depthwise')
-        dwc1o = dwc1(bn1)
-
-        bn2 = tf.layers.batch_normalization(dwc1o)
-        out2 = tf.nn.elu(bn2)
-        out22 = tf.nn.dropout(out2, rate=self.rate)
-
-        sc1 = ConvDSV(n_latent=self.specs['n_latent'], nonlin=tf.identity,
-                      inch=self.specs['n_latent'],
-                      filter_length=self.specs['filter_length']//4,
-                      domain='time', stride=1, pooling=1,
-                      conv_type='separable')
-        sc1o = sc1(out22)
-
-        bn3 = tf.layers.batch_normalization(sc1o)
-        out3 = tf.nn.elu(bn3)
-
-        out4 = tf.nn.avg_pool(out3, [1, 1, self.specs['pooling'], 1],
-                              [1, 1, self.specs['stride'], 1], 'SAME')
-        out44 = tf.nn.dropout(out4, rate=self.rate)
-
-        sc2 = ConvDSV(n_latent=self.specs['n_latent']*2, nonlin=tf.identity,
-                      inch=self.specs['n_latent'],
-                      filter_length=self.specs['filter_length']//4,
-                      domain='time', stride=1, pooling=1,
-                      conv_type='separable')
-        sc2o = sc2(out44)
-
-        bn4 = tf.layers.batch_normalization(sc2o)
-        out5 = tf.nn.elu(bn4)
-
-        out6 = tf.nn.avg_pool(out5, [1, 1, self.specs['pooling'], 1],
-                              [1, 1, self.specs['stride'], 1], 'SAME')
-        out66 = tf.nn.dropout(out6, rate=self.rate)
-
-        out7 = tf.reshape(out66, [-1, np.prod(out66.shape[1:])])
-        fc_out = Dense(size=self.y_shape[0],
-                       nonlin=tf.identity,
-                       dropout=self.rate)
-        y_pred = fc_out(out7)
-
+        
+        
+    def build_graph(self):
+        self.scope = 'eegnet8'
+        
+        inputs = tf.transpose(self.inputs,[0,3,2,1])
+        
+        dropoutType = Dropout
+        #input1   = Input(shape = (1, Chans, Samples)) self.dataset.h_params['n_ch']
+        D = 2
+        #norm_rate = 0.5
+        #dropoutRate = 0.25
+        ##################################################################
+        block1       = Conv2D(self.specs['n_latent'], 
+                              (1, self.specs['filter_length']), 
+                              padding = self.specs['padding'],
+                              input_shape = (1, self.dataset.h_params['n_ch'], 
+                                             self.dataset.h_params['n_t']),
+                              use_bias = False)(inputs)
+        block1       = BatchNormalization(axis = 1)(block1)
+        print("Batchnorm:", block1.shape)
+        block1       = DepthwiseConv2D((self.dataset.h_params['n_ch'], 1), 
+                                       use_bias = False, 
+                                       depth_multiplier = D,
+                                       depthwise_constraint = constraints.MaxNorm(1.))(block1)
+        block1       = BatchNormalization(axis = 1)(block1)
+        block1       = layers.Activation(self.specs['nonlin'])(block1)
+        block1       = layers.AveragePooling2D((1, self.specs['pooling']))(block1)
+        print("Pooling 1:", block1.shape)
+        block1       = dropoutType(self.specs['dropout'])(block1)
+        
+        block2       = SeparableConv2D(self.specs['n_latent']*D, (1, self.specs['filter_length']//self.specs["pooling"]),
+                                       use_bias = False, padding = self.specs['padding'])(block1)
+        block2       = BatchNormalization(axis = 1)(block2)
+        print("Batchnorm 2:", block2.shape)
+        
+        block2       = layers.Activation(self.specs['nonlin'])(block2)
+        block2       = layers.AveragePooling2D((1, self.specs['pooling']*2))(block2)
+        block2       = dropoutType(self.specs['dropout'])(block2)
+        print("Pooling 2:", block2.shape)
+        #flatsize = np.prod(block2.shape[1:])
+        #print(flatsize)
+        fin_fc = Dense(size=self.out_dim, nonlin=tf.identity)
+        y_pred = fin_fc(block2)
+        # flatten      = Flatten(name = 'flatten')(block2)
+        # print("Flatten:", flatten.shape)
+        # y_pred        = layers.Dense(units = np.prod(self.dataset.h_params['y_shape']), 
+        #                      name = 'dense', 
+        #                      activation='sigmoid',
+        #                      kernel_constraint = constraints.MaxNorm(0.25)
+        #                      )(flatten)
+        #print("Out:", y_pred.shape)
+        #y_pred      = layers.Activation('softmax', name = 'softmax')(dense)
+    
         return y_pred
 # ----- Models -----
 #class VGG19(Model):
@@ -1604,7 +1653,7 @@ class EEGNet(BaseModel):
 #
 #        fc_1 = Dense(size=4096, nonlin=tf.nn.relu, dropout=self.rate)
 #        fc_2 = Dense(size=4096, nonlin=tf.nn.relu, dropout=self.rate)
-#        fc_out = Dense(size=np.prod(self.y_shape), nonlin=tf.identity,
+#        fc_out = Dense(size=self.out_dim, nonlin=tf.identity,
 #                       dropout=self.rate)
 #
 #        y_pred = fc_out(fc_2(fc_1(out5)))
