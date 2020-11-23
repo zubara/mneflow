@@ -869,7 +869,9 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
                                                      val=val_size)
 
     if segment:
+        #segment each fold separately
         print("Segmenting X")
+
         x_train = _segment(x_train, segment_length=segment, stride=aug_stride,
                            input_type=input_type, seq_length=seq_length)
 
