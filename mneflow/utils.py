@@ -32,7 +32,7 @@ def _onehot(y, n_classes=False):
     return out.astype(int)
 
 
-def _load_meta(fname, data_id=''):
+def load_meta(fname, data_id=''):
     """Load a metadata file.
 
     Parameters
@@ -51,57 +51,57 @@ def _load_meta(fname, data_id=''):
     return meta
 
 
-def leave_one_subj_out(meta, optimizer_params, graph_specs, model):
-    """Perform a leave-one-out cross-validation.
+# def leave_one_subj_out(meta, model, graph_specs={}):
+#     """Perform a leave-one-out cross-validation.
 
-    On each fold one input .tfrecord file is used as a validation set.
+#     On each fold one input .tfrecord file is used as a validation set.
 
-    Parameters
-    ----------
-    meta : dict
-        Dictionary containing metadata for initializing mneflow.Dataset.
-        Normally meta is an output of produce_tfrecords function.
+#     Parameters
+#     ----------
+#     meta : dict
+#         Dictionary containing metadata for initializing mneflow.Dataset.
+#         Normally meta is an output of produce_tfrecords function.
 
-    optimizer_params : dict
-        Dictionary of parameters for initializing mneflow.Optimizer.
+#     optimizer_params : dict
+#         Dictionary of parameters for initializing mneflow.Optimizer.
 
-    graph_specs : dict
-        Dictionary of model-specific parameters.
+#     graph_specs : dict
+#         Dictionary of model-specific parameters.
 
-    model : mneflow.models.Model
-        Class of model to be used
+#     model : mneflow.models.Model
+#         Class of model to be used
 
-    Returns
-    -------
-    results : list of dict
-        List of dictionaries, containing final cost and performance
-        estimates on each fold of the cross-validation.
-    """
-    results = []
-    optimizer = Optimizer(**optimizer_params)
-    for i, path in enumerate(meta['test_paths']):
-        meta_loso = meta.copy()
+#     Returns
+#     -------
+#     results : list of dict
+#         List of dictionaries, containing final cost and performance
+#         estimates on each fold of the cross-validation.
+#     """
+#     results = []
+#     #optimizer = Optimizer(**optimizer_params)
+#     for i, path in enumerate(meta['test_paths']):
+#         meta_loso = meta.copy()
 
-        train_fold = [jj for jj, _ in enumerate(meta['train_paths'])]
-        train_fold.remove(i)
+#         train_fold = [jj for jj, _ in enumerate(meta['train_paths'])]
+#         train_fold.remove(i)
 
-        meta_loso['train_paths'] = itemgetter(*train_fold)(meta['train_paths'])
-        meta_loso['val_paths'] = itemgetter(*train_fold)(meta['val_paths'])
-        print('holdout subj:', path[-10:-9])
+#         meta_loso['train_paths'] = itemgetter(*train_fold)(meta['train_paths'])
+#         meta_loso['val_paths'] = itemgetter(*train_fold)(meta['val_paths'])
+#         print('holdout subj:', path[-10:-9])
 
-        dataset = Dataset(meta_loso, train_batch=200, class_subset=None,
-                          pick_channels=None, decim=None)
-        m = model(dataset, optimizer, graph_specs)
-        m.build()
+#         dataset = Dataset(meta_loso, train_batch=200, class_subset=None,
+#                           pick_channels=None, decim=None)
+#         m = model(dataset, optimizer, graph_specs)
+#         m.build()
 
-        m.train(n_iter=30000, eval_step=250, min_delta=1e-6, early_stopping=3)
-        test_acc = m.evaluate_performance(path)
+#         m.train(n_iter=30000, eval_step=250, min_delta=1e-6, early_stopping=3)
+#         test_acc = m.evaluate_performance(path)
 
-        print(i, ':', 'test_acc:', test_acc)
-        results.append({'val_acc': m.v_acc, 'test_acc': test_acc})
+#         print(i, ':', 'test_acc:', test_acc)
+#         results.append({'val_acc': m.v_acc, 'test_acc': test_acc})
 
-        # logger(m, results)
-    return results
+#         # logger(m, results)
+#     return results
 
 
 def scale_to_baseline(X, baseline=None, crop_baseline=False):
@@ -147,12 +147,14 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     return X
 
 
-def _make_example(X, y, target_type='int'):
+def _make_example(X, y, n, target_type='int'):
     """Construct Example proto object from data / target pairs."""
 
     feature = {}
     feature['X'] = tf.train.Feature(
             float_list=tf.train.FloatList(value=X.flatten()))
+    feature['n'] = tf.train.Feature(
+                int64_list=tf.train.Int64List(value=n.flatten()))
 
     if target_type == 'int':
         feature['y'] = tf.train.Feature(
@@ -169,7 +171,7 @@ def _make_example(X, y, target_type='int'):
     return example
 
 
-def _write_tfrecords(X_, y_, output_file, target_type='int'):
+def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
     """Serialize and write datasets in TFRecords format.
 
     Parameters
@@ -187,11 +189,12 @@ def _write_tfrecords(X_, y_, output_file, target_type='int'):
     """
     writer = tf.io.TFRecordWriter(output_file)
 
-    for X, y in zip(X_, y_):
+    for X, y, n in zip(X_, y_, n_):
         # print(len(X_), len(y_), X.shape, y.shape)
         X = X.astype(np.float32)
+        n = n.astype(np.int64)
         # Feature contains a map of string to feature proto objects
-        example = _make_example(X, y, target_type=target_type)
+        example = _make_example(X, y, n, target_type=target_type)
         # Serialize the example to a string
         serialized = example.SerializeToString()
         # write the serialized object to the disk
@@ -199,40 +202,50 @@ def _write_tfrecords(X_, y_, output_file, target_type='int'):
     writer.close()
 
 
-def _split_sets(X, y, val=.1):
-    """Apply shuffle and split the shuffled data.
+def _split_indices(X, y, n_folds=5):
+    """Generate indices for n-fold cross-validation"""
+    n = X.shape[0]
+    #original_indices = np.arange(n)
+    shuffle = np.random.permutation(n)
+    subset_proportion = 1./float(n_folds)
+    fold_size = int(subset_proportion*n)
+    folds = [shuffle[i*fold_size:(i+1)*fold_size] for i in range(n_folds)]
+    return folds
+
+
+def _split_sets(X, y, folds, ind=-1):
+    """Split the data returning a single fold specified by ind as validation
+        and the rest of the data as training set.
 
     Parameters
     ----------
     X : ndarray
         (Preprocessed) data matrix.
-        shape (n_epochs, n_channels, n_timepoints)
+        shape (n_epochs, ...)
 
     y : ndarray
         Class labels.
-        shape (n_epochs,)
+        shape (n_epochs, ...)
 
-    val : float from 0 to 1
-        Name of the TFRecords file.
+    folds : list of arrays
+        fold indices
+    
+    ind : index of the selected fold, defaults to -1
 
     Returns
     -------
     X_train, y_train, X_val, y_val : ndarray
         Pairs of data / targets split in Training and Validation sets.
     """
-    assert (val > 0) and (val < 1), "Invalid val ratio."
-
-    while y.ndim < 2:
-        y = np.expand_dims(y, -1)
-
-    shuffle = np.random.permutation(X.shape[0])
-    val_size = int(round(val*X.shape[0]))
-    X_val = X[shuffle[:val_size], ...]
-    y_val = y[shuffle[:val_size], ...]
-    X_train = X[shuffle[val_size:], ...]
-    y_train = y[shuffle[val_size:], ...]
+    
+    fold = folds.pop(ind)
+    X_val = X[fold, ...]
+    y_val = y[fold, ...]
+    X_train = np.delete(X, fold, axis=0)
+    y_train = np.delete(y, fold, axis=0)
+     
     # return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
-    return X_train, y_train, X_val, y_val
+    return X_train, y_train, X_val, y_val, fold
 
 
 def import_data(inp, picks=None, target_picks=None,
@@ -389,7 +402,7 @@ def produce_labels(y, return_stats=True):
 
 def produce_tfrecords(inputs, savepath, out_name, fs=0,
                       input_type='trials', target_type='float',
-                      array_keys={'X': 'X', 'y': 'y'}, val_size=0.2,
+                      array_keys={'X': 'X', 'y': 'y'}, n_folds=5,
                       scale=False, scale_interval=None, crop_baseline=False,
                       bp_filter=False, decimate=False, combine_events=None,
                       segment=False, aug_stride=None, seq_length=None,
@@ -433,9 +446,11 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
         corresponding variables if the input is paths to .mat or .npz
         files. Defaults to {'X':'X', 'y':'y'}
 
-    val_size : float, optional
-        Proportion of the data to use as a validation set. Only used if
-        shuffle_split = True. Defaults to 0.2.
+    n_folds : int, optional
+        Number of folds to split the data for training/validation/testing. 
+        One fold of the n_folds is used as a validation set. 
+        If test_set == 'holdout' generates one extra fold 
+        used as test set. Defaults to 5
 
     scale : bool, optional
         Whether to perform scaling to baseline. Defaults to False.
@@ -531,7 +546,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
         os.mkdir(savepath)
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
 
-        meta = dict(train_paths=[], val_paths=[], test_paths=[],
+        meta = dict(train_paths=[], val_paths=[], test_paths=[], folds=[],
                     data_id=out_name, train_size=0, val_size=0, test_size=0,
                     savepath=savepath, target_type=target_type,
                     input_type=input_type)
@@ -560,58 +575,57 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
 
             #elif target_type == 'signal':
             #    print(data.shape, events.shape)
-
-            x_train, y_train, x_val, y_val = preprocess(
-                    data, events, input_type=input_type, scale=scale, fs=fs,
-                    val_size=val_size, scale_interval=scale_interval,
+            if test_set == 'holdout':
+                n_folds += 1
+                
+            X, Y, folds = preprocess(
+                    data, events, sample_counter=meta['train_size'], input_type=input_type, scale=scale, fs=fs,
+                    n_folds=n_folds, scale_interval=scale_interval,
                     segment=segment, aug_stride=aug_stride,
                     crop_baseline=crop_baseline, decimate=decimate,
                     bp_filter=bp_filter, seq_length=seq_length,
                     transform_targets=transform_targets)
 
             if test_set == 'holdout':
-                x_val, y_val, x_test, y_test = _split_sets(x_val, y_val,
-                                                           val=.5)
+                X, Y, x_test, y_test, test_fold = _split_sets(X, Y, folds=folds)
                 meta['test_size'] += x_test.shape[0]
 
-            meta['y_shape'] = y_train[0].shape
-            _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = x_train.shape
+            meta['y_shape'] = Y[0].shape
+            _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
+            n = np.arange(_n) + meta['train_size']
+            print("sample_count: {}, folds: {} - {}".format(meta["train_size"], 
+                                                            np.min(n), np.max(n)))
             meta['train_size'] += _n
-            meta['val_size'] += x_val.shape[0]
+            meta['val_size'] += len(folds[0])
 
-            print('Prepocessed sample shape:', x_train[0].shape)
-            print('Target shape actual/metadata: ',
-                  y_train[0].shape, meta['y_shape'])
+            print('Prepocessed sample shape:', X[0].shape)
+            print('Target shape actual/metadata: ', Y[0].shape, meta['y_shape'])
 
             print('Saving TFRecord# {}'.format(jj))
 
-            meta['val_size'] += len(y_val)
+            meta['folds'].append(folds)
             meta['train_paths'].append(''.join([savepath, out_name,
                                                 '_train_', str(jj),
                                                 '.tfrecord']))
-            _write_tfrecords(x_train, y_train, meta['train_paths'][-1],
-                             target_type=target_type)
-
-            meta['val_paths'].append(''.join([savepath, out_name,
-                                              '_val_', str(jj),
-                                              '.tfrecord']))
-            _write_tfrecords(x_val, y_val, meta['val_paths'][-1],
+            
+            _write_tfrecords(X, Y, n, meta['train_paths'][-1],
                              target_type=target_type)
 
             if test_set == 'loso':
-                meta['test_size'] = len(y_val) + len(y_train)
+                meta['test_size'] = len(Y)
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
-                _write_tfrecords(np.concatenate([x_train, x_val], axis=0),
-                                 np.concatenate([y_train, y_val], axis=0),
-                                 meta['test_paths'][-1],
+                _write_tfrecords(X, Y, n, meta['test_paths'][-1],
                                  target_type=target_type)
 
             elif test_set == 'holdout':
+                meta['test_fold'].append(test_fold)
+            
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
+                
                 _write_tfrecords(x_test, y_test, meta['test_paths'][-1],
                                  target_type=target_type)
             jj += 1
@@ -620,7 +634,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
 
     elif os.path.exists(savepath+out_name+'_meta.pkl'):
         print('Metadata file found, restoring')
-        meta = _load_meta(savepath, data_id=out_name)
+        meta = load_meta(savepath, data_id=out_name)
     return meta
 
 
@@ -794,7 +808,7 @@ def partition(data, test_indices):
         raise AttributeError('No test indices provided')
 
 
-def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
+def preprocess(data, events, sample_counter, input_type='trials', n_folds=1, scale=False,
                fs=None, scale_interval=None, crop_baseline=False,
                decimate=False, bp_filter=False, picks=None, segment=False,
                aug_stride=None, seq_length=None, transform_targets=None):
@@ -865,59 +879,60 @@ def preprocess(data, events, input_type='trials', val_size=.1, scale=False,
         #                                                     x_val, y_val]]
         # else:
         print("Splitting sets")
-        x_train, y_train, x_val, y_val = _split_sets(data, events,
-                                                     val=val_size)
+  
+        folds = _split_indices(data, events, n_folds=n_folds)
+        #x_train, y_train, x_val, y_val = _split_sets(data, events,
+        #                                            val=val_size)
 
     if segment:
-        #segment each fold separately
-        print("Segmenting X")
-
-        x_train = _segment(x_train, segment_length=segment, stride=aug_stride,
-                           input_type=input_type, seq_length=seq_length)
-
-        x_val = _segment(x_val, segment_length=segment, stride=aug_stride,
-                         input_type=input_type, seq_length=seq_length)
-
-#        if isinstance(y_train, list) or np.ndim(y_train) > 2:
-#            y_train = _segment(y_train, segment_length=segment,
-#                               stride=aug_stride, input_type=input_type,
-#                               seq_length=seq_length)
-#            y_val = _segment(y_val, segment_length=segment,
-#                             stride=aug_stride, input_type=input_type,
-#                             seq_length=seq_length)
-        #TODO: add process_y
-        if callable(transform_targets):
-            print("Transforming targets")
-            #print(type(y_train), y_train[0].shape)
-            y_train = transform_targets(y_train)
-            y_val = transform_targets(y_val)
-        else:
-            print("Replicating labels for segmented data")
-            #repeat label for all subsegments
-            y_train = np.repeat(y_train, x_train.shape[0]//y_train.shape[0],
-                                axis=0)
-            y_val = np.repeat(y_val, x_val.shape[0]//y_val.shape[0], axis=0)
+        print("Segmenting")
+        X = []
+        Y = []
+        segmented_folds = []
+        jj = 0
+        for fold in folds:
+            x = _segment(data[fold, ...], segment_length=segment, 
+                         stride=aug_stride, input_type=input_type, 
+                         seq_length=seq_length)
+            nsegments = x.shape[0]
+        
+            if callable(transform_targets):
+                print("Transforming targets")
+                #print(type(y_train), y_train[0].shape)
+                y = transform_targets(events[fold, ...])
+                #y_val = transform_targets(y_val)
+            else:
+                #print("Replicating labels for segmented data")
+                #repeat label for all subsegments
+                y = np.repeat(events[fold, ...], nsegments//len(fold),
+                                    axis=0)
+            
+            X.append(x)
+            Y.append(y)
+            segmented_folds.append(np.arange(jj, jj + nsegments) + sample_counter)
+            jj += nsegments
+        X = np.concatenate(X, axis=0)
+        Y = np.concatenate(Y, axis=0)
+        folds = segmented_folds
     else:
 
-        x_train = np.expand_dims(x_train, 1)
-        x_val = np.expand_dims(x_val, 1)
-
+        X = np.expand_dims(data, 1)
+        
         if callable(transform_targets):
             print("Transforming targets")
             # print(type(y_train), y_train[0].shape)
-            y_train = transform_targets(y_train, decimate=decimate, )
-            y_val = transform_targets(y_val)
+            Y = transform_targets(events)
+        else:
+            Y = events
+        folds = [f + sample_counter for f in folds]
 
-    x_train = np.swapaxes(x_train, -2, -1)
-    x_val = np.swapaxes(x_val, -2, -1)
+    X = np.swapaxes(X, -2, -1)
+    
 
+    print('Preprocessed:', X.shape, Y.shape, 'folds:', len(folds), 'x', len(folds[0]))
+    assert X.shape[0] == Y.shape[0]
 
-    print('train preprocessed:', x_train.shape, y_train.shape)
-    assert x_train.shape[0] == y_train.shape[0]
-    assert x_val.shape[0] == y_val.shape[0]
-    #    print('val preprocessed:', x_val.shape, y_val.shape)
-
-    return x_train, y_train, x_val, y_val
+    return X, Y, folds
 
 def _process_labels(y, scale=False, decimate=False, normalize=False,
                    transpose=False, transform=False, segment=False):
