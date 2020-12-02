@@ -86,6 +86,7 @@
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">MNEflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="#isnatllation">Isnatllation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#dependencies">Dependencies</a></li>
 <li class="toctree-l1"><a class="reference internal" href="#examples">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="#references">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="models.html">Implemented models</a></li>
@@ -166,19 +167,31 @@
 </pre></div>
 </div>
 </div>
+<div class="section" id="dependencies">
+<h1>Dependencies<a class="headerlink" href="#dependencies" title="Permalink to this headline">¶</a></h1>
+<ul class="simple">
+<li><p>tensorflow &gt; 2.1.0</p></li>
+<li><p>mne &gt; 0.19</p></li>
+<li><p>numpy</p></li>
+<li><p>scipy</p></li>
+<li><p>matplotlib</p></li>
+</ul>
+</div>
 <div class="section" id="examples">
 <h1>Examples<a class="headerlink" href="#examples" title="Permalink to this headline">¶</a></h1>
 <ul class="simple">
 <li><p>Data Import and <a class="reference external" href="https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb">basic MNEflow pipeline</a>.</p></li>
-<li><p><a class="reference external" href="https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb">Advanced use example</a>.</p></li>
+<li><p><a class="reference external" href="https://github.com/zubara/mneflow/blob/master/examples/regression_example.ipynb">Regression, adjusting hyperparameters, and corss-validation</a>.</p></li>
+<li><p><a class="reference external" href="https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb">Custom network design</a>.</p></li>
 </ul>
 </div>
 <div class="section" id="references">
 <h1>References<a class="headerlink" href="#references" title="Permalink to this headline">¶</a></h1>
 <p>When using the implemented models please cite:</p>
 <p><em>for LF-CNN or VAR-CNN</em></p>
-<p>Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier for decoding MEG signals. Neuroimage. 2019 May 4;197:425-434. [link](<a class="reference external" href="https://www.sciencedirect.com/science/article/pii/S1053811919303544?via%3Dihub">https://www.sciencedirect.com/science/article/pii/S1053811919303544?via%3Dihub</a>):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>&#39;&#39;@article{Zubarev2019AdaptiveSignals.,
+<p>Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier for decoding MEG signals. Neuroimage. 2019 May 4;197:425-434.
+<a class="reference external" href="https://www.sciencedirect.com/science/article/pii/S1053811919303544?via%3Dihub">[link]</a>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>``@article{Zubarev2019AdaptiveSignals.,
     title = {{Adaptive neural network classifier for decoding MEG signals.}},
     year = {2019},
     journal = {NeuroImage},
@@ -190,7 +203,7 @@
     doi = {10.1016/j.neuroimage.2019.04.068},
     issn = {1095-9572},
     pmid = {31059799},
-    keywords = {Brain–computer interface, Convolutional neural network, Magnetoencephalography}}&#39;&#39;
+    keywords = {Brain–computer interface, Convolutional neural network, Magnetoencephalography}}``
 </pre></div>
 </div>
 <p><em>for EEGNet</em>:</p>
@@ -210,7 +223,7 @@
     title = {{Deep learning with convolutional neural networks for EEG decoding and visualization}},
     year = {2017},
     journal = {Human Brain Mapping},
-    author = {Schirrmeister, Robin Tibor and Springenberg, Jost Tobias and Fiederer, Lukas Dominique Josef and Glasstetter, Martin and Eggensperger, Katharina and Tangermann, Michael and Hutter, Frank and Burgard, Wolfram and Ball, Tonio},
+    author = {Schirrmeister, Robin Tibor and Springenberg, Jost Tobias and Fiederer, Lukas Dominique Josef and Glasstetter, Martin and Eggensperger, Katharina and      Tangermann, Michael and Hutter, Frank and Burgard, Wolfram and Ball, Tonio},
     number = {11},
     month = {11},
     pages = {5391--5420},
