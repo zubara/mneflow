@@ -17,10 +17,6 @@ from mne import channels, evoked, create_info
 
 from scipy.signal import freqz, welch
 from scipy.stats import spearmanr
-#from spectrum import aryule
-
-from sklearn.covariance import ledoit_wolf
-from sklearn.metrics import confusion_matrix
 
 from matplotlib import pyplot as plt
 from matplotlib import patches as ptch

@@ -7,19 +7,10 @@ Specifies utility functions.
 import os
 import pickle
 import warnings
-from operator import itemgetter
-
 import numpy as np
 import tensorflow as tf
-# import tensorflow.compat.v1 as tf
-# tf.disable_v2_behavior()
 import scipy.io as sio
-
 import mne
-#from mne import epochs as mnepochs, pick_types
-
-from mneflow.data import Dataset
-from mneflow.optimize import Optimizer
 
 
 def _onehot(y, n_classes=False):

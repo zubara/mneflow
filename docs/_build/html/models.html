@@ -86,6 +86,7 @@
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="intro.html">MNEflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#isnatllation">Isnatllation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html#dependencies">Dependencies</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#examples">Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html#references">References</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Implemented models</a><ul>
@@ -270,7 +271,7 @@ Spearman correlation for continuous targets.</p>
 
 <dl class="py method">
 <dt id="mneflow.models.LFCNN.plot_out_weights">
-<code class="sig-name descname">plot_out_weights</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">pat</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">t</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">tmin</span><span class="o">=</span><span class="default_value">- 0.1</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'weight'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_out_weights" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">plot_out_weights</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">pat</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">t</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">tmin</span><span class="o">=</span><span class="default_value">- 0.1</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'weight'</span></em>, <em class="sig-param"><span class="n">class_names</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_out_weights" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots the weights of the output layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -284,7 +285,7 @@ Spearman correlation for continuous targets.</p>
 
 <dl class="py method">
 <dt id="mneflow.models.LFCNN.plot_patterns">
-<code class="sig-name descname">plot_patterns</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sensor_layout</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'l2'</span></em>, <em class="sig-param"><span class="n">percentile</span><span class="o">=</span><span class="default_value">90</span></em>, <em class="sig-param"><span class="n">scale</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">names</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_patterns" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">plot_patterns</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sensor_layout</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'l2'</span></em>, <em class="sig-param"><span class="n">percentile</span><span class="o">=</span><span class="default_value">90</span></em>, <em class="sig-param"><span class="n">scale</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">class_names</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_patterns" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot informative spatial activations patterns for each class
 of stimuli.</p>
 <dl class="field-list simple">
@@ -308,7 +309,7 @@ See model._sorting</p></li>
 
 <dl class="py method">
 <dt id="mneflow.models.LFCNN.plot_spectra">
-<code class="sig-name descname">plot_spectra</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'l2'</span></em>, <em class="sig-param"><span class="n">norm_spectra</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">log</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_spectra" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">plot_spectra</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'l2'</span></em>, <em class="sig-param"><span class="n">norm_spectra</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">log</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">class_names</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_spectra" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots frequency responses of the temporal convolution filters.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -326,7 +327,7 @@ Defaults to None.</p></li>
 
 <dl class="py method">
 <dt id="mneflow.models.LFCNN.plot_waveforms">
-<code class="sig-name descname">plot_waveforms</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'compwise_loss'</span></em>, <em class="sig-param"><span class="n">tmin</span><span class="o">=</span><span class="default_value">0</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_waveforms" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">plot_waveforms</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'compwise_loss'</span></em>, <em class="sig-param"><span class="n">tmin</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">class_names</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_waveforms" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots timecourses of latent components.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
