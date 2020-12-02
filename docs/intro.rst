@@ -18,7 +18,7 @@ Dependencies
 Examples
 ========
 * Data Import and `basic MNEflow pipeline <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb>`_.
-* `Regression, adjusting hyperparameters, and corss-validation <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb>`_.
+* `Regression, adjusting hyperparameters, and corss-validation <https://github.com/zubara/mneflow/blob/master/examples/regression_example.ipynb>`_.
 * `Custom network design <https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb>`_.
 
 
