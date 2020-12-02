@@ -30,7 +30,7 @@ When using the implemented models please cite:
 *for LF-CNN or VAR-CNN*
 
 Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier for decoding MEG signals. Neuroimage. 2019 May 4;197:425-434. 
-`[link] <https://www.sciencedirect.com/science/article/pii/S1053811919303544?via%3Dihub>`_
+`[link] <https://www.sciencedirect.com/science/article/pii/S1053811919303544?via%3Dihub>`_::
 
 	''@article{Zubarev2019AdaptiveSignals.,
 	    title = {{Adaptive neural network classifier for decoding MEG signals.}},
