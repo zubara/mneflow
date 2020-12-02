@@ -3,7 +3,7 @@ MNEflow
 MNEflow provides a convenient way to apply neural networks implemmented in Tensorflow to EEG/MEG data. 
 
 
-Isnatllation
+Installation
 ============
 >>> pip install mneflow
 
