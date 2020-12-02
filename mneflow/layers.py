@@ -29,11 +29,11 @@ class BaseLayer(tf.keras.layers.Layer):
         self.specs.setdefault("maxnorm_scope", [])
 
     def _set_regularizer(self):
-        if self.scope in self.specs['l1_scope']:
+        if self.scope in self.specs['l1_scope'] or 'weights' in self.specs['l1_scope']:
             reg = k_reg.l1(self.specs['l1'])
             print('Setting reg for {}, to l1'.format(self.scope))
-        elif self.scope in self.specs['l2_scope']:
-            reg = k_reg.l1(self.specs['l1'])
+        elif self.scope in self.specs['l2_scope'] or 'weights' in self.specs['l2_scope']:
+            reg = k_reg.l2(self.specs['l2'])
             print('Setting reg for {}, to l2'.format(self.scope))
         else:
             reg = None
@@ -70,7 +70,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
         super(Dense, self).build(input_shape)
         # print(input_shape)
         self.flatsize = np.prod(input_shape[1:])
-        print(self.scope, ':::', )
+        #print(self.scope, ':::', )
 
         self.w = self.add_weight(shape=[self.flatsize, self.size],
                                  initializer='he_uniform',
@@ -97,7 +97,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
                     x = tf.reshape(x, [-1, self.flatsize])
                 tmp = tf.matmul(x, self.w) + self.b
                 tmp = self.nonlin(tmp, name='out')
-                print(self.scope, ": output :", tmp.shape)
+                #print(self.scope, ": output :", tmp.shape)
                 return tmp
 
 
@@ -105,7 +105,7 @@ class DeMixing(BaseLayer):
     """
     Spatial demixing Layer
     """
-    def __init__(self, scope="demix", size=None, nonlin=tf.identity, axis=-1,
+    def __init__(self, scope="dmx", size=None, nonlin=tf.identity, axis=-1,
                  specs={},  **args):
         self.scope = scope
         self.axis = axis
@@ -147,9 +147,9 @@ class DeMixing(BaseLayer):
             with tf.name_scope(self.scope):
                 try:
                     demix = tf.tensordot(x, self.w, axes=[[self.axis], [0]],
-                                         name='de-mix')
+                                         name='dmx')
                     demix = self.nonlin(demix + self.b_in)
-                    print(self.scope, ": output :", demix.shape)
+                    #print(self.scope, ": output :", demix.shape)
                     return demix
                 except(AttributeError):
                     input_shape = x.shape
@@ -161,7 +161,7 @@ class LFTConv(BaseLayer):
     """
     Stackable temporal convolutional layer, interpreatble (LF)
     """
-    def __init__(self, scope="lf_conv", size=32,  nonlin=tf.nn.relu,
+    def __init__(self, scope="tconv", size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
@@ -211,7 +211,7 @@ class LFTConv(BaseLayer):
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-                    print(self.scope, ": output :", conv.shape)
+                    #print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
                     input_shape = x.shape
@@ -222,7 +222,7 @@ class VARConv(BaseLayer):
     """
     Stackable temporal convolutional layer, interpreatble (LF)
     """
-    def __init__(self, scope="var_conv", size=32,  nonlin=tf.nn.relu,
+    def __init__(self, scope="tconv", size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
@@ -275,7 +275,7 @@ class VARConv(BaseLayer):
                                         data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
                     conv = self.nonlin(conv + self.b)
-                    print(self.scope, ": output :", conv.shape)
+                    #print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
                     input_shape = x.shape
@@ -310,7 +310,7 @@ class TempPooling(BaseLayer):
                                 strides=self.strides,
                                 padding=self.padding,
                                 data_format='NHWC')
-        print(self.scope, ": output :", pooled.shape)
+        #print(self.scope, ": output :", pooled.shape)
         return pooled
 
     def build(self, input_shape):
