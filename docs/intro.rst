@@ -7,11 +7,19 @@ Isnatllation
 ============
 >>> pip install mneflow
 
+Dependencies
+============
+* tensorflow > 2.1.0
+* mne > 0.19
+* numpy
+* scipy
+* matplotlib
 
 Examples
 ========
 * Data Import and `basic MNEflow pipeline <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb>`_.
-* `Advanced use example <https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb>`_.
+* `Regression, adjusting hyperparameters, and corss-validation <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb>`_.
+* `Custom network design <https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb>`_.
 
 
 
@@ -57,7 +65,7 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 	    title = {{Deep learning with convolutional neural networks for EEG decoding and visualization}},
 	    year = {2017},
 	    journal = {Human Brain Mapping},
-	    author = {Schirrmeister, Robin Tibor and Springenberg, Jost Tobias and Fiederer, Lukas Dominique Josef and Glasstetter, Martin and Eggensperger, Katharina and Tangermann, Michael and Hutter, Frank and Burgard, Wolfram and Ball, Tonio},
+	    author = {Schirrmeister, Robin Tibor and Springenberg, Jost Tobias and Fiederer, Lukas Dominique Josef and Glasstetter, Martin and Eggensperger, Katharina and 	Tangermann, Michael and Hutter, Frank and Burgard, Wolfram and Ball, Tonio},
 	    number = {11},
 	    month = {11},
 	    pages = {5391--5420},
