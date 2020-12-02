@@ -32,7 +32,7 @@ When using the implemented models please cite:
 Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier for decoding MEG signals. Neuroimage. 2019 May 4;197:425-434. 
 `[link] <https://www.sciencedirect.com/science/article/pii/S1053811919303544?via%3Dihub>`_::
 
-	''@article{Zubarev2019AdaptiveSignals.,
+	``@article{Zubarev2019AdaptiveSignals.,
 	    title = {{Adaptive neural network classifier for decoding MEG signals.}},
 	    year = {2019},
 	    journal = {NeuroImage},
@@ -44,7 +44,7 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 	    doi = {10.1016/j.neuroimage.2019.04.068},
 	    issn = {1095-9572},
 	    pmid = {31059799},
-	    keywords = {Brain–computer interface, Convolutional neural network, Magnetoencephalography}}''
+	    keywords = {Brain–computer interface, Convolutional neural network, Magnetoencephalography}}``
 
 
 *for EEGNet*::
