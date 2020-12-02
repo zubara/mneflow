@@ -1,6 +1,6 @@
 tensorflow >= 2
-mne>=0.19 
-scikit-learn>=0.16
+mne >= 0.19 
+scikit-learn >= 0.16
 numpy
 scipy
 matplotlib
