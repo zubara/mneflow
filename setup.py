@@ -14,7 +14,7 @@ if __name__ == "__main__":
         description='Interface for running tensorflow models on MEG/EEG data with MNE-python',
         license='BSD-3',
         url='https://github.com/zubara/mneflow',
-        version='0.2.0',
+        version='0.3.0',
         download_url='https://github.com/zubara/mneflow/archive/master.zip',
         long_description=codecs.open('README.md', encoding='utf8').read(),
         long_description_content_type = 'text/markdown',

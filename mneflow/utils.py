@@ -51,57 +51,6 @@ def load_meta(fname, data_id=''):
     return meta
 
 
-# def leave_one_subj_out(meta, model, graph_specs={}):
-#     """Perform a leave-one-out cross-validation.
-
-#     On each fold one input .tfrecord file is used as a validation set.
-
-#     Parameters
-#     ----------
-#     meta : dict
-#         Dictionary containing metadata for initializing mneflow.Dataset.
-#         Normally meta is an output of produce_tfrecords function.
-
-#     optimizer_params : dict
-#         Dictionary of parameters for initializing mneflow.Optimizer.
-
-#     graph_specs : dict
-#         Dictionary of model-specific parameters.
-
-#     model : mneflow.models.Model
-#         Class of model to be used
-
-#     Returns
-#     -------
-#     results : list of dict
-#         List of dictionaries, containing final cost and performance
-#         estimates on each fold of the cross-validation.
-#     """
-#     results = []
-#     #optimizer = Optimizer(**optimizer_params)
-#     for i, path in enumerate(meta['test_paths']):
-#         meta_loso = meta.copy()
-
-#         train_fold = [jj for jj, _ in enumerate(meta['train_paths'])]
-#         train_fold.remove(i)
-
-#         meta_loso['train_paths'] = itemgetter(*train_fold)(meta['train_paths'])
-#         meta_loso['val_paths'] = itemgetter(*train_fold)(meta['val_paths'])
-#         print('holdout subj:', path[-10:-9])
-
-#         dataset = Dataset(meta_loso, train_batch=200, class_subset=None,
-#                           pick_channels=None, decim=None)
-#         m = model(dataset, optimizer, graph_specs)
-#         m.build()
-
-#         m.train(n_iter=30000, eval_step=250, min_delta=1e-6, early_stopping=3)
-#         test_acc = m.evaluate_performance(path)
-
-#         print(i, ':', 'test_acc:', test_acc)
-#         results.append({'val_acc': m.v_acc, 'test_acc': test_acc})
-
-#         # logger(m, results)
-#     return results
 
 
 def scale_to_baseline(X, baseline=None, crop_baseline=False):
@@ -143,7 +92,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
 
     X -= X0m
     X /= X0sd
-    print("Scaling Done")
+    #print("Scaling Done")
     return X
 
 
@@ -248,9 +197,7 @@ def _split_sets(X, y, folds, ind=-1):
     return X_train, y_train, X_val, y_val, fold
 
 
-def import_data(inp, picks=None, target_picks=None,
-                array_keys={'X': 'X', 'y': 'y'},
-                transpose=False):
+def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     """Import epoch data into `X, y` data/target pairs.
 
     Parameters
@@ -264,9 +211,6 @@ def import_data(inp, picks=None, target_picks=None,
         Indices of channels to pick for processing. If None, all
         channels are used.
 
-    target_picks : ndarray of int, optional
-        Indices of channels to pick up target variables. If None,
-        targets are extracted from other sources. Defaults to None.
 
     array_keys : dict, optional
         Dictionary mapping {'X': 'data_matrix', 'y': 'labels'},
@@ -316,19 +260,18 @@ def import_data(inp, picks=None, target_picks=None,
                 datafile = np.load(fname)
 
             data = datafile[array_keys['X']]
-            if np.any(target_picks):
-                events = data[:, target_picks, :]
-                data = np.delete(data, target_picks, axis=1)
-                print('Extracting target variables from target_picks')
-            else:
-                events = datafile[array_keys['y']]
+            # if np.any(target_picks):
+            #     events = data[:, target_picks, :]
+            #     data = np.delete(data, target_picks, axis=1)
+            #     print('Extracting target variables from target_picks')
+            # else:
+            events = datafile[array_keys['y']]
 #                if (events.shape[0] != data.shape[0]):
 #                    if (events.shape[0] == 1):
 #                        events = np.squeeze(events, axis=0)
 #                    else:
 #                        raise ValueError("Target array misaligned.")
-                print('Extracting target variables from {}'.format(
-                        array_keys['y']))
+            print('Extracting target variables from {}'.format(array_keys['y']))
 
     data = data.astype(np.float32)
 
@@ -337,7 +280,10 @@ def import_data(inp, picks=None, target_picks=None,
         #(x, ) -> (1, 1, x)
         #(x, y) -> (1, x, y)
         data = np.expand_dims(data, 0)
-
+    
+    if events.ndim < 2:
+        events = np.expand_dims(events, -1)
+    
     if isinstance(picks, (np.ndarray, list, tuple)):
         picks = np.asarray(picks)
         if np.any(data.shape[1] <= picks):
@@ -345,15 +291,15 @@ def import_data(inp, picks=None, target_picks=None,
                     max(len(picks), max(picks)), data.shape[1]))
         data = data[:, picks, :]
 
-    if transpose:
-        assert isinstance(transpose, (list, tuple)), "Transpose should be list or tuple of str."
-        if 'X' in transpose:
-            data = np.swapaxes(data, -1, -2)
-        if 'y' in transpose:
-            if events.ndim >= 2:
-                events = np.swapaxes(events, -1, -2)
-            else:
-                warnings.warn('Targets cannot be transposed.', UserWarning)
+    # if transpose:
+    #     assert isinstance(transpose, (list, tuple)), "Transpose should be list or tuple of str."
+    #     if 'X' in transpose:
+    #         data = np.swapaxes(data, -1, -2)
+    #     if 'y' in transpose:
+    #         if events.ndim >= 2:
+    #             events = np.swapaxes(events, -1, -2)
+    #         else:
+    #             warnings.warn('Targets cannot be transposed.', UserWarning)
 
     print('input shapes: X-', data.shape, 'targets-', events.shape)
     assert data.ndim == 3, "Import data panic: output.ndim != 3"
@@ -400,14 +346,23 @@ def produce_labels(y, return_stats=True):
 
 
 
-def produce_tfrecords(inputs, savepath, out_name, fs=0,
-                      input_type='trials', target_type='float',
-                      array_keys={'X': 'X', 'y': 'y'}, n_folds=5,
-                      scale=False, scale_interval=None, crop_baseline=False,
-                      bp_filter=False, decimate=False, combine_events=None,
-                      segment=False, aug_stride=None, seq_length=None,
-                      picks=None, transpose=False, target_picks=None,
-                      overwrite=True, savebatch=1, test_set=False,
+def produce_tfrecords(inputs, savepath, out_name, fs=1.,
+                      input_type='trials', 
+                      target_type='float',
+                      array_keys={'X': 'X', 'y': 'y'}, 
+                      n_folds=5,
+                      scale=False, 
+                      scale_interval=None, 
+                      crop_baseline=False,
+                      segment=False, 
+                      aug_stride=None, 
+                      seq_length=None,
+                      picks=None, 
+                      overwrite=True,  
+                      test_set=False,
+                      bp_filter=False, 
+                      decimate=False, 
+                      combine_events=None,
                       transform_targets=False):
 
     r"""
@@ -440,22 +395,35 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
         Type of target variable.
         'int' - for classification, 'float' for regression problems.
 
-    array_keys : dict, optional
-        Dictionary mapping {'X':'data_matrix','y':'labels'},
-        where 'data_matrix' and 'labels' are names of the
-        corresponding variables if the input is paths to .mat or .npz
-        files. Defaults to {'X':'X', 'y':'y'}
-
     n_folds : int, optional
         Number of folds to split the data for training/validation/testing. 
         One fold of the n_folds is used as a validation set. 
         If test_set == 'holdout' generates one extra fold 
         used as test set. Defaults to 5
+        
+    test_set : str {'holdout', 'loso', None}, optional
+        Defines if a separate holdout test set is required.
+        'holdout' saves 50% of the validation set
+        'loso' saves the whole dataset in original order for
+        leave-one-subject-out cross-validation.
+        None does not leave a separate test set. Defaults to None.
+    
+    segment : bool, int, optional
+        Whether to spit the data into smaller segments of specified
+        length.
+
+    augment : bool, optional
+        Whether to apply sliding window augmentation.
+
+    aug_stride : int, optional
+        Stride of sliding window augmentation.
+
 
     scale : bool, optional
         Whether to perform scaling to baseline. Defaults to False.
 
-    scale_interval : NoneType, tuple of ints or floats,  optimal
+    scale_interval : NoneType, tuple of ints,  optional
+    
         Baseline definition. If None (default) scaling is
         performed based on all timepoints of the epoch.
         If tuple, then baseline is data[tuple[0] : tuple[1]].
@@ -464,7 +432,13 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
     crop_baseline : bool, optional
         Whether to crop baseline specified by 'scale_interval'
         after scaling. Defaults to False.
-
+        
+    array_keys : dict, optional
+        Dictionary mapping {'X':'data_matrix','y':'labels'},
+        where 'data_matrix' and 'labels' are names of the
+        corresponding variables if the input is paths to .mat or .npz
+        files. Defaults to {'X':'X', 'y':'y'}
+        
     bp_filter : bool, tuple, optional
         Band pass filter. Tuple of int or NoneType.
 
@@ -477,29 +451,11 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
         some old_labels are not specified in keys, the corresponding
         epochs are discarded.
 
-    segment : bool, int, optional
-        Whether to spit the data into smaller segments of specified
-        length.
-
-    augment : bool, optional
-        Whether to apply sliding window augmentation.
-
-    aug_stride : int, optional
-        Stride of sliding window augmentation.
-
     picks : ndarray of int, optional
         Array of channel indices to use in decoding.
 
-    target_picks : ndarray, optional
-        Array of channel indices used to extract target variable.
-
-    transpose : bool, tuple, optional
-        ('X', 'y') swaps last two dimensions of both data and targets
-        during import.
-        ('X'), does the same for data only. Default is False.
-
     transform_targets : callable, optional
-        custom function transforming target variables
+        custom function used to transform target variables
 
     seq_length : int, optional
         Length of segment sequence.
@@ -507,17 +463,6 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
     overwrite : bool, optional
         Whether to overwrite the metafile if it already exists at the
         specified path.
-
-    savebatch : int
-        Number of input files to be stored in each output TFRecord
-        file. Defaults to 1.
-
-    test_set : str {'holdout', 'loso', None}, optional
-        Defines if a separate holdout test set is required.
-        'holdout' saves 50% of the validation set
-        'loso' saves the whole dataset in original order for
-        leave-one-subject-out cross-validation.
-        None does not leave a separate test set. Defaults to None.
 
     Returns
     -------
@@ -546,7 +491,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
         os.mkdir(savepath)
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
 
-        meta = dict(train_paths=[], val_paths=[], test_paths=[], folds=[],
+        meta = dict(train_paths=[], val_paths=[], test_paths=[], 
+                    folds=[], test_fold=[],
                     data_id=out_name, train_size=0, val_size=0, test_size=0,
                     savepath=savepath, target_type=target_type,
                     input_type=input_type)
@@ -557,9 +503,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
             inputs = [inputs]
         for inp in inputs:
 
-            data, events = import_data(inp, picks=picks, array_keys=array_keys,
-                                       target_picks=target_picks,
-                                       transpose=transpose)
+            data, events = import_data(inp, picks=picks, array_keys=array_keys)
             if target_type == 'int':
                 # Specific to classification
                 if combine_events:
@@ -593,9 +537,10 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
             meta['y_shape'] = Y[0].shape
             _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
             n = np.arange(_n) + meta['train_size']
-            print("sample_count: {}, folds: {} - {}".format(meta["train_size"], 
-                                                            np.min(n), np.max(n)))
+            
             meta['train_size'] += _n
+            # print("sample_count: {}, folds: {} - {}".format(meta["train_size"], 
+            #                                                 np.min(n), np.max(n)))
             meta['val_size'] += len(folds[0])
 
             print('Prepocessed sample shape:', X[0].shape)
@@ -612,7 +557,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
                              target_type=target_type)
 
             if test_set == 'loso':
-                meta['test_size'] = len(Y)
+                meta['test_size'] = len(y_test)
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
@@ -625,8 +570,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs=0,
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
-                
-                _write_tfrecords(x_test, y_test, meta['test_paths'][-1],
+                n_test = np.arange(len(test_fold))
+                _write_tfrecords(x_test, y_test, n_test, meta['test_paths'][-1],
                                  target_type=target_type)
             jj += 1
         with open(savepath+out_name+'_meta.pkl', 'wb') as f:
@@ -859,13 +804,13 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1, sca
         data = data[..., ::decimate]
 
     if scale:
-        print('Scaling')
+        #print('Scaling')
         data = scale_to_baseline(data, baseline=scale_interval,
                                  crop_baseline=crop_baseline)
 
     if input_type in ['continuous']:
 #        # Placeholder for future segmentation. Not unit_tested
-        test_inds = cont_split_indices(data, test_size=val_size,
+        test_inds = cont_split_indices(data, test_size=1./n_folds,
                                        test_segments=5)
         x_train, x_val = partition(data, test_inds)
         y_train, y_val = partition(events, test_inds)

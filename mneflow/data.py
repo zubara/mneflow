@@ -16,9 +16,9 @@ import numpy as np
 class Dataset(object):
     """TFRecords dataset from TFRecords files using the metadata."""
 
-    def __init__(self, h_params, train_batch=200, class_subset=None,
-                 combine_classes=False, pick_channels=None, decim=None,
-                 test_batch=None, split=True):
+    def __init__(self, h_params, train_batch=200, test_batch=None, split=True
+                 #class_subset=None, combine_classes=False, pick_channels=None, decim=None,
+                 ):
 
         r"""Initialize tf.data.TFRdatasets.
 
@@ -28,26 +28,20 @@ class Dataset(object):
             Metadata file, output of mneflow.utils.produce_tfrecords.
             See mneflow.utils.produce_tfrecords for details.
 
-        train_batch : int, optional
-            Training mini-batch size. Defaults to 200.
+        train_batch : int, None, optional
+            Training mini-batch size. Defaults to 200. If None equals to the 
+            whole training set size
+        
+        test_batch : int, None, optional
+            Training mini-batch size. Defaults to None. If None equals to the 
+            whole test/validation set size
 
-        class_subset : NoneType, list of int, optional
-            Pick a subset of classes from the dataset. Note that class
-            labels produced by mneflow are always defined as integers
-            in range [0 - n_classes). See meta['orig_classes'] for
-            mapping between {new_class:old_class}.
-            If None, all classes are used.
-            Defaults to None.
-
-        combine_classes : list, optional
-            Not Implemented, optional
-
-        pick_channels : NoneType, ndarray of int, optional
-            Indices of a subset of channels to pick for analysis.
-            If None, all classes are used.  Defaults to None.
-
-        decim : NoneType, int, optional
-            Decimation factor. Defaults to None.
+        split : bool
+            Whether to split dataset into training and validation folds based 
+            on h_params['folds']. Defaults to True. Can be False if dataset is 
+            imported for evaluationg performance on the held-out set or 
+            vizualisations
+            
 
         """
         self.h_params = h_params
@@ -63,6 +57,8 @@ class Dataset(object):
                                                    train_batch=train_batch,
                                                    test_batch=test_batch,
                                                    split=split, val_fold_ind=0)
+        #if np.any(self.h_params['test_fold']):
+            
         
         # #self.val = self._build_dataset(self.h_params['val_paths'],
         # #                               n_batch=test_batch)
@@ -74,7 +70,7 @@ class Dataset(object):
 
     def _build_dataset(self, path, split=True, 
                        train_batch=100, test_batch=None, 
-                       repeat=True, val_fold_ind=0):
+                       repeat=True, val_fold_ind=0, holdout=False):
         
         """Produce a tf.Dataset object and apply preprocessing
         functions if specified.
@@ -111,7 +107,7 @@ class Dataset(object):
                 vf = f.pop(val_fold_ind)
                 val_folds.extend(vf)
                 train_folds.extend(np.concatenate(f))
-                print("datafile: {} iter: {} val: {} train: {}".format(i, val_fold_ind, len(val_folds), len(train_folds)))
+                #print("datafile: {} iter: {} val: {} train: {}".format(i, val_fold_ind, len(val_folds), len(train_folds)))
                 
                 
             self.val_fold = np.array(val_folds)
@@ -140,6 +136,7 @@ class Dataset(object):
             val_dataset = val_dataset.map(self._unpack)
             
             return train_dataset, val_dataset
+            
         else:
             #print(dataset)
             #batch
@@ -153,7 +150,7 @@ class Dataset(object):
             self.test_batch = test_batch
             self.test_steps = max(1, size // test_batch)
             dataset = dataset.map(self._unpack)
-            return dataset, None
+            return dataset#, None
             #else:
             # unsplit datasets are used for visuzalization and evaluation
             # if batching is not specified the whole set is used as batch
@@ -175,32 +172,32 @@ class Dataset(object):
             
             
 
-    def _select_channels(self, example_proto):
-        """Pick a subset of channels specified by self.channel_subset."""
-        example_proto['X'] = tf.gather(example_proto['X'],
-                                       tf.constant(self.channel_subset),
-                                       axis=3)
-        return example_proto
+    # def _select_channels(self, example_proto):
+    #     """Pick a subset of channels specified by self.channel_subset."""
+    #     example_proto['X'] = tf.gather(example_proto['X'],
+    #                                    tf.constant(self.channel_subset),
+    #                                    axis=3)
+    #     return example_proto
 
-    def _select_times(self, example_proto):
-        """Pick a subset of channels specified by self.channel_subset."""
-        example_proto['X'] = tf.gather(example_proto['X'],
-                                       tf.constant(self.times),
-                                       axis=2)
-        return example_proto
+    # def _select_times(self, example_proto):
+    #     """Pick a subset of channels specified by self.channel_subset."""
+    #     example_proto['X'] = tf.gather(example_proto['X'],
+    #                                    tf.constant(self.times),
+    #                                    axis=2)
+    #     return example_proto
 
-    def class_weights(self):
-        """Weights take class proportions into account."""
-        weights = np.array(
-                [v for k, v in self.h_params['class_proportions'].items()])
-        return 1./(weights*float(len(weights)))
+    # def class_weights(self):
+    #     """Weights take class proportions into account."""
+    #     weights = np.array(
+    #             [v for k, v in self.h_params['class_proportions'].items()])
+    #     return 1./(weights*float(len(weights)))
 
-    def _decimate(self, example_proto):
-        """Downsample data."""
-        example_proto['X'] = tf.gather(example_proto['X'],
-                                       self.timepoints,
-                                       axis=2)
-        return example_proto
+    # def _decimate(self, example_proto):
+    #     """Downsample data."""
+    #     example_proto['X'] = tf.gather(example_proto['X'],
+    #                                    self.timepoints,
+    #                                    axis=2)
+    #     return example_proto
 
 #    def _get_n_samples(self, path):
 #        """Count number of samples in TFRecord files specified by path."""
@@ -241,24 +238,24 @@ class Dataset(object):
                                                   keys_to_features)
         return parsed_features
 
-    def _select_classes(self, sample):
-        """Pick a subset of classes specified in self.class_subset."""
-        if self.class_subset:
-            # TODO: fix subsetting
-            onehot_subset = _onehot(self.class_subset,
-                                    n_classes=self.h_params['y_shape'])
-            #print(onehot_subset)
-            subset = tf.constant(onehot_subset, dtype=tf.int64)
-            out = tf.reduce_any(tf.equal(tf.argmax(sample['y']), subset))
-            return out
-        else:
-            return tf.constant(True, dtype=tf.bool)
+    # def _select_classes(self, sample):
+    #     """Pick a subset of classes specified in self.class_subset."""
+    #     if self.class_subset:
+    #         # TODO: fix subsetting
+    #         onehot_subset = _onehot(self.class_subset,
+    #                                 n_classes=self.h_params['y_shape'])
+    #         #print(onehot_subset)
+    #         subset = tf.constant(onehot_subset, dtype=tf.int64)
+    #         out = tf.reduce_any(tf.equal(tf.argmax(sample['y']), subset))
+    #         return out
+    #     else:
+    #         return tf.constant(True, dtype=tf.bool)
     
     def _cv_train_fold_filter(self, sample):
         """Pick a subset of classes specified in self.class_subset."""
         if np.any(self.train_fold):
             subset = tf.constant(self.train_fold, dtype=tf.int64)
-            print(subset)
+            #print(subset)
             out = tf.reduce_any(tf.equal(sample['n'], subset))
             return out
         else:
@@ -267,7 +264,7 @@ class Dataset(object):
     def _cv_val_fold_filter(self, sample):
         """Pick a subset of classes specified in self.class_subset."""
         if np.any(self.val_fold):
-            subset = tf.constant(self.train_fold, dtype=tf.int64)
+            subset = tf.constant(self.val_fold, dtype=tf.int64)
             out = tf.reduce_any(tf.equal(sample['n'], subset))
             return out
         else:
@@ -276,11 +273,11 @@ class Dataset(object):
     def _unpack(self, sample):
         return sample['X'], sample['y']#, sample['n']
 
-def _onehot(y, n_classes=False):
-    if not n_classes:
-        """Create one-hot encoded labels."""
-        n_classes = len(set(y))
-    out = np.zeros((len(y), n_classes))
-    for i, ii in enumerate(y):
-        out[i][ii] += 1
-    return out.astype(int)
+# def _onehot(y, n_classes=False):
+#     if not n_classes:
+#         """Create one-hot encoded labels."""
+#         n_classes = len(set(y))
+#     out = np.zeros((len(y), n_classes))
+#     for i, ii in enumerate(y):
+#         out[i][ii] += 1
+#     return out.astype(int)

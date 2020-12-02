@@ -61,8 +61,9 @@ class BaseModel():
 
         specs : dict
             Dictionary of model-specific hyperparameters. Must include
-            at least `model_path` - path for saving a trained model.
-            See `Model` subclass definitions for details.
+            at least `model_path` - path for saving a trained model
+            See `Model` subclass definitions for details. Unless otherwise 
+            specified uses default hyperparameters for each implemented model. 
         """
         self.specs = specs
         self.dataset = Dataset
@@ -84,16 +85,34 @@ class BaseModel():
         self.y_pred = self.build_graph()
 
 
-    def build(self, optimizer="adam", loss=None, metrics=None, mapping=None):
-        """Compile a model."""
+    def build(self, optimizer="adam", loss=None, metrics=None, #mapping=None, 
+              learn_rate=3e-4):
+        """Compile a model.
+        
+        Parameters
+        ----------
+        optimizer : str, tf.optimizers.Optimizer
+            Deafults to "adam"
+        
+        loss : str, tf.keras.losses.Loss
+            Defaults to MSE in target_type is "float" and 
+            "softmax_crossentropy" if "target_type" is int
+        
+        metrics : str, tf.keras.metrics.Metric
+            Defaults to MAE in target_type is "float" and 
+                "categorical_accuracy" if "target_type" is int
+        
+        learn_rate : float
+            Learning rate, defaults to 3e-4
+        """
         # Initialize computational graph
-        if mapping:
-            map_fun = tf.keras.activations.get(mapping)
-            self.y_pred= map_fun(self.y_pred)
+        # if mapping:
+        #     map_fun = tf.keras.activations.get(mapping)
+        #     self.y_pred= map_fun(self.y_pred)
         
         self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
         
-        params = {"optimizer": tf.optimizers.get("adam")}
+        params = {"optimizer": tf.optimizers.get(optimizer).from_config({"learning_rate":learn_rate})}
         
         if loss:
             params["loss"] = tf.keras.losses.get(loss)
@@ -105,14 +124,14 @@ class BaseModel():
         
         # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
-            params.setdefault("loss", tf.keras.losses.MSE)
-            params.setdefault("metrics", tf.keras.metrics.RootMeanSquaredError())
+            params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
+            params.setdefault("metrics", tf.keras.metrics.MeanAbsoluteError(name="MAE"))
             
         elif self.dataset.h_params["target_type"] in ['int']:
             params.setdefault("loss", tf.nn.softmax_cross_entropy_with_logits)
-            params.setdefault("metrics", tf.keras.metrics.Accuracy())
+            params.setdefault("metrics", tf.keras.metrics.CategoricalAccuracy(name="cat_ACC"))
               
-        print(params)
+        #print(params)
         self.km.compile(optimizer=params["optimizer"],
                         loss=params["loss"],
                         metrics=params["metrics"])
@@ -175,7 +194,7 @@ class BaseModel():
             Defaults to 1e-6.
         
         mode : str, optional
-            can be 'single_fold', 'cv', 'loso'
+            can be 'single_fold', 'cv', 'loso'. Defaults to 'single_fold'
         """
 
         stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
@@ -202,7 +221,12 @@ class BaseModel():
                                    epochs=n_epochs, steps_per_epoch=eval_step,
                                    shuffle=True, 
                                    validation_steps=self.dataset.validation_steps,
-                                   callbacks=[stop_early], verbose=1)
+                                   callbacks=[stop_early], verbose=2)
+            self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
+            self.v_loss_sd = 0
+            self.v_metric_sd = 0
+            print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
+            self.update_log()
         elif mode == 'cv':
             n_folds = len(self.dataset.h_params['folds'][0])
             print("Running cross-validation with {} folds".format(n_folds))
@@ -219,7 +243,7 @@ class BaseModel():
                                    epochs=n_epochs, steps_per_epoch=eval_step,
                                    shuffle=True, 
                                    validation_steps=self.dataset.validation_steps,
-                                   callbacks=[stop_early], verbose=1)
+                                   callbacks=[stop_early], verbose=2)
                 
                 
                 loss, metric = self.evaluate(val)
@@ -231,8 +255,16 @@ class BaseModel():
                 else:
                     "Not shuffling the weights for the last fold"
                 
-                self.cv_losses = losses
-                self.cv_metrics = metrics
+
+                print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
+            self.cv_losses = losses
+            self.cv_metrics = metrics
+            self.v_loss = np.mean(losses)
+            self.v_metric = np.mean(metrics)
+            self.v_loss_sd = np.std(losses)
+            self.v_metric_sd = np.std(metrics)
+            print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
+            self.update_log()
             return self.cv_losses, self.cv_metrics
         
         elif mode == "loso":
@@ -258,7 +290,7 @@ class BaseModel():
                                    epochs=n_epochs, steps_per_epoch=eval_step,
                                    shuffle=True, 
                                    validation_steps=self.dataset.validation_steps,
-                                   callbacks=[stop_early], verbose=1)
+                                   callbacks=[stop_early], verbose=2)
                 
                 
                 test = self.dataset._build_dataset(test_subj,
@@ -275,8 +307,14 @@ class BaseModel():
                 else:
                     "Not shuffling the weights for the last fold"
                 
-                self.cv_losses = losses
-                self.cv_metrics = metrics
+            self.cv_losses = losses
+            self.cv_metrics = metrics
+            self.v_loss = np.mean(losses)
+            self.v_metric = np.mean(metrics)
+            self.v_loss_sd = np.std(losses)
+            self.v_metric_sd = np.std(metrics)
+            self.update_log()
+            print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
             return self.cv_losses, self.cv_metrics
             
                 
@@ -331,36 +369,46 @@ class BaseModel():
         appending = os.path.exists(self.model_path + self.scope + '_log.csv')
 
         log = dict()
+        #dataset info
         log['data_id'] = self.dataset.h_params['data_id']
-        log['nepochs'], log['eval_step'], log['early_stopping'], log['mode'] = self.train_params
         log['data_path'] = self.dataset.h_params['savepath']
-        log['decim'] = str(self.dataset.decim)
+        #log['decim'] = str(self.dataset.h_params['decim'])
 
-        if self.dataset.class_subset:
-            log['class_subset'] = '-'.join(
-                    str(self.dataset.class_subset).split(','))
-        else:
-            log['class_subset'] = 'all'
+        # if self.dataset.class_subset:
+        #     log['class_subset'] = '-'.join(
+        #             str(self.dataset.class_subset).split(','))
+        # else:
+        #     log['class_subset'] = 'all'
 
         log['y_shape'] = np.prod(self.dataset.h_params['y_shape'])
         log['fs'] = str(self.dataset.h_params['fs'])
-        #log.update(self.optimizer.params)
+        
+        #architecture and regularization
         log.update(self.specs)
+        
+        #training paramters
+        log['nepochs'], log['eval_step'], log['early_stopping'], log['mode'] = self.train_params
 
-        #v_acc, v_loss = self.km.evaluate)
-        self.v_loss, self.v_perf = self.km.evaluate(self.dataset.val, steps=1, verbose=0)
-        log['v_perf'] = self.v_perf
-        log['v_loss'] = self.v_loss
+        #v_loss, v_metric = self.evaluate(self.dataset.val)
+        #self.v_loss, self.v_perf = self.km.evaluate(self.dataset.val, steps=1, verbose=0)
+        log['v_metric'] = self.v_metric
+        log['v_loss'] = self.v_metric
+        log['v_metric_sd'] = self.v_metric_sd
+        log['v_loss_sd'] = self.v_metric_sd
 
 
-        self.tr_loss, self.tr_perf = self.km.evaluate(self.dataset.train, steps=10, verbose=0)
-        log['tr_perf'] = self.tr_perf
-        log['tr_loss'] = self.tr_loss
+        tr_loss, tr_perf = self.evaluate(self.dataset.train)
+        log['tr_metric'] = tr_perf
+        log['tr_loss'] = tr_loss
 
-        if hasattr(self.dataset, 'test'):
-            self.t_loss, self.t_perf = self.km.evaluate(self.dataset.test, steps=1, verbose=0)
-            log['test_acc'] = self.t_acc
-            log['test_loss'] = self.t_loss
+        if 'test_paths' in self.dataset.h_params and log['mode'] != 'loso':
+            t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+            print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
+            log['test_metric'] = t_metric
+            log['test_loss'] = t_loss
+        else:
+            log['test_metric'] = "NA"
+            log['test_loss'] = "NA"
         self.log = log
 
         with open(self.model_path + self.scope + '_log.csv', 'a') as csv_file:
@@ -375,14 +423,38 @@ class BaseModel():
     def restore(self):
         print("Not implemented")
     
-    def predict(self, dataset):
+    def predict(self, dataset=None):
+        if not dataset: 
+            print("No dataset specified using validation dataset (Default)")
+            dataset = self.dataset.val
+        elif isinstance(dataset, str) or isinstance(dataset, (list, tuple)):
+            dataset = self.dataset._build_dataset(dataset, 
+                                             split=False, 
+                                             test_batch=None, 
+                                             repeat=True)
+        elif not isinstance(dataset, tf.data.Dataset):
+            print("Specify dataset")
+            return None, None
+        
         y_pred = self.km.predict(dataset, 
                                  steps=self.dataset.validation_steps)
         y_true = [row[1] for row in dataset.take(1)][0]
         y_true = y_true.numpy()
         return y_true, y_pred
     
-    def evaluate(self, dataset):
+    def evaluate(self, dataset=False):
+        if not dataset: 
+            print("No dataset specified using validation dataset (Default)")
+            dataset = self.dataset.val
+        elif isinstance(dataset, str) or isinstance(dataset, (list, tuple)):
+            dataset = self.dataset._build_dataset(dataset, 
+                                             split=False, 
+                                             test_batch=None, 
+                                             repeat=True)
+        elif not isinstance(dataset, tf.data.Dataset):
+            print("Specify dataset")
+            return None, None
+            
         losses, metrics = self.km.evaluate(dataset, 
                                            steps=self.dataset.validation_steps)
         return  losses, metrics
@@ -511,7 +583,7 @@ class LFCNN(BaseModel):
         return cov
 
 
-    def compute_patterns(self, data_path, output='patterns'):
+    def compute_patterns(self, data_path=None, output='patterns'):
         """Computes spatial patterns from filter weights.
         Required for visualization.
 
@@ -558,7 +630,7 @@ class LFCNN(BaseModel):
         """
         #vis_dict = None
         if not data_path: 
-            print("No path specified using validation dataset (Default)")
+            print("Computing patterns: No path specified, using validation dataset (Default)")
             ds = self.dataset.val
         elif isinstance(data_path, str) or isinstance(data_path, (list, tuple)):
             ds = self.dataset._build_dataset(data_path, 
@@ -685,7 +757,8 @@ class LFCNN(BaseModel):
         return corr_to_output
 
     # --- LFCNN plot functions ---
-    def plot_out_weights(self, pat=None, t=None, tmin=-0.1, sorting='weight'):
+    def plot_out_weights(self, pat=None, t=None, tmin=-0.1, sorting='weight',
+                         class_names=None):
         """Plots the weights of the output layer.
 
         Parameters
@@ -730,7 +803,7 @@ class LFCNN(BaseModel):
         plt.show()
         return f
 
-    def plot_waveforms(self, sorting='compwise_loss', tmin=0):
+    def plot_waveforms(self, sorting='compwise_loss', tmin=0, class_names=None):
         """Plots timecourses of latent components.
 
         Parameters
@@ -738,16 +811,19 @@ class LFCNN(BaseModel):
         tmin : float
             Beginning of the MEG epoch with regard to reference event.
             Defaults to 0.
+            
+        sorting : str
+            heuristic for selecting relevant components. See LFCNN._sorting
         """
         if not hasattr(self, 'lat_tcs'):
             self.compute_patterns(self.dataset)
 
         if not hasattr(self, 'uorder'):
             order, _ = self._sorting(sorting)
-            self.uorder = uniquify(order.ravel())
+            self.uorder = order.ravel()
             #self.uorder = np.squeeze(order)
         if np.any(self.uorder):
-            for uo in self.uorder:
+            for jj, uo in enumerate(self.uorder):
                 f, ax = plt.subplots(2, 2)
                 f.set_size_inches([16, 16])
         
@@ -763,7 +839,7 @@ class LFCNN(BaseModel):
         
                 ax[0, 0].plot(times,
                               self.waveforms[uo] + scaling*uo,
-                              'k')
+                              'k', linewidth=5.)
                 ax[0, 0].set_title('Latent component waveforms')
         
                 bias = self.tconv.b.numpy()[uo]
@@ -779,7 +855,7 @@ class LFCNN(BaseModel):
                 vmax = conv.max()
                 ax[1, 0].plot(times + 0.5*self.specs['filter_length']/float(self.fs),
                               conv)
-                ax[1, 0].hlines(bias, times[0], times[-1], linestyle='--', color='k')
+                #ax[1, 0].hlines(bias, times[0], times[-1], linestyle='--', color='k')
         
                 tstep = float(self.specs['stride'])/self.fs
                 strides = np.arange(times[0], times[-1] + tstep/2, tstep)[1:-1]
@@ -796,13 +872,24 @@ class LFCNN(BaseModel):
                 ax[1, 0].legend()
                 ax[1, 0].set_title('Convolution output')
         
-                if self.out_weights.shape[-1] == 1:
-                    ax[1, 1].pcolor(self.F)
-                    ax[1, 1].hlines(uo + .5, 0, self.F.shape[1], color='r')
-                else:
-                    ax[1, 1].plot(self.out_weights[:, uo, :], 'k*')
+                #if self.out_weights.shape[-1] > 1:
+                #print(self.F.shape, pool_bins.shape)
+                strides1 = np.arange(times[0], times[-1] + tstep/2, tstep)
+                ax[1, 1].pcolor(strides1, np.arange(self.specs['n_latent']), 
+                                self.F)
+                #print()
+                ax[1, 1].hlines(uo + .5, pool_bins[0], pool_bins[-1], color='r')
+                # else:
+                #     ax[1, 1].stem(self.out_weights[:, uo, :])
         
                 ax[1, 1].set_title('Feature relevance map')
+                #f.show()
+                if class_names:
+                    comp_name = class_names[jj]
+                else:
+                    comp_name = "Class " + str(jj)
+                f.suptitle(comp_name, fontsize=16)
+            return f
 
     def _sorting(self, sorting='compwise_loss', n_comp=1):
         """Specify which components to plot.
@@ -812,8 +899,8 @@ class LFCNN(BaseModel):
         sorting : str
             Sorting heuristics.
 
-            'l2' - plots all components sorted by l2 norm of their
-            spatial filters in descending order.
+            'l2' - plots all components sorted by l2 norm of activations in the
+            output layer in descending order.
 
             'commpwise_loss' - compute the effect of eliminating the latent
             component on the validation loss. Perofrmed for each class
@@ -822,7 +909,7 @@ class LFCNN(BaseModel):
             'weight' - plots a single component that has a maximum
             weight for each class in the output layer.
 
-            'spear' - plots a single component, which produces a
+            'output_corr' - plots a single component, which produces a
             feature in the output layer that has maximum correlation
             with each target variable.
 
@@ -841,15 +928,21 @@ class LFCNN(BaseModel):
         ts = []
 
         if sorting == 'l2':
-            order = np.argsort(np.linalg.norm(self.patterns, axis=0, ord=2))
-            self.F = self.out_weights[..., 0].T
-            ts = None
+            for i in range(self.out_dim):
+                self.F = self.out_weights[..., i].T
+                
+                norms = np.linalg.norm(self.F, axis=1, ord=2)
+                pat = np.argsort(norms)[-n_comp:]
+                order.append(pat[:n_comp]) 
+                ts.append(np.arange(self.F.shape[-1]))
+                #ts.append(None)
 
         elif sorting == 'compwise_loss':
             for i in range(self.out_dim):
                 self.F = self.out_weights[..., i].T
-                pat = np.argsort(self.component_relevance_loss[:, i])[:n_comp]
-                order.append(pat)
+                pat = np.argsort(self.component_relevance_loss[:, i])
+                #print(self.component_relevance_loss[pat, i])
+                order.append(pat[:n_comp])
                 ts.append(np.arange(self.F.shape[-1]))
 
         elif sorting == 'weight_corr':
@@ -869,7 +962,7 @@ class LFCNN(BaseModel):
                 order.append(pat)
                 ts.append(t)
 
-        elif sorting == 'spear':
+        elif sorting == 'output_corr':
             for i in range(self.out_dim):
                 self.F = self.corr_to_output[..., i].T
                 #print('Maximum r_spear:', np.max(self.F))
@@ -885,7 +978,7 @@ class LFCNN(BaseModel):
         return order, ts
 
     def plot_patterns(self, sensor_layout=None, sorting='l2', percentile=90,
-                      scale=False, names=False):
+                      scale=False, class_names=None):
         """Plot informative spatial activations patterns for each class
         of stimuli.
 
@@ -913,7 +1006,7 @@ class LFCNN(BaseModel):
         """
         order, ts = self._sorting(sorting)
         #print(order, type(order))
-        self.uorder = uniquify(order.ravel())
+        self.uorder = order.ravel()
         #self.uorder = np.squeeze(self.uorder1)
         l_u = len(self.uorder)
         if sensor_layout:
@@ -934,15 +1027,21 @@ class LFCNN(BaseModel):
 
 
         if np.any(self.uorder):
-        
+                        #f.suptitle(comp_name, fontsize=16)
+            #print(len())
             nfilt = max(self.out_dim, 8)
             nrows = max(1, l_u//nfilt)
             ncols = min(nfilt, l_u)
+            if class_names:
+                comp_names = class_names
+            else:
+                comp_names = ["Class #{}".format(jj+1) for jj in range(ncols)]
+
             f, ax = plt.subplots(nrows, ncols, sharey=True)
             f.set_size_inches([16, 3])
             ax = np.atleast_2d(ax)
-    
             for ii in range(nrows):
+                
                 fake_times = np.arange(ii * ncols,  (ii + 1) * ncols, 1.)
                 vmax = np.percentile(self.fake_evoked.data[:, :l_u], 95)
                 self.fake_evoked.plot_topomap(times=fake_times,
@@ -950,8 +1049,12 @@ class LFCNN(BaseModel):
                                               colorbar=False,
                                               vmax=vmax,
                                               scalings=1,
-                                              time_format='output # %g',
+                                              time_format="Class #%g",
                                               title='Patterns ('+str(sorting)+')')
+            # if sorting in ['output_corr', 'weight', 'weight_corr', 'compwise_loss']:
+            #         [ax[0][jj].set_title(c) for jj, c in enumerate(comp_names)]
+
+
             if np.any(ts):
                 self.plot_out_weights(pat=order, t=ts, sorting=sorting)
             else:
@@ -959,7 +1062,7 @@ class LFCNN(BaseModel):
             return f
 
     def plot_spectra(self, fs=None, sorting='l2', norm_spectra=None,
-                     log=False):
+                     log=False, class_names=None):
         """Plots frequency responses of the temporal convolution filters.
 
         Parameters
@@ -1001,7 +1104,7 @@ class LFCNN(BaseModel):
 #                self.ar = np.concatenate(ar)
 
         order, ts = self._sorting(sorting)
-        self.uorder = uniquify(order.ravel())
+        self.uorder = order.ravel()
         #self.uorder = np.squeeze(order)
         out_filters = self.filters[:, self.uorder]
         l_u = len(self.uorder)
@@ -1013,7 +1116,15 @@ class LFCNN(BaseModel):
             f, ax = plt.subplots(nrows, ncols, sharey=True)
             f.set_size_inches([16, 3])
             ax = np.atleast_2d(ax)
-    
+            if sorting in ['output_corr', 'weight', 'weight_corr', 'compwise_loss']:
+                if class_names:
+                    comp_names = class_names
+                else:
+                    comp_names = ["Class " + str(jj) for jj in range(self.out_dim)]
+                    #f.suptitle(comp_name, fontsize=16)
+                [ax[0][jj].set_title(c) for jj, c in enumerate(comp_names)]
+            
+            
             for i in range(nrows):
                 for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
                     w, h = freqz(flt, 1, worN=128)
