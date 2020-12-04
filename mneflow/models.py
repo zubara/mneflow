@@ -1139,13 +1139,13 @@ class LFCNN(BaseModel):
                             ax[i, jj].plot(fr1, np.abs(h0), label='Fitler output')
                         #print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
                     
-        
-                    if log:
-                        ax[i, jj].semilogy(fr1, np.abs(h),
-                                           label='Freq response')
                     else:
-                        ax[i, jj].plot(fr1, np.abs(h),
-                                       label='Freq response')
+                        if log:
+                            ax[i, jj].semilogy(fr1, np.abs(h),
+                                               label='Freq response')
+                        else:
+                            ax[i, jj].plot(fr1, np.abs(h),
+                                           label='Freq response')
                     ax[i, jj].set_xlim(0, 125.)
                     ax[i, jj].set_xlim(0, 125.)
                     if i == 0 and jj == ncols-1:
