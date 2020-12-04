@@ -16,23 +16,23 @@ import mne
 from mne.datasets import multimodal
 
 import mneflow
-# mne.set_log_level(verbose='CRITICAL')
+mne.set_log_level(verbose='CRITICAL')
 
-# fname_raw = os.path.join(multimodal.data_path(), 'multimodal_raw.fif')
-# raw = mne.io.read_raw_fif(fname_raw)
+fname_raw = os.path.join(multimodal.data_path(), 'multimodal_raw.fif')
+raw = mne.io.read_raw_fif(fname_raw)
 
-# cond = raw.acqparser.get_condition(raw, None)
-# # get the list of condition names
-# condition_names = [k for c in cond for k,v in c['event_id'].items()]
-# epochs_list = [mne.Epochs(raw, **c) for c in cond]
-# epochs = mne.concatenate_epochs(epochs_list)
-# epochs = epochs.pick_types(meg='grad')
-# print(epochs.info)
+cond = raw.acqparser.get_condition(raw, None)
+# get the list of condition names
+condition_names = [k for c in cond for k,v in c['event_id'].items()]
+epochs_list = [mne.Epochs(raw, **c) for c in cond]
+epochs = mne.concatenate_epochs(epochs_list)
+epochs = epochs.pick_types(meg='grad')
+print(epochs.info)
 
 
 
 #Specify import options
-import_opt = dict(savepath='C:\\data\\tfr\\',  # path where TFR files will be saved
+import_opt = dict(savepath='.\data\\tfr\\',  # path where TFR files will be saved
                   out_name='mne_sample_epochs',  # name of TFRecords files
                   fs=600,
                   input_type='trials',
