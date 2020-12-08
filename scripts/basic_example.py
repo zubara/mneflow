@@ -32,7 +32,7 @@ print(epochs.info)
 
 
 #Specify import options
-import_opt = dict(savepath='.\data\\tfr\\',  # path where TFR files will be saved
+19import_opt = dict(savepath='.\data\\tfr\\',  # path where TFR files will be saved
                   out_name='mne_sample_epochs',  # name of TFRecords files
                   fs=600,
                   input_type='trials',
