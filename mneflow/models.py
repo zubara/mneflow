@@ -27,7 +27,7 @@ from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
 from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
 from tensorflow.keras.initializers import Constant
 
-#from .layers import LSTMv1
+from .layers import LSTM
 from tensorflow.keras import regularizers as k_reg, constraints, layers
 import csv
 import os
@@ -81,8 +81,8 @@ class BaseModel():
         self.y_pred = self.build_graph()
 
 
-    def build(self, optimizer="adam", loss=None, metrics=None, #mapping=None, 
-              learn_rate=3e-4):
+    def build(self, optimizer="adam", loss=None, metrics=None, mapping=None, 
+              learn_rate=3e-4, weighted=False):
         """Compile a model.
         
         Parameters
@@ -95,16 +95,16 @@ class BaseModel():
             "softmax_crossentropy" if "target_type" is int
         
         metrics : str, tf.keras.metrics.Metric
-            Defaults to MAE in target_type is "float" and 
+            Defaults to RMSE in target_type is "float" and 
                 "categorical_accuracy" if "target_type" is int
         
         learn_rate : float
             Learning rate, defaults to 3e-4
         """
         # Initialize computational graph
-        # if mapping:
-        #     map_fun = tf.keras.activations.get(mapping)
-        #     self.y_pred= map_fun(self.y_pred)
+        if mapping:
+            map_fun = tf.keras.activations.get(mapping)
+            self.y_pred= map_fun(self.y_pred)
         
         self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
         
@@ -121,7 +121,7 @@ class BaseModel():
         # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
             params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
-            params.setdefault("metrics", tf.keras.metrics.MeanAbsoluteError(name="MAE"))
+            params.setdefault("metrics", tf.keras.metrics.RootMeanSquaredError(name="RMSE"))
             
         elif self.dataset.h_params["target_type"] in ['int']:
             params.setdefault("loss", tf.nn.softmax_cross_entropy_with_logits)
@@ -398,6 +398,7 @@ class BaseModel():
         log['tr_loss'] = tr_loss
 
         if 'test_paths' in self.dataset.h_params and log['mode'] != 'loso':
+            print('Test performance:')
             t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
             print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
             log['test_metric'] = t_metric
@@ -452,7 +453,8 @@ class BaseModel():
             return None, None
             
         losses, metrics = self.km.evaluate(dataset, 
-                                           steps=self.dataset.validation_steps)
+                                           steps=self.dataset.validation_steps,
+                                           verbose=0)
         return  losses, metrics
         
 
@@ -508,8 +510,8 @@ class LFCNN(BaseModel):
         specs.setdefault('padding', 'SAME')
         specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1', 3e-4)
-        specs.setdefault('l2', 0)
+        specs.setdefault('l1', 0.)
+        specs.setdefault('l2', 0.)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
@@ -1192,6 +1194,7 @@ class VARCNN(BaseModel):
 
         padding : str {'SAME', 'FULL', 'VALID'}
             Convolution padding. Defaults to 'SAME'.}"""
+        self.scope = 'varcnn'
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -1216,6 +1219,7 @@ class VARCNN(BaseModel):
             Output of the forward pass of the computational graph.
             Prediction of the target variable.
         """
+        
         self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
                             axis=3, specs=self.specs)(self.inputs)
         
@@ -1235,11 +1239,14 @@ class VARCNN(BaseModel):
 
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
+        
+        fc1 = Dense(size=128, nonlin=tf.nn.elu,
+                            specs=self.specs)(dropout)
 
         self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
 
-        y_pred = self.fin_fc(dropout)
+        y_pred = self.fin_fc(fc1)
 
         return y_pred
 
@@ -1288,15 +1295,14 @@ class LFCNN3(LFCNN):
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 6)
         specs.setdefault('stride', 6)
-        specs.setdefault('pool_type', 'SAME')
+        specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
         specs.setdefault('l1', 3e-4)
-        specs.setdefault('l2', 3e-2)
-        specs.setdefault('l1_scope', ['fc'])
-        specs.setdefault('l2_scope', ['demix', 'lf_conv'])
+        specs.setdefault('l2', 0)
+        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
+        specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
-        specs.setdefault('model_path', self.dataset.h_params['save_path'])
-        super(LFCNN, self).__init__(Dataset, specs)
+        super(LFCNN3, self).__init__(Dataset, specs)
 
 
 
@@ -1427,109 +1433,150 @@ class FBCSP_ShallowNet(BaseModel):
         return y_pred
 #
 #
-##class LFLSTM(LFCNN):
-##    # TODO! Gabi: check that the description describes the model
-##    """LF-CNN-LSTM
-##
-##    For details see [1].
-##
-##    Parameters
-##    ----------
-##    n_latent : int
-##        number of latent components
-##        Defaults to 32
-##
-##    filter_length : int
-##        length of spatio-temporal kernels in the temporal
-##        convolution layer. Defaults to 7
-##
-##    stride : int
-##        stride of the max pooling layer. Defaults to 1
-##
-##    pooling : int
-##        pooling factor of the max pooling layer. Defaults to 2
-##
-##    References
-##    ----------
-##        [1]  I. Zubarev, et al., Adaptive neural network classifier for
-##        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-##    """
-##
-##    def build_graph(self):
-##        self.scope = 'lf-cnn-lstm'
-##
-##        self.demix = DeMixing(n_latent=self.specs['n_latent'], axis=1)
-##        dmx = self.demix(self.X)
-##        dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
-##                               self.specs['n_latent']])
-##        dmx = tf.expand_dims(dmx, -1)
-##        print('dmx-sqout:', dmx.shape)
-##
-##        self.tconv1 = LFTConv(scope="conv",
-##                              n_latent=self.specs['n_latent'],
-##                              nonlin=tf.nn.relu,
-##                              filter_length=self.specs['filter_length'],
-###                              stride=self.specs['stride'],
-###                              pooling=self.specs['pooling'],
-##                              padding=self.specs['padding'])
-##
-##        features = self.tconv1(dmx)
-##        pool1 = TempPooling(stride=self.specs['stride'],
-##                            pooling=self.specs['pooling'],
-##                            padding='SAME',
-##                            pool_type='max')
-##
-##        pool2 = TempPooling(stride=self.specs['stride'],
-##                            pooling=self.specs['pooling'],
-##                            padding='SAME',
-##                            pool_type='max')
-##
-##        pool3 = TempPooling(stride=self.specs['stride'],
-##                            pooling=self.specs['pooling'],
-##                            padding='SAME',
-##                            pool_type='avg')
-##
-##        print('features:', pool3.shape)
-##        pooled = pool3(pool2(pool1(features)))
-##
-##        fshape = tf.multiply(pooled.shape[1], pooled.shape[2])
-##
-##        ffeatures = tf.reshape(pooled,
-##                              [-1, self.dataset.h_params['n_seq'], fshape])
-##        #  features = tf.expand_dims(features, 0)
-##        l1_lambda = self.optimizer.params['l1_lambda']
-##        print('flat features:', ffeatures.shape)
-##        self.lstm = LSTMv1(scope="lstm",
-##                           size=self.specs['n_latent'],
-##                           kernel_initializer='glorot_uniform',
-##                           recurrent_initializer='orthogonal',
-##                           recurrent_regularizer=k_reg.l1(l1_lambda),
-##                           kernel_regularizer=k_reg.l2(l1_lambda),
-##                           # bias_regularizer=None,
-##                           # activity_regularizer= regularizers.l1(0.01),
-##                           # kernel_constraint= constraints.UnitNorm(axis=0),
-##                           # recurrent_constraint= constraints.NonNeg(),
-##                           # bias_constraint=None,
-##                           # dropout=0.1, recurrent_dropout=0.1,
-##                           nonlin=tf.nn.tanh,
-##                           unit_forget_bias=False,
-##                           return_sequences=False,
-##                           unroll=False)
-##
-##        lstm_out = self.lstm(ffeatures)
-##        print('lstm_out:', lstm_out.shape)
-##        # if 'n_seq' in self.dataset.h_params.keys():
-##        #    lstm_out = tf.reshape(lstm_out, [-1,
-##        #                                     self.dataset.h_params['n_seq'],
-##        #                                     self.specs['n_latent']])
-##
-##        self.fin_fc = Dense(size=self.out_dim,
-##                            nonlin=tf.identity, dropout=0.)
-###        self.fin_fc = DeMixing(n_latent=self.out_dim,
-###                               nonlin=tf.identity, axis=-1)
-##        y_pred = self.fin_fc(lstm_out)
-##        # print(y_pred)
-##        return y_pred
+class LFLSTM(BaseModel):
+    # TODO! Gabi: check that the description describes the model
+    """LF-CNN-LSTM
+
+    For details see [1].
+
+    Parameters
+    ----------
+    n_latent : int
+        number of latent components
+        Defaults to 32
+
+    filter_length : int
+        length of spatio-temporal kernels in the temporal
+        convolution layer. Defaults to 7
+
+    stride : int
+        stride of the max pooling layer. Defaults to 1
+
+    pooling : int
+        pooling factor of the max pooling layer. Defaults to 2
+
+    References
+    ----------
+        [1]  I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+    """
+    def __init__(self, Dataset, specs=dict()):
+        """
+
+        Parameters
+        ----------
+        Dataset : mneflow.Dataset
+
+        specs : dict
+                dictionary of model hyperparameters {
+
+        n_latent : int
+            Number of latent components.
+            Defaults to 32.
+
+        nonlin : callable
+            Activation function of the temporal convolution layer.
+            Defaults to tf.nn.relu
+
+        filter_length : int
+            Length of spatio-temporal kernels in the temporal
+            convolution layer. Defaults to 7.
+
+        pooling : int
+            Pooling factor of the max pooling layer. Defaults to 2
+
+        pool_type : str {'avg', 'max'}
+            Type of pooling operation. Defaults to 'max'.
+
+        padding : str {'SAME', 'FULL', 'VALID'}
+            Convolution padding. Defaults to 'SAME'.}
+
+        stride : int
+        Stride of the max pooling layer. Defaults to 1.
+        """
+        self.scope = 'lfcnn'
+        specs.setdefault('filter_length', 7)
+        specs.setdefault('n_latent', 32)
+        specs.setdefault('pooling', 2)
+        specs.setdefault('stride', 2)
+        specs.setdefault('padding', 'SAME')
+        specs.setdefault('pool_type', 'max')
+        specs.setdefault('nonlin', tf.nn.relu)
+        specs.setdefault('l1', 0.)
+        specs.setdefault('l2', 0.)
+        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
+        specs.setdefault('l2_scope', [])
+        specs.setdefault('maxnorm_scope', [])
+        #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
+        super(LFLSTM, self).__init__(Dataset, specs)
+
+
+    def build_graph(self):
+        self.scope = 'lf-cnn-lstm'
+        self.return_sequence = True
+        self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
+                            axis=3, specs=self.specs)
+        dmx = self.dmx(self.inputs)
+        #dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
+        #                       self.specs['n_latent']])
+        #dmx = tf.expand_dims(dmx, -1)
+        print('dmx-sqout:', dmx.shape)
+
+        self.tconv1 = LFTConv(scope="conv",
+                              size=self.specs['n_latent'],
+                              nonlin=tf.nn.relu,
+                              filter_length=self.specs['filter_length'],
+#                              stride=self.specs['stride'],
+#                              pooling=self.specs['pooling'],
+                              padding=self.specs['padding'])
+
+        features = self.tconv1(dmx)
+        pool1 = TempPooling(stride=self.specs['stride'],
+                            pooling=self.specs['pooling'],
+                            padding='SAME',
+                            pool_type='max')
+
+
+        pooled = pool1(features)
+        print('features:', pooled.shape)
+        
+        fshape = tf.multiply(pooled.shape[2], pooled.shape[3])
+
+        ffeatures = tf.reshape(pooled,
+                              [-1, self.dataset.h_params['n_seq'], fshape])
+        #  features = tf.expand_dims(features, 0)
+        #l1_lambda = self.optimizer.params['l1']
+        print('flat features:', ffeatures.shape)
+        self.lstm = LSTM(scope="lstm",
+                           size=self.specs['n_latent'],
+                           kernel_initializer='glorot_uniform',
+                           recurrent_initializer='orthogonal',
+                           recurrent_regularizer=k_reg.l1(self.specs['l1']),
+                           kernel_regularizer=k_reg.l2(self.specs['l2']),
+                           bias_regularizer=None,
+                           # activity_regularizer= regularizers.l1(0.01),
+                           # kernel_constraint= constraints.UnitNorm(axis=0),
+                           # recurrent_constraint= constraints.NonNeg(),
+                           # bias_constraint=None,
+                           dropout=0.1, recurrent_dropout=0.1,
+                           nonlin=tf.identity,
+                           unit_forget_bias=False,
+                           return_sequences=self.return_sequence,
+                           unroll=False)
+
+        self.lstm_out = self.lstm(ffeatures)
+        print('lstm_out:', self.lstm_out.shape)
+
+        if self.return_sequence == True:
+            self.fin_fc = DeMixing(size=self.out_dim,
+                                   nonlin=tf.identity, axis=2)
+        else:
+            self.fin_fc = Dense(size=self.out_dim,
+                                    nonlin=tf.identity)
+                    
+        y_pred = self.fin_fc(self.lstm_out)
+        print("fin fc out:", y_pred.shape)
+        return y_pred
 #
 #
 class Deep4(BaseModel):

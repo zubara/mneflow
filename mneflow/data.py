@@ -217,7 +217,10 @@ class Dataset(object):
         if self.h_params['input_type'] in ['trials', 'seq', 'continuous']:
             x_sh = (self.h_params['n_seq'], self.h_params['n_t'],
                     self.h_params['n_ch'])
-            y_sh = self.h_params['y_shape']
+            if self.h_params['input_type'] == 'seq':
+                y_sh = (self.h_params['n_seq'], *self.h_params['y_shape'])
+            else:
+                y_sh = self.h_params['y_shape']
 
         else:
             raise ValueError('Invalid input type.')
