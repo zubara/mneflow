@@ -327,171 +327,52 @@ class TempPooling(BaseLayer):
 
 
 
-#def compose(f, g):
-#    return lambda *a, **kw: f(g(*a, **kw))
-#
-#
-#def stack_layers(*args):
-#    return functools.partial(functools.reduce, compose)(*args)
-#
-#
-#def vgg_block(n_layers, layer, kwargs):
-#    layers = []
-#    for i in range(n_layers):
-#        if i > 0:
-#            kwargs['inch'] = kwargs['n_ls']
-#        layers.append(layer(**kwargs))
-#    layers.append(tf.layers.batch_normalization)
-#    layers.append(tf.nn.max_pool)
-#    return stack_layers(layers[::-1])
+class LSTM(tf.keras.layers.LSTM):
+    def __init__(self, scope="lstm", size=32, nonlin='tanh', dropout=0.0,
+                 recurrent_activation='tanh', recurrent_dropout=0.0,
+                 use_bias=True, unit_forget_bias=True,
+                 kernel_regularizer=None, bias_regularizer=None,
+                 return_sequences=True, stateful=False, unroll=False, **args):
+        super(LSTM, self).__init__(name=scope,
+                                     units=size,
+                                     activation=nonlin,
+                                     dropout=dropout,
+                                     recurrent_activation=recurrent_activation,
+                                     recurrent_dropout=recurrent_dropout,
+                                     use_bias=use_bias,
+                                     unit_forget_bias=unit_forget_bias,
+                                     kernel_regularizer=kernel_regularizer,
+                                     # kernel_initializer='glorot_uniform',
+                                     # recurrent_initializer='orthogonal',
+                                     bias_regularizer=bias_regularizer,
+                                     return_sequences=return_sequences,
+                                     stateful=stateful,
+                                     unroll=unroll,
+                                     **args)
+        self.scope = scope
+        self.size = size
+        self.nonlin = nonlin
+        print(self.scope, 'init : OK')
 
+    def get_config(self):
+        config = super(LSTM, self).get_config()
+        config.update({'scope': self.scope, 'size': self.size,
+                       'nonlin': self.nonlin})
+        return config
 
-#def weight_variable(shape, name='', method='he'):
-#    """Initialize weight variable."""
-#    if method == 'xavier':
-#        xavf = 2./sum(np.prod(shape[:-1]))
-#        initial = xavf*tf.random_uniform(shape, minval=-.5, maxval=.5)
-#
-#    elif method == 'he':
-#        hef = np.sqrt(6. / np.prod(shape[:-1]))
-#        initial = hef*tf.random_uniform(shape, minval=-1., maxval=1.)
-#
-#    else:
-#        initial = tf.truncated_normal(shape, stddev=.1)
-#
-#    return tf.Variable(initial, trainable=True, name=name+'weights')
-#
-#
-#def bias_variable(shape):
-#    """Initialize bias variable as constant 0.1."""
-#    initial = tf.constant(0.1, shape=shape)
-#    return tf.Variable(initial, trainable=True, name='bias')
-#
-#
-#def spatial_dropout(x, rate, seed=1234):
-#    num_feature_maps = [tf.shape(x)[0], tf.shape(x)[3]]
-#    random_tensor = 1 - rate
-#    random_tensor = random_tensor + tf.random_uniform(num_feature_maps,
-#                                                      seed=seed,
-#                                                      dtype=x.dtype)
-#    binary_tensor = tf.floor(random_tensor)
-#    binary_tensor = tf.reshape(binary_tensor, [-1, 1, 1, tf.shape(x)[3]])
-#    ret = tf.div(x, (1 - rate)) * binary_tensor
-#    return ret
+    def build(self, input_shape):
+        # print(self.scope, 'build : OK')
+        super(LSTM, self).build(input_shape)
+
+    @tf.function
+    def call(self, inputs, mask=None, training=None, initial_state=None):
+        # print(self.scope, inputs.shape)
+        return super(LSTM, self).call(inputs, mask=mask, training=training,
+                                        initial_state=initial_state)
+        
 
 
 
-
-
-
-
-
-
-
-#class DeMixing():
-#    """Reduce dimensions across one domain."""
-#    def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity, axis=3):
-#        self.scope = scope
-#        self.size = n_ls
-#        self.nonlin = nonlin
-#        self.axis = axis
-#
-#    def __call__(self, x):
-#        with tf.name_scope(self.scope):
-#            while True:
-#                # reuse weights if already initialized
-#                try:
-#                    x_reduced = self.nonlin(
-#                            tf.tensordot(x, self.W, axes=[[self.axis], [0]],
-#                                         name='de-mix')
-#                            + self.b_in)
-#                    print('dmx', x_reduced.shape)
-#                    return x_reduced
-#                except(AttributeError):
-#                    self.W = weight_variable(
-#                            (x.shape[self.axis].value, self.size), name='dmx_')
-#                    self.b_in = bias_variable([self.size])
-#                    print(self.scope, 'init : OK')
-
-
-#class ConvDSV():
-#    """Standard/Depthwise/Spearable Convolutional Layer constructor."""
-#
-#    def __init__(self, scope="conv", n_ls=None, nonlin=None, inch=None,
-#                 domain=None, padding='SAME', filter_length=5, stride=1,
-#                 pooling=2, dropout=.5, conv_type='depthwise'):
-#
-#        self.scope = '-'.join([conv_type, scope, domain])
-#        self.padding = padding
-#        self.domain = domain
-#        self.inch = inch
-#        self.dropout = dropout
-#        self.size = n_ls
-#        self.filter_length = filter_length
-#        self.stride = stride
-#        self.nonlin = nonlin
-#        self.conv_type = conv_type
-#
-#    def __call__(self, x):
-#        """Calculate the graph for input `X`.
-#
-#        Raises:
-#        -------
-#            ValueError: If the convolution/domain arguments do not have
-#            the supported values.
-#        """
-#        with tf.name_scope(self.scope):
-#            while True:
-#                try:
-#                    if self.conv_type == 'depthwise':
-#                        conv_ = tf.nn.depthwise_conv2d(
-#                                x,
-#                                self.filters,
-#                                strides=[1, self.stride, 1, 1],
-#                                padding=self.padding)
-#
-#                    elif self.conv_type == 'separable':
-#                        conv_ = tf.nn.separable_conv2d(
-#                                x,
-#                                self.filters,
-#                                self.pwf,
-#                                strides=[1, self.stride, 1, 1],
-#                                padding=self.padding)
-#
-#                    elif self.conv_type == '2d':
-#                        conv_ = tf.nn.conv2d(
-#                                x,
-#                                self.filters,
-#                                strides=[1, self.stride, self.stride, 1],
-#                                padding=self.padding)
-#                    else:
-#                        raise ValueError('Invalid convolution type.')
-#
-#                    conv_ = self.nonlin(conv_ + self.b)
-#
-#                    return conv_
-#
-#                except(AttributeError):
-#                    if self.domain == 'time':
-#                        w_sh = [1, self.filter_length, self.inch, self.size]
-#
-#                    elif self.domain == 'space':
-#                        w_sh = [self.filter_length, 1, self.inch, self.size]
-#
-#                    elif self.domain == '2d':
-#                        w_sh = [self.filter_length[0], self.filter_length[1],
-#                                self.inch, self.size]
-#                    else:
-#                        raise ValueError('Invalid domain.')
-#
-#                    self.filters = weight_variable(w_sh, name='weights')
-#                    self.b = bias_variable([self.size])
-#
-#                    if self.conv_type == 'separable':
-#                        self.pwf = weight_variable(
-#                                [1, 1, self.inch*self.size, self.size],
-#                                name='sep-pwf')
-#
-#                    print(self.scope, 'init : OK')
-
+if __name__ == '__main__':
+    print('Reloaded')
 

@@ -28,11 +28,11 @@ epochs_list = [mne.Epochs(raw, **c) for c in cond]
 epochs = mne.concatenate_epochs(epochs_list)
 epochs = epochs.pick_types(meg='grad')
 print(epochs.info)
-
+#%%
 
 
 #Specify import options
-19import_opt = dict(savepath='.\data\\tfr\\',  # path where TFR files will be saved
+import_opt = dict(savepath='.\data\\tfr\\',  # path where TFR files will be saved
                   out_name='mne_sample_epochs',  # name of TFRecords files
                   fs=600,
                   input_type='trials',
@@ -79,8 +79,8 @@ model.evaluate(meta['test_paths'])
 model.compute_patterns()
 
 #%%
-f1 = model.plot_patterns('Vectorview-grad', sorting='l2')
+f1 = model.plot_patterns('Vectorview-grad', sorting='l2', class_names=condition_names)
 #%%
-f2 = model.plot_spectra(sorting='l2', norm_spectra='welch')
+f2 = model.plot_spectra(sorting='l2', norm_spectra='welch', class_names=condition_names)
 #%%
-f3 = model.plot_waveforms(sorting='l2')
+f3 = model.plot_waveforms(sorting='l2', class_names=condition_names)

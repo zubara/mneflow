@@ -73,7 +73,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     #X = X_.copy()
 
     if baseline is None:
-        print("No interval specified, using the whole epochs")
+        print("No baseline interval specified, sacling based on the whole epoch")
         interval = np.arange(X.shape[-1])
     elif isinstance(baseline, tuple):
         print("Scaling to interval {:.1f} - {:.1f}".format(*baseline))
@@ -153,7 +153,7 @@ def _split_indices(X, y, n_folds=5):
     return folds
 
 
-def _split_sets(X, y, folds, ind=-1):
+def _split_sets(X, y, folds, ind=-1, sample_counter=0):
     """Split the data returning a single fold specified by ind as validation
         and the rest of the data as training set.
 
@@ -178,14 +178,14 @@ def _split_sets(X, y, folds, ind=-1):
         Pairs of data / targets split in Training and Validation sets.
     """
     
-    fold = folds.pop(ind)
+    fold = folds.pop(ind) - sample_counter
     X_val = X[fold, ...]
     y_val = y[fold, ...]
     X_train = np.delete(X, fold, axis=0)
     y_train = np.delete(y, fold, axis=0)
-     
+    test_fold = fold + sample_counter
     # return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
-    return X_train, y_train, X_val, y_val, fold
+    return X_train, y_train, X_val, y_val, test_fold
 
 
 def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
@@ -354,7 +354,9 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                       bp_filter=False, 
                       decimate=False, 
                       combine_events=None,
-                      transform_targets=False):
+                      transform_targets=False,
+                      scale_y=False,
+                      save_as_numpy=False):
 
     r"""
     Produce TFRecord files from input, apply (optional) preprocessing.
@@ -488,7 +490,9 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                     savepath=savepath, target_type=target_type,
                     input_type=input_type)
         jj = 0
-
+        if test_set == 'holdout':
+            n_folds += 1
+            
         meta['fs'] = fs
         if not isinstance(inputs, list):
             inputs = [inputs]
@@ -510,23 +514,44 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
 
             #elif target_type == 'signal':
             #    print(data.shape, events.shape)
-            if test_set == 'holdout':
-                n_folds += 1
+
                 
             X, Y, folds = preprocess(
-                    data, events, sample_counter=meta['train_size'], input_type=input_type, scale=scale, fs=fs,
+                    data, events, sample_counter=meta['train_size'], 
+                    input_type=input_type, scale=scale, fs=fs,
                     n_folds=n_folds, scale_interval=scale_interval,
                     segment=segment, aug_stride=aug_stride,
                     crop_baseline=crop_baseline, decimate=decimate,
                     bp_filter=bp_filter, seq_length=seq_length,
                     transform_targets=transform_targets)
-
+            
+            if scale_y:
+                Y -= np.mean(Y, axis=0, keepdims=True)
+                Y /= np.std(Y, axis=0, keepdims=True)
+                print("Y {:.2f} +/- {:.2f}".format(Y.mean(), Y.std()))
+                
+            
             if test_set == 'holdout':
-                X, Y, x_test, y_test, test_fold = _split_sets(X, Y, folds=folds)
+                X, Y, x_test, y_test, test_fold = _split_sets(X, Y, folds=folds,
+                                                              sample_counter=meta['train_size'])
                 meta['test_size'] += x_test.shape[0]
-
-            meta['y_shape'] = Y[0].shape
+            if save_as_numpy == True:
+                train_fold = np.concatenate(folds[1:])
+                val_fold = folds[0]
+                np.savez(savepath+out_name, 
+                         X_train=X[train_fold, ...],
+                         X_val=X[val_fold, ...],
+                         X_test=x_test,
+                         y_train=Y[train_fold, ...],
+                         y_val=Y[val_fold, ...],
+                         y_test=y_test)
             _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
+            
+            if input_type == 'seq':
+                meta['y_shape'] = Y[0].shape[1:]
+            else:
+                meta['y_shape'] = Y[0].shape
+            
             n = np.arange(_n) + meta['train_size']
             
             meta['train_size'] += _n
@@ -678,7 +703,7 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
         X = np.concatenate(x_out)
     else:
         X = x_out[0]
-    print("X:", X.shape)
+    print("Segmented as: {}".format(input_type), X.shape)
     return X
 
 
@@ -814,9 +839,10 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1, sca
         #   x_train, y_train, x_val, y_val = [ii.T for ii in [x_train, y_train,
         #                                                     x_val, y_val]]
         # else:
-        print("Splitting sets")
+        #print("Splitting sets")
   
         folds = _split_indices(data, events, n_folds=n_folds)
+        print("Splitting into: {} folds".format(len(folds)))
         #x_train, y_train, x_val, y_val = _split_sets(data, events,
         #                                            val=val_size)
 
@@ -833,15 +859,17 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1, sca
             nsegments = x.shape[0]
         
             if callable(transform_targets):
-                print("Transforming targets")
+                #print("Transforming targets")
                 #print(type(y_train), y_train[0].shape)
                 y = transform_targets(events[fold, ...])
                 #y_val = transform_targets(y_val)
-            else:
+            elif x.shape[0] != events[fold, ...].shape[0]:
                 #print("Replicating labels for segmented data")
                 #repeat label for all subsegments
                 y = np.repeat(events[fold, ...], nsegments//len(fold),
                                     axis=0)
+            else:
+                y = events[fold, ...]
             
             X.append(x)
             Y.append(y)
@@ -855,7 +883,7 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1, sca
         X = np.expand_dims(data, 1)
         
         if callable(transform_targets):
-            print("Transforming targets")
+            #print("Transforming targets")
             # print(type(y_train), y_train[0].shape)
             Y = transform_targets(events)
         else:
@@ -870,13 +898,13 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1, sca
 
     return X, Y, folds
 
-def _process_labels(y, scale=False, decimate=False, normalize=False,
-                   transpose=False, transform=False, segment=False):
+# def _process_labels(y, scale=False, decimate=False, normalize=False,
+#                    transpose=False, transform=False, segment=False):
 
-    #    """Preprocess target variables."""
-    y_out = y[:, 0, -50:].mean(-1, keepdims=True)
-    #y_out = np.squeeze(np.concatenate(y_out))
-    if np.ndim(y_out) == 1:
-        y_out = np.expand_dims(y_out, -1)
-    print("_process_labels out:", y_out.shape)
-    return y_out
+#     #    """Preprocess target variables."""
+#     y_out = y[:, 0, -50:].mean(-1, keepdims=True)
+#     #y_out = np.squeeze(np.concatenate(y_out))
+#     if np.ndim(y_out) == 1:
+#         y_out = np.expand_dims(y_out, -1)
+#     print("_process_labels out:", y_out.shape)
+#     return y_out
