@@ -155,6 +155,70 @@ class DeMixing(BaseLayer):
                     input_shape = x.shape
                     self.build(input_shape)
                     #print(self.scope, 'building from call')
+                    
+class InvCov(BaseLayer):
+    """
+    Spatial demixing Layer
+    """
+    def __init__(self, scope="InvCov", size=None, nonlin=tf.identity, axis=-1,
+                 specs={},  **args):
+        self.scope = scope
+        self.ax = axis
+        self.axis = np.delete(np.arange(4), self.ax)[1:]
+        print("axis: ", self.axis)
+        super(InvCov, self).__init__(size=size, nonlin=nonlin, specs=specs,
+             **args)
+
+    def get_config(self):
+        config = super(InvCov, self).get_config()
+        config.update({'scope': self.scope, 'size': self.size,
+                       'nonlin': self.nonlin, 'axis': self.axis})
+        return config
+
+    def build(self, input_shape):
+
+        super(InvCov, self).build(input_shape)
+        self.constraint = self._set_constraints()
+        self.reg = self._set_regularizer()
+        sc = np.sum([input_shape[d] for d in self.axis])
+        self.scaler = tf.constant(sc)
+#        self.w = self.add_weight(
+#                shape=(input_shape[self.axis], self.size),
+#                initializer='he_uniform',
+#                regularizer=self.reg,
+#                constraint = self.constraint,
+#                trainable=True,
+#                name='dmx_weights',
+#                dtype=tf.float32)
+#
+#        self.b_in = self.add_weight(shape=([self.size]),
+#                                    initializer=Constant(0.1),
+#                                    regularizer=None,
+#                                    trainable=True,
+#                                    name='bias',
+#                                    dtype=tf.float32)
+        print("Built: {} input: {}".format(self.scope, input_shape))
+
+    #@tf.function
+    def call(self, x, training=None):
+        while True:
+            with tf.name_scope(self.scope):
+                try:
+                    
+                    _cov = tf.tensordot(x, x, axes=[[self.axis], [self.axis]],
+                                         name='_cov')
+                    print("_cov", _cov.shape)
+                    
+                    cov =  tf.reduce_mean(tf.divide(_cov, self.scaler),axis=0)
+                    print("det:", tf.det(cov))
+                    invcov = tf.linalg.pinv(cov)
+                    out = tf.tensordot(invcov, x, axes = [0, self.ax])
+                    print(self.scope, ": output :", out.shape)
+                    return out
+                except(AttributeError):
+                    input_shape = x.shape
+                    self.build(input_shape)
+                    #print(self.scope, 'building from call')
 
 
 class LFTConv(BaseLayer):

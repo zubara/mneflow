@@ -22,7 +22,7 @@ from matplotlib import pyplot as plt
 from matplotlib import patches as ptch
 from matplotlib import collections
 
-from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling
+from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling, InvCov
 from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
 from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
 from tensorflow.keras.initializers import Constant
@@ -1240,13 +1240,13 @@ class VARCNN(BaseModel):
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
         
-        fc1 = Dense(size=128, nonlin=tf.nn.elu,
-                            specs=self.specs)(dropout)
+        #fc1 = Dense(size=128, nonlin=tf.nn.elu,
+        #                    specs=self.specs)(dropout)
 
         self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
 
-        y_pred = self.fin_fc(fc1)
+        y_pred = self.fin_fc(dropout)
 
         return y_pred
 
@@ -1316,8 +1316,9 @@ class LFCNN3(LFCNN):
             Output of the forward pass of the computational graph.
             Prediction of the target variable.
         """
+        self.invcov = InvCov(axis=3)(self.inputs)
         self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
-                            axis=3, specs=self.specs)(self.inputs)
+                            axis=3, specs=self.specs)(self.invov)
 
         self.tconv = LFTConv(size=self.specs['n_latent'],
                              nonlin=self.specs['nonlin'],
