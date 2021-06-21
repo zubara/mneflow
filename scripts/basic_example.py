@@ -5,7 +5,7 @@ Created on Mon Nov 30 12:46:54 2020
 @author: ipzub
 """
 import os
-#os.chdir("C:\\Users\\ipzub\\projs\\mneflow")
+os.chdir("C:\\Users\\ipzub\\projs\\mneflow")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
@@ -18,23 +18,24 @@ from mne.datasets import multimodal
 import mneflow
 mne.set_log_level(verbose='CRITICAL')
 
-fname_raw = os.path.join(multimodal.data_path(), 'multimodal_raw.fif')
-raw = mne.io.read_raw_fif(fname_raw)
-
-cond = raw.acqparser.get_condition(raw, None)
-# get the list of condition names
-condition_names = [k for c in cond for k,v in c['event_id'].items()]
-epochs_list = [mne.Epochs(raw, **c) for c in cond]
-epochs = mne.concatenate_epochs(epochs_list)
-epochs = epochs.pick_types(meg='grad')
-print(epochs.info)
+#fname_raw = os.path.join(multimodal.data_path(), 'multimodal_raw.fif')
+#raw = mne.io.read_raw_fif(fname_raw)
+#
+#cond = raw.acqparser.get_condition(raw, None)
+## get the list of condition names
+#condition_names = [k for c in cond for k,v in c['event_id'].items()]
+#epochs_list = [mne.Epochs(raw, **c) for c in cond]
+#epochs = mne.concatenate_epochs(epochs_list)
+#epochs = epochs.pick_types(meg='mag')
+#print(epochs.info)
 #%%
 
 
 #Specify import options
-import_opt = dict(savepath='.\data\\tfr\\',  # path where TFR files will be saved
+import_opt = dict(savepath='C:\\data\\tfr\\',  # path where TFR files will be saved
                   out_name='mne_sample_epochs',  # name of TFRecords files
                   fs=600,
+                  overwrite=False,
                   input_type='trials',
                   target_type='int',
                   n_folds=5,
@@ -51,7 +52,7 @@ meta = mneflow.produce_tfrecords([], **import_opt)
 
 
 dataset = mneflow.Dataset(meta, train_batch=100)
-
+#%%
 lf_params = dict(n_latent=64, #number of latent factors
                   filter_length=17, #convolutional filter length in time samples
                   nonlin = tf.nn.relu,
@@ -64,7 +65,7 @@ lf_params = dict(n_latent=64, #number of latent factors
                   l1_scope = ["weights"],
                   l1=3e-3)
 
-model = mneflow.models.LFCNN(dataset, lf_params)
+model = mneflow.models.LFCNN3(dataset, lf_params)
 model.build()
 
 
