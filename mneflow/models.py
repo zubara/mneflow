@@ -635,7 +635,7 @@ class LFCNN(BaseModel):
                                              split=False, 
                                              test_batch=None, 
                                              repeat=True)
-        elif isinstance(data_path, mneflow.data.Dataset):
+        elif isinstance(data_path, tf.data.Dataset):
             if hasattr(data_path, 'test'):
                 ds = data_path.test
             else:
@@ -851,7 +851,7 @@ class LFCNN(BaseModel):
                                    self.waveforms[uo], mode='same')
                 vmin = conv.min()
                 vmax = conv.max()
-                ax[1, 0].plot(times + 0.5*self.specs['filter_length']/float(self.fs),
+                ax[1, 0].plot(times + 0.5*self.specs['filter_length']/float(self.dataset.h_params['fs']),
                               conv)
                 #ax[1, 0].hlines(bias, times[0], times[-1], linestyle='--', color='k')
         
@@ -1240,8 +1240,6 @@ class VARCNN(BaseModel):
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
         
-        #fc1 = Dense(size=128, nonlin=tf.nn.elu,
-        #                    specs=self.specs)(dropout)
 
         self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
