@@ -974,7 +974,7 @@ class LFCNN(BaseModel):
         return order, ts
 
     def plot_patterns(self, sensor_layout=None, sorting='l2', percentile=90,
-                      scale=False, class_names=None):
+                      scale=False, class_names=None, info=None):
         """Plot informative spatial activations patterns for each class
         of stimuli.
 
@@ -1005,9 +1005,31 @@ class LFCNN(BaseModel):
         self.uorder = order.ravel()
         #self.uorder = np.squeeze(self.uorder1)
         l_u = len(self.uorder)
-        if sensor_layout:
+        if info:
+            info['sfreq'] = 1.
+            self.fake_evoked = evoked.EvokedArray(self.patterns, info, tmin=0)
+            if l_u > 1:
+                self.fake_evoked.data[:, :l_u] = self.fake_evoked.data[:, self.uorder]
+            elif l_u == 1:
+                self.fake_evoked.data[:, l_u] = self.fake_evoked.data[:, self.uorder[0]]
+            self.fake_evoked.crop(tmax=float(l_u))
+            if scale:
+                _std = self.fake_evoked.data[:, :l_u].std(0)
+                self.fake_evoked.data[:, :l_u] /= _std
+                
+        elif sensor_layout:
             lo = channels.read_layout(sensor_layout)
+            #lo = channels.generate_2d_layout(lo.pos)
             info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
+            orig_xy = np.mean(lo.pos[:, :2], 0)
+            for i, ch in enumerate(lo.names):
+                if info['chs'][i]['ch_name'] == ch:
+                    info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/3. 
+                    #info['chs'][i]['loc'][4:] = 0
+                else:
+                    print("Channel name mismatch. info: {} vs lo: {}".format(
+                        info['chs'][i]['ch_name'], ch))
+                
             self.fake_evoked = evoked.EvokedArray(self.patterns, info)
             
             if l_u > 1:
@@ -1032,25 +1054,33 @@ class LFCNN(BaseModel):
                 comp_names = class_names
             else:
                 comp_names = ["Class #{}".format(jj+1) for jj in range(ncols)]
-
+#%%
             f, ax = plt.subplots(nrows, ncols, sharey=True)
+            plt.tight_layout()
             f.set_size_inches([16, 3])
             ax = np.atleast_2d(ax)
+        
             for ii in range(nrows):
                 
                 fake_times = np.arange(ii * ncols,  (ii + 1) * ncols, 1.)
                 vmax = np.percentile(self.fake_evoked.data[:, :l_u], 95)
+                #origin = np.median(lo.pos, 0)
+                #origin[2] = 0.0
+                #origin[3] = 1
                 self.fake_evoked.plot_topomap(times=fake_times,
                                               axes=ax[ii],
                                               colorbar=False,
                                               vmax=vmax,
                                               scalings=1,
                                               time_format="Class #%g",
-                                              title='Patterns ('+str(sorting)+')')
+                                              title='Patterns ('+str(sorting)+')',
+                                              #size=1,
+                                              outlines='head',
+                                              )
             # if sorting in ['output_corr', 'weight', 'weight_corr', 'compwise_loss']:
             #         [ax[0][jj].set_title(c) for jj, c in enumerate(comp_names)]
 
-
+#%%
             if np.any(ts):
                 self.plot_out_weights(pat=order, t=ts, sorting=sorting)
             else:
@@ -1083,9 +1113,8 @@ class LFCNN(BaseModel):
         elif self.dataset.h_params['fs']:
             self.fs = self.dataset.h_params['fs']
         else:
-            warnings.warn('Sampling frequency not specified, setting to 1.',
-                          UserWarning)
-            self.fs = 1.
+           print('Sampling frequency not specified, setting to 1.')
+           self.fs = 1.
 
         if norm_spectra:
             if norm_spectra == 'welch':
@@ -1244,110 +1273,6 @@ class VARCNN(BaseModel):
         return y_pred
 
 
-class LFCNN3(LFCNN):
-    """Time-Invaraint LFCNN.
-
-    For details see [1].
-
-    References
-    ----------
-        [1] I. Zubarev, et al., Adaptive neural network classifier for
-        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-    """
-    def __init__(self, Dataset, specs=dict()):
-        """
-                Parameters
-        ----------
-        Dataset : mneflow.Dataset
-
-        specs : dict
-                dictionary of model hyperparameters {
-
-        n_latent : int
-            Number of latent components.
-            Defaults to 32.
-
-        nonlin : callable
-            Activation function of the temporal convolution layer.
-            Defaults to tf.nn.relu
-
-        filter_length : int
-            Length of spatio-temporal kernels in the temporal
-            convolution layer. Defaults to 7.
-
-        pooling : int
-            Pooling factor of the max pooling layer. Defaults to 2
-
-        pool_type : str {'avg', 'max'}
-            Type of pooling operation. Defaults to 'max'.
-
-        padding : str {'SAME', 'FULL', 'VALID'}
-            Convolution padding. Defaults to 'SAME'.}
-        """
-        specs.setdefault('filter_length', 32)
-        specs.setdefault('n_latent', 32)
-        specs.setdefault('pooling', 6)
-        specs.setdefault('stride', 6)
-        specs.setdefault('pool_type', 'SAME')
-        specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1', 3e-4)
-        specs.setdefault('l2', 3e-2)
-        specs.setdefault('l1_scope', ['fc'])
-        specs.setdefault('l2_scope', ['demix', 'lf_conv'])
-        specs.setdefault('maxnorm_scope', [])
-        specs.setdefault('model_path', self.dataset.h_params['save_path'])
-        super(LFCNN, self).__init__(Dataset, specs)
-
-
-
-    def build_graph(self):
-        """Build computational graph using defined placeholder `self.X`
-        as input.
-
-        Returns
-        --------
-        y_pred : tf.Tensor
-            Output of the forward pass of the computational graph.
-            Prediction of the target variable.
-        """
-        self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
-                            axis=3, specs=self.specs)(self.inputs)
-
-        self.tconv = LFTConv(size=self.specs['n_latent'],
-                             nonlin=self.specs['nonlin'],
-                             filter_length=self.specs['filter_length'],
-                             padding=self.specs['padding'],
-                             specs=self.specs
-                             )(self.dmx)
-
-        self.pooled = TempPooling(pooling=self.specs['pooling'],
-                                  pool_type=self.specs['pool_type'],
-                                  stride=self.specs['stride'],
-                                  padding=self.specs['padding'],
-                                  )(self.tconv)
-
-        self.pooled2 = TempPooling(pooling=self.specs['pooling'],
-                                   pool_type=self.specs['pool_type'],
-                                   stride=self.specs['stride'],
-                                   padding=self.specs['padding'],
-                                   )(self.pooled)
-
-        self.pooled3 = TempPooling(pooling=self.specs['pooling'],
-                                   pool_type='max',
-                                   stride=self.specs['stride'],
-                                   padding=self.specs['padding'],
-                                   )(self.pooled2)
-
-        dropout = Dropout(self.specs['dropout'],
-                          noise_shape=None)(self.pooled3)
-
-        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
-                            specs=self.specs)
-
-        y_pred = self.fin_fc(dropout)
-
-        return y_pred
-
 
 class FBCSP_ShallowNet(BaseModel):
     """
@@ -1425,111 +1350,6 @@ class FBCSP_ShallowNet(BaseModel):
                        nonlin=tf.identity)
         y_pred = fc_out(tf.keras.backend.log(pool1))
         return y_pred
-#
-#
-##class LFLSTM(LFCNN):
-##    # TODO! Gabi: check that the description describes the model
-##    """LF-CNN-LSTM
-##
-##    For details see [1].
-##
-##    Parameters
-##    ----------
-##    n_latent : int
-##        number of latent components
-##        Defaults to 32
-##
-##    filter_length : int
-##        length of spatio-temporal kernels in the temporal
-##        convolution layer. Defaults to 7
-##
-##    stride : int
-##        stride of the max pooling layer. Defaults to 1
-##
-##    pooling : int
-##        pooling factor of the max pooling layer. Defaults to 2
-##
-##    References
-##    ----------
-##        [1]  I. Zubarev, et al., Adaptive neural network classifier for
-##        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-##    """
-##
-##    def build_graph(self):
-##        self.scope = 'lf-cnn-lstm'
-##
-##        self.demix = DeMixing(n_latent=self.specs['n_latent'], axis=1)
-##        dmx = self.demix(self.X)
-##        dmx = tf.reshape(dmx, [-1, self.dataset.h_params['n_t'],
-##                               self.specs['n_latent']])
-##        dmx = tf.expand_dims(dmx, -1)
-##        print('dmx-sqout:', dmx.shape)
-##
-##        self.tconv1 = LFTConv(scope="conv",
-##                              n_latent=self.specs['n_latent'],
-##                              nonlin=tf.nn.relu,
-##                              filter_length=self.specs['filter_length'],
-###                              stride=self.specs['stride'],
-###                              pooling=self.specs['pooling'],
-##                              padding=self.specs['padding'])
-##
-##        features = self.tconv1(dmx)
-##        pool1 = TempPooling(stride=self.specs['stride'],
-##                            pooling=self.specs['pooling'],
-##                            padding='SAME',
-##                            pool_type='max')
-##
-##        pool2 = TempPooling(stride=self.specs['stride'],
-##                            pooling=self.specs['pooling'],
-##                            padding='SAME',
-##                            pool_type='max')
-##
-##        pool3 = TempPooling(stride=self.specs['stride'],
-##                            pooling=self.specs['pooling'],
-##                            padding='SAME',
-##                            pool_type='avg')
-##
-##        print('features:', pool3.shape)
-##        pooled = pool3(pool2(pool1(features)))
-##
-##        fshape = tf.multiply(pooled.shape[1], pooled.shape[2])
-##
-##        ffeatures = tf.reshape(pooled,
-##                              [-1, self.dataset.h_params['n_seq'], fshape])
-##        #  features = tf.expand_dims(features, 0)
-##        l1_lambda = self.optimizer.params['l1_lambda']
-##        print('flat features:', ffeatures.shape)
-##        self.lstm = LSTMv1(scope="lstm",
-##                           size=self.specs['n_latent'],
-##                           kernel_initializer='glorot_uniform',
-##                           recurrent_initializer='orthogonal',
-##                           recurrent_regularizer=k_reg.l1(l1_lambda),
-##                           kernel_regularizer=k_reg.l2(l1_lambda),
-##                           # bias_regularizer=None,
-##                           # activity_regularizer= regularizers.l1(0.01),
-##                           # kernel_constraint= constraints.UnitNorm(axis=0),
-##                           # recurrent_constraint= constraints.NonNeg(),
-##                           # bias_constraint=None,
-##                           # dropout=0.1, recurrent_dropout=0.1,
-##                           nonlin=tf.nn.tanh,
-##                           unit_forget_bias=False,
-##                           return_sequences=False,
-##                           unroll=False)
-##
-##        lstm_out = self.lstm(ffeatures)
-##        print('lstm_out:', lstm_out.shape)
-##        # if 'n_seq' in self.dataset.h_params.keys():
-##        #    lstm_out = tf.reshape(lstm_out, [-1,
-##        #                                     self.dataset.h_params['n_seq'],
-##        #                                     self.specs['n_latent']])
-##
-##        self.fin_fc = Dense(size=self.out_dim,
-##                            nonlin=tf.identity, dropout=0.)
-###        self.fin_fc = DeMixing(n_latent=self.out_dim,
-###                               nonlin=tf.identity, axis=-1)
-##        y_pred = self.fin_fc(lstm_out)
-##        # print(y_pred)
-##        return y_pred
 #
 #
 class Deep4(BaseModel):
