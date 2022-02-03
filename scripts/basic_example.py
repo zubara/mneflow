@@ -6,17 +6,17 @@ Created on Mon Nov 30 12:46:54 2020
 """
 import os
 #os.chdir("C:\\Users\\ipzub\\projs\\mneflow")
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+#os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
-tf.get_logger().setLevel('ERROR')
-tf.autograph.set_verbosity(0)
+#tf.get_logger().setLevel('ERROR')
+#tf.autograph.set_verbosity(0)
 
 import numpy as np
 import mne
 from mne.datasets import multimodal
 
 import mneflow
-mne.set_log_level(verbose='CRITICAL')
+#mne.set_log_level(verbose='CRITICAL')
 
 fname_raw = os.path.join(multimodal.data_path(), 'multimodal_raw.fif')
 raw = mne.io.read_raw_fif(fname_raw)
@@ -30,9 +30,9 @@ epochs = epochs.pick_types(meg='grad')
 print(epochs.info)
 
 
-
+#%%
 #Specify import options
-19import_opt = dict(savepath='.\data\\tfr\\',  # path where TFR files will be saved
+import_opt = dict(savepath='C:\\data\\tfr\\',  # path where TFR files will be saved
                   out_name='mne_sample_epochs',  # name of TFRecords files
                   fs=600,
                   input_type='trials',
@@ -47,11 +47,11 @@ print(epochs.info)
 
 #write TFRecord files and metadata file to disk
 #meta = mneflow.produce_tfrecords([epochs], **import_opt)
-meta = mneflow.produce_tfrecords([], **import_opt)
+meta = mneflow.produce_tfrecords([epochs], **import_opt)
 
 
 dataset = mneflow.Dataset(meta, train_batch=100)
-
+#%%
 lf_params = dict(n_latent=64, #number of latent factors
                   filter_length=17, #convolutional filter length in time samples
                   nonlin = tf.nn.relu,
@@ -79,7 +79,7 @@ model.evaluate(meta['test_paths'])
 model.compute_patterns()
 
 #%%
-f1 = model.plot_patterns('Vectorview-grad', sorting='l2')
+f1 = model.plot_patterns(sorting='l2', info=epochs.info)
 #%%
 f2 = model.plot_spectra(sorting='l2', norm_spectra='welch')
 #%%
