@@ -185,7 +185,7 @@ def _split_sets(X, y, folds, ind=-1):
     y_train = np.delete(y, fold, axis=0)
      
     # return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
-    return X_train, y_train, X_val, y_val, fold
+    return X_train, y_train, X_val, y_val, folds, fold
 
 def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     """Import epoch data into `X, y` data/target pairs.
@@ -519,11 +519,13 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                     crop_baseline=crop_baseline, decimate=decimate,
                     bp_filter=bp_filter, seq_length=seq_length,
                     transform_targets=transform_targets)
-
+            
+            print(len(np.concatenate(folds)))
             if test_set == 'holdout':
-                X, Y, x_test, y_test, test_fold = _split_sets(X, Y, folds=folds)
+                X, Y, x_test, y_test, folds, test_fold = _split_sets(X, Y, folds=folds, ind = n_folds-1)
                 meta['test_size'] += x_test.shape[0]
 
+            
             meta['y_shape'] = Y[0].shape
             _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
             n = np.arange(_n) + meta['train_size']

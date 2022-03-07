@@ -56,8 +56,12 @@ class Dataset(object):
         self.train, self.val = self._build_dataset(self.h_params['train_paths'],
                                                    train_batch=train_batch,
                                                    test_batch=test_batch,
-                                                   split=split, val_fold_ind=0)
-        #if np.any(self.h_params['test_fold']):
+                                                   split=True, val_fold_ind=0)
+        if len(self.h_params['test_paths']) > 0:
+            self.test = self._build_dataset(self.h_params['test_paths'],
+                                                       train_batch=train_batch,
+                                                       test_batch=test_batch,
+                                                       split=False)
             
         
         # #self.val = self._build_dataset(self.h_params['val_paths'],
@@ -112,6 +116,13 @@ class Dataset(object):
                 
             self.val_fold = np.array(val_folds)
             self.train_fold = np.array(train_folds)
+            
+            # ovl = 0
+            # for si in self.train_fold:
+            #     if si in self.val_fold:
+            #         ovl += 1
+            # print('OVERLAP: ', ovl)
+            #print(len(np.concatenate(folds)))
             #print("Train fold:", self.train_fold, self.train_fold.shape)
             #print("val fold:", self.val_fold, self.val_fold.shape)
             #self.train_fold = np.concatenate(self.train_fold)
@@ -140,10 +151,13 @@ class Dataset(object):
         else:
             #print(dataset)
             #batch
-            size = self.h_params['val_size']
+            if np.any(['train' in tp for tp in path]):
+                size = self.h_params['train_size']
+            else:
+                size = self.h_params['val_size']
             if not test_batch:
                 test_batch = size
-            dataset = dataset.shuffle(5).batch(test_batch).repeat()
+            dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
             dataset.batch = test_batch
             
                 
