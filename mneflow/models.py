@@ -420,6 +420,14 @@ class BaseModel():
         print("Not implemented")
     
     def predict(self, dataset=None):
+        """Returns:
+        --------
+        y_true : np.array
+                ground truth labels taken from the dataset
+                
+        y_pred : np.array
+                model predictions
+        """
         if not dataset: 
             print("No dataset specified using validation dataset (Default)")
             dataset = self.dataset.val
@@ -427,15 +435,22 @@ class BaseModel():
             dataset = self.dataset._build_dataset(dataset, 
                                              split=False, 
                                              test_batch=None, 
-                                             repeat=True)
+                                             repeat=False)
         elif not isinstance(dataset, tf.data.Dataset):
             print("Specify dataset")
             return None, None
         
-        y_pred = self.km.predict(dataset, 
-                                 steps=self.dataset.validation_steps)
-        y_true = [row[1] for row in dataset.take(1)][0]
-        y_true = y_true.numpy()
+        X = []
+        y = []
+        
+        for row in dataset.take(1):
+            X.append(row[0])
+            y.append(row[1])
+
+        y_pred = self.km.predict(np.concatenate(X))
+        y_true = np.concatenate(y)
+        
+        #y_true = y_true.numpy()
         return y_true, y_pred
     
     def evaluate(self, dataset=False):
