@@ -81,7 +81,7 @@ class BaseModel():
         self.y_pred = self.build_graph()
 
 
-    def build(self, optimizer="adam", loss=None, metrics=None, #mapping=None, 
+    def build(self, optimizer="adam", loss=None, metrics=None, mapping=None, 
               learn_rate=3e-4):
         """Compile a model.
         
@@ -102,9 +102,9 @@ class BaseModel():
             Learning rate, defaults to 3e-4
         """
         # Initialize computational graph
-        # if mapping:
-        #     map_fun = tf.keras.activations.get(mapping)
-        #     self.y_pred= map_fun(self.y_pred)
+        if mapping:
+            map_fun = tf.keras.activations.get(mapping)
+            self.y_pred= map_fun(self.y_pred)
         
         self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
         
@@ -320,6 +320,7 @@ class BaseModel():
         print("Re-shuffling weights between folds")
         weights = self.km.get_weights()
         weights = [np.random.permutation(w.flat).reshape(w.shape) for w in weights]
+        #weights = [np.random.randn(*w.shape) for w in weights]
         # Faster, but less random: only permutes along the first dimension
         # weights = [np.random.permutation(w) for w in weights]
         self.km.set_weights(weights)
@@ -1236,6 +1237,7 @@ class VARCNN(BaseModel):
 
         padding : str {'SAME', 'FULL', 'VALID'}
             Convolution padding. Defaults to 'SAME'.}"""
+        self.scope = 'varcnn'
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -1286,6 +1288,117 @@ class VARCNN(BaseModel):
         y_pred = self.fin_fc(dropout)
 
         return y_pred
+    
+
+class LFCNNR(BaseModel):
+    """VAR-CNN.
+
+    For details see [1].
+
+    References
+    ----------
+        [1] I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+    """
+    def __init__(self, Dataset, specs=dict()):
+        """
+        Parameters
+        ----------
+        Dataset : mneflow.Dataset
+
+        specs : dict
+                dictionary of model hyperparameters {
+
+        n_latent : int
+            Number of latent components.
+            Defaults to 32.
+
+        nonlin : callable
+            Activation function of the temporal convolution layer.
+            Defaults to tf.nn.relu
+
+        filter_length : int
+            Length of spatio-temporal kernels in the temporal
+            convolution layer. Defaults to 7.
+
+        pooling : int
+            Pooling factor of the max pooling layer. Defaults to 2
+
+        pool_type : str {'avg', 'max'}
+            Type of pooling operation. Defaults to 'max'.
+
+        padding : str {'SAME', 'FULL', 'VALID'}
+            Convolution padding. Defaults to 'SAME'.}"""
+        self.scope = 'lfcnnr'
+        specs.setdefault('filter_length', 7)
+        specs.setdefault('n_latent', 32)
+        specs.setdefault('pooling', 2)
+        specs.setdefault('stride', 2)
+        specs.setdefault('padding', 'SAME')
+        specs.setdefault('pool_type', 'max')
+        specs.setdefault('nonlin', tf.nn.relu)
+        specs.setdefault('l1', 3e-4)
+        specs.setdefault('l2', 0)
+        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
+        specs.setdefault('l2_scope', [])
+        specs.setdefault('maxnorm_scope', [])
+        super(LFCNNR, self).__init__(Dataset, specs)
+
+    def build_graph(self):
+        """Build computational graph using defined placeholder `self.X`
+        as input.
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
+        self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
+                            axis=3, specs=self.specs)(self.inputs)
+        
+        
+        self.tconv = LFTConv(size=self.specs['n_latent'],
+                             nonlin=self.specs['nonlin'],
+                             filter_length=self.specs['filter_length'],
+                             padding=self.specs['padding'],
+                             specs=self.specs
+                             )(self.dmx)
+
+        self.pooled = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type=self.specs['pool_type'],
+                                  stride=self.specs['stride'],
+                                  padding=self.specs['padding'],
+                                  )(self.tconv)
+        
+        self.tconv2 = VARConv(size=self.specs['n_latent'],
+                             nonlin=self.specs['nonlin'],
+                             filter_length=self.specs['filter_length'],
+                             padding=self.specs['padding'],
+                             specs=self.specs
+                             )(self.pooled)
+        self.pooled2 = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type=self.specs['pool_type'],
+                                  stride=self.specs['stride'],
+                                  padding=self.specs['padding'],
+                                  )(self.tconv2)
+
+
+        
+        self.fc1 = Dense(size=self.specs['n_latent']*2, 
+                         nonlin=tf.nn.tanh,
+                         specs=self.specs)(self.pooled2)
+        
+        dropout = Dropout(self.specs['dropout'],
+                          noise_shape=None)(self.fc1)
+        
+
+        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+                            specs=self.specs)
+
+        y_pred = self.fin_fc(dropout)
+
+        return y_pred
 
 
 
@@ -1314,6 +1427,7 @@ class FBCSP_ShallowNet(BaseModel):
         specs.setdefault('l1_scope', [])
         specs.setdefault('l2_scope', ['conv', 'fc'])
         specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('model_path', './')
         super(FBCSP_ShallowNet, self).__init__(Dataset, specs)
 
     def build_graph(self):
@@ -1392,7 +1506,7 @@ class Deep4(BaseModel):
         specs.setdefault('l1_scope', [])
         specs.setdefault('l2_scope', ['conv', 'fc'])
         specs.setdefault('maxnorm_scope', [])
-        specs.setdefault('model_path', './model/')
+        specs.setdefault('model_path', './')
         super(Deep4, self).__init__(Dataset, specs)
 
     def build_graph(self):
@@ -1553,19 +1667,19 @@ class EEGNet(BaseModel):
     https://github.com/vlawhern/arl-eegmodels
     """
     def __init__(self, Dataset, specs=dict()):
-        self.scope = 'eegnet'
+        
         specs.setdefault('filter_length', 64)
         specs.setdefault('depth_multiplier', 2)
         specs.setdefault('n_latent', 8)
         specs.setdefault('pooling', 4)
         specs.setdefault('stride', 4)
-        specs.setdefault('dropout', 0.5)
+        specs.setdefault('dropout', 0.1)
         specs.setdefault('padding', 'same')
         specs.setdefault('nonlin', 'elu')
         specs.setdefault('maxnorm_rate', 0.25)
-        specs.setdefault('model_path', './model/')
+        specs.setdefault('model_path', './')
         super(EEGNet, self).__init__(Dataset, specs)
-
+        self.scope = 'eegnet8'
         
         
     def build_graph(self):
@@ -1582,7 +1696,7 @@ class EEGNet(BaseModel):
                                              self.dataset.h_params['n_t']),
                               use_bias = False)(inputs)
         block1       = BatchNormalization(axis = 1)(block1)
-        print("Batchnorm:", block1.shape)
+        #print("Batchnorm:", block1.shape)
         block1       = DepthwiseConv2D((self.dataset.h_params['n_ch'], 1), 
                                        use_bias = False, 
                                        depth_multiplier = self.specs['depth_multiplier'],
@@ -1590,18 +1704,18 @@ class EEGNet(BaseModel):
         block1       = BatchNormalization(axis = 1)(block1)
         block1       = layers.Activation(self.specs['nonlin'])(block1)
         block1       = layers.AveragePooling2D((1, self.specs['pooling']))(block1)
-        print("Pooling 1:", block1.shape)
+        print("Block 1:", block1.shape)
         block1       = dropoutType(self.specs['dropout'])(block1)
         
         block2       = SeparableConv2D(self.specs['n_latent']*self.specs['depth_multiplier'], (1, self.specs['filter_length']//self.specs["pooling"]),
                                        use_bias = False, padding = self.specs['padding'])(block1)
         block2       = BatchNormalization(axis = 1)(block2)
-        print("Batchnorm 2:", block2.shape)
+        #print("Batchnorm 2:", block2.shape)
         
         block2       = layers.Activation(self.specs['nonlin'])(block2)
         block2       = layers.AveragePooling2D((1, self.specs['pooling']*2))(block2)
         block2       = dropoutType(self.specs['dropout'])(block2)
-        print("Pooling 2:", block2.shape)
+        print("Block 2:", block2.shape)
         
         fin_fc = Dense(size=self.out_dim, nonlin=tf.identity)
         y_pred = fin_fc(block2)

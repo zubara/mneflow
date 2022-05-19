@@ -83,6 +83,8 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
 
     X -= X0m
     X /= X0sd
+    if crop_baseline:
+        X = np.delete(X, interval, axis=-1)
     #print("Scaling Done")
     return X
 
