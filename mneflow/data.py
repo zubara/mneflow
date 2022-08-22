@@ -29,19 +29,19 @@ class Dataset(object):
             See mneflow.utils.produce_tfrecords for details.
 
         train_batch : int, None, optional
-            Training mini-batch size. Defaults to 200. If None equals to the 
+            Training mini-batch size. Defaults to 200. If None equals to the
             whole training set size
-        
+
         test_batch : int, None, optional
-            Training mini-batch size. Defaults to None. If None equals to the 
+            Training mini-batch size. Defaults to None. If None equals to the
             whole test/validation set size
 
         split : bool
-            Whether to split dataset into training and validation folds based 
-            on h_params['folds']. Defaults to True. Can be False if dataset is 
-            imported for evaluationg performance on the held-out set or 
+            Whether to split dataset into training and validation folds based
+            on h_params['folds']. Defaults to True. Can be False if dataset is
+            imported for evaluationg performance on the held-out set or
             vizualisations
-            
+
 
         """
         self.h_params = h_params
@@ -49,17 +49,17 @@ class Dataset(object):
         # self.class_subset = class_subset
         # self.decim = decim
         self.h_params['train_batch'] = train_batch
-        
-        
+
+
         #%%%%%%%%%%%%
-            
+
         self.train, self.val = self._build_dataset(self.h_params['train_paths'],
                                                    train_batch=train_batch,
                                                    test_batch=test_batch,
                                                    split=split, val_fold_ind=0)
         #if np.any(self.h_params['test_fold']):
-            
-        
+
+
         # #self.val = self._build_dataset(self.h_params['val_paths'],
         # #                               n_batch=test_batch)
         # if 'test_paths' in self.h_params.keys():
@@ -68,10 +68,10 @@ class Dataset(object):
         #                                         n_batch=test_batch)
         #%%%%%%%%%%%%%
 
-    def _build_dataset(self, path, split=True, 
-                       train_batch=100, test_batch=None, 
+    def _build_dataset(self, path, split=True,
+                       train_batch=100, test_batch=None,
                        repeat=True, val_fold_ind=0, holdout=False):
-        
+
         """Produce a tf.Dataset object and apply preprocessing
         functions if specified.
         """
@@ -79,7 +79,7 @@ class Dataset(object):
         dataset = tf.data.TFRecordDataset(path)
 
         dataset = dataset.map(self._parse_function)
-        
+
         # if self.channel_subset is not None:
         #     dataset = dataset.map(self._select_channels)
 
@@ -88,55 +88,55 @@ class Dataset(object):
 
         # if self.decim is not None:
         #     print('decimating')
-                           
+
         #     self.timepoints = tf.constant(
         #             np.arange(0, self.h_params['n_t'], self.decim))
-            
+
         #     self.h_params['n_t'] = len(self.timepoints)
         #     dataset = dataset.map(self._decimate)
-            
+
         #TODO: test set case
-        
+
         if split:
             train_folds = []
             val_folds = []
-            #split into training and validation folds 
-            
+            #split into training and validation folds
+
             for i, fold in enumerate(self.h_params['folds']):
                 f = fold.copy()
                 vf = f.pop(val_fold_ind)
                 val_folds.extend(vf)
                 train_folds.extend(np.concatenate(f))
                 #print("datafile: {} iter: {} val: {} train: {}".format(i, val_fold_ind, len(val_folds), len(train_folds)))
-                
-                
+
+
             self.val_fold = np.array(val_folds)
             self.train_fold = np.array(train_folds)
             #print("Train fold:", self.train_fold, self.train_fold.shape)
             #print("val fold:", self.val_fold, self.val_fold.shape)
             #self.train_fold = np.concatenate(self.train_fold)
-             
+
             train_dataset = dataset.filter(self._cv_train_fold_filter)
             val_dataset =  dataset.filter(self._cv_val_fold_filter)
-            
+
             #batch
             if not test_batch:
                 test_batch = len(self.val_fold)
-            
+
             self.validation_steps = max(1, len(self.val_fold)//test_batch)
             self.training_steps = max(1, len(self.train_fold)//train_batch)
             self.validation_batch = test_batch
             self.training_batch = train_batch
-            
+
             val_dataset = val_dataset.shuffle(5).batch(test_batch).repeat()
-            val_dataset.batch_size = test_batch            
-            train_dataset = train_dataset.shuffle(5).batch(train_batch).repeat()            
-            
+            val_dataset.batch_size = test_batch
+            train_dataset = train_dataset.shuffle(5).batch(train_batch).repeat()
+
             train_dataset = train_dataset.map(self._unpack)
             val_dataset = val_dataset.map(self._unpack)
-            
+
             return train_dataset, val_dataset
-            
+
         else:
             #print(dataset)
             #batch
@@ -145,8 +145,8 @@ class Dataset(object):
                 test_batch = size
             dataset = dataset.shuffle(5).batch(test_batch).repeat()
             dataset.batch = test_batch
-            
-                
+
+
             self.test_batch = test_batch
             self.test_steps = max(1, size // test_batch)
             dataset = dataset.map(self._unpack)
@@ -154,23 +154,23 @@ class Dataset(object):
             #else:
             # unsplit datasets are used for visuzalization and evaluation
             # if batching is not specified the whole set is used as batch
-            
+
         #     val_size = self.dataset.h_params['val_size']
         #     self.validation_steps =  val_size // val_batch)
         # else:
         #     self.validation_steps = 1
-            
-            
+
+
             # print(dataset)
-          
+
             # else:
             #     test_batch = self.h_params['val_size']
             #     dataset = dataset.shuffle(5).batch(test_batch).repeat()
-            
-            
 
-            
-            
+
+
+
+
 
     # def _select_channels(self, example_proto):
     #     """Pick a subset of channels specified by self.channel_subset."""
@@ -227,7 +227,7 @@ class Dataset(object):
 
         keys_to_features['X'] = tf.io.FixedLenFeature(x_sh, tf.float32)
         keys_to_features['n'] = tf.io.FixedLenFeature((), tf.int64)
-        
+
         if self.h_params['target_type'] == 'int':
             keys_to_features['y'] = tf.io.FixedLenFeature(y_sh, tf.int64)
 
@@ -253,7 +253,7 @@ class Dataset(object):
     #         return out
     #     else:
     #         return tf.constant(True, dtype=tf.bool)
-    
+
     def _cv_train_fold_filter(self, sample):
         """Pick a subset of classes specified in self.class_subset."""
         if np.any(self.train_fold):
@@ -263,7 +263,7 @@ class Dataset(object):
             return out
         else:
             return tf.constant(True, dtype=tf.bool)
-        
+
     def _cv_val_fold_filter(self, sample):
         """Pick a subset of classes specified in self.class_subset."""
         if np.any(self.val_fold):
