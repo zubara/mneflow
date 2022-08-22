@@ -83,6 +83,8 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
 
     X -= X0m
     X /= X0sd
+    if crop_baseline:
+        X = np.delete(X, interval, axis=-1)
     #print("Scaling Done")
     return X
 
@@ -186,8 +188,12 @@ def _split_sets(X, y, folds, ind=-1, sample_counter=0):
     y_train = np.delete(y, fold, axis=0)
     test_fold = fold + sample_counter
     # return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
+<<<<<<< HEAD
     return X_train, y_train, X_val, y_val, test_fold
 
+=======
+    return X_train, y_train, X_val, y_val, folds, fold
+>>>>>>> c2ae92d96197b2aa87bacc481514ae7f7283e429
 
 def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     """Import epoch data into `X, y` data/target pairs.
@@ -220,14 +226,14 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     """
     if isinstance(inp, mne.epochs.BaseEpochs):
         print('processing epochs')
-        if isinstance(picks, dict):
-            picks = mne.pick_types(inp.info, include=picks)
+        # if isinstance(picks, dict):
+        #     picks = mne.pick_types(inp.info, include=picks)
         inp.load_data()
         data = inp.get_data()
         events = inp.events[:, 2]
         if isinstance(picks, dict):
             print("Converting picks")
-            picks = mne.pick_types(inp.info, picks)
+            picks = mne.pick_types(inp.info, **picks)
 
     elif isinstance(inp, tuple) and len(inp) == 2:
         print('importing from tuple')
