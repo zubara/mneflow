@@ -211,6 +211,7 @@ class LFTConv(BaseLayer):
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
+                    
                     #print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
@@ -273,7 +274,7 @@ class VARConv(BaseLayer):
                                         padding=self.padding,
                                         strides=[1, 1, 1, 1],
                                         data_format='NHWC')
-                    conv = self.nonlin(conv + self.b)
+                    
                     conv = self.nonlin(conv + self.b)
                     #print(self.scope, ": output :", conv.shape)
                     return conv

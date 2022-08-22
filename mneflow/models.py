@@ -31,12 +31,15 @@ from tensorflow.keras.initializers import Constant
 from tensorflow.keras import regularizers as k_reg, constraints, layers
 import csv
 import os
-#from mneflow import Dataset
+from .data import Dataset
+from .utils import regression_metrics, _onehot
+from collections import defaultdict
 
 def uniquify(seq):
     un = []
     [un.append(i) for i in seq if not un.count(i)]
     return un
+
 
 
 # ----- Base model -----
@@ -79,6 +82,8 @@ class BaseModel():
         #self.optimizer = Optimizer
         self.trained = False
         self.y_pred = self.build_graph()
+        self.log = dict()
+        self.cm = np.zeros([self.y_shape[-1], self.y_shape[-1]])
 
 
     def build(self, optimizer="adam", loss=None, metrics=None, mapping=None, 
@@ -165,7 +170,7 @@ class BaseModel():
         return y_pred
 
     def train(self, n_epochs, eval_step=None, min_delta=1e-6,
-              early_stopping=3, mode='single_fold'):
+              early_stopping=3, mode='single_fold', prune_weights=False):
 
         """
         Train a model
@@ -218,12 +223,21 @@ class BaseModel():
                                    shuffle=True, 
                                    validation_steps=self.dataset.validation_steps,
                                    callbacks=[stop_early], verbose=2)
+                
             self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
             self.v_loss_sd = 0
             self.v_metric_sd = 0
             print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
-            self.update_log()
+            if self.dataset.h_params['target_type'] == 'float':
+                y_true, y_pred = self.predict(self.dataset.val)
+                rms = regression_metrics(y_true, y_pred)
+                print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])  
+            else:
+                rms = None
+            self.update_log(rms=rms, prefix='val_')
+            
         elif mode == 'cv':
+            rmss = defaultdict(list)
             n_folds = len(self.dataset.h_params['folds'][0])
             print("Running cross-validation with {} folds".format(n_folds))
             metrics = []
@@ -245,6 +259,20 @@ class BaseModel():
                 loss, metric = self.evaluate(val)
                 losses.append(loss)
                 metrics.append(metric)
+                
+                if self.scope == 'lfcnn':
+                    self.collect_patterns(fold=jj)
+                    
+                y_true, y_pred = self.predict(val)
+
+                if self.dataset.h_params['target_type'] == 'float':
+                    rms = regression_metrics(y_true, y_pred)
+                    for k,v in rms.items():
+                        rmss[k].append(v)
+                    print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])  
+                else:
+                    self.cm += self._confusion_matrix(y_true, y_pred)                    
+                    rms = None
                     
                 if jj < n_folds -1:
                     self.shuffle_weights()
@@ -260,10 +288,21 @@ class BaseModel():
             self.v_loss_sd = np.std(losses)
             self.v_metric_sd = np.std(metrics)
             print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
-            self.update_log()
+           
+            if self.dataset.h_params['target_type'] == 'float':
+                rms = {k:np.mean(v) for k, v in rmss.items()}
+                rms.update({k + '_std':np.std(v) for k, v in rmss.items()}) 
+                print("Validation set: Corr : {:.3f} +/- {:.3f}. \
+                      R^2: {:.3f} +/- {:.3f}".format(
+                      rms['cc'], rms['cc_std'], rms['r2'], rms['r2_std']))
+            else:
+                rms = None
+            self.update_log(rms=rms, prefix='cv_')
+            
             return self.cv_losses, self.cv_metrics
         
         elif mode == "loso":
+            rmss = []
             n_folds = len(self.dataset.h_params['test_paths'])
             print("Running leave-one-subject-out CV with {} subject".format(n_folds))
             metrics = []
@@ -297,11 +336,28 @@ class BaseModel():
                 loss, metric = self.evaluate(test)
                 losses.append(loss)
                 metrics.append(metric)
+                if self.dataset.h_params['target_type'] == 'float':
+                    y_true, y_pred = self.predict(val)
+                    rms = regression_metrics(y_true, y_pred)
+                    for k,v in rms.items():
+                        rmss[k].append(v)
+                    print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])  
+                else:
+                    rms = None
                     
                 if jj < n_folds -1:
                     self.shuffle_weights()
                 else:
                     "Not shuffling the weights for the last fold"
+                
+            if self.dataset.h_params['target_type'] == 'float':
+                rms = {k:np.mean(v) for k, v in rmss.items()}
+                rms.update({k + '_std':np.std(v) for k, v in rmss.items()})  
+                print("Validation set: Corr : {:.3f} +/- {:.3f}. \
+                      R^2: {:.3f} +/- {:.3f}".format(
+                      rms['cc'], rms['cc_std'], rms['r2'], rms['r2_std']))
+            else:
+                rms = None
                 
             self.cv_losses = losses
             self.cv_metrics = metrics
@@ -309,13 +365,28 @@ class BaseModel():
             self.v_metric = np.mean(metrics)
             self.v_loss_sd = np.std(losses)
             self.v_metric_sd = np.std(metrics)
-            self.update_log()
+            self.update_log(rms, prefix='loso_')
             print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
             return self.cv_losses, self.cv_metrics
             
                 
 
-    
+    def prune_weights(self, increase_regularization=3.):
+        stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+                                                      min_delta=1e-6,
+                                                      patience=10,
+                                                      restore_best_weights=True)
+        self.rate = 0
+        self.specs["l1"] *= increase_regularization
+        self.specs["l2"] *= increase_regularization
+        print('Pruning weights')
+        self.t_hist_p = self.km.fit(self.dataset.train,
+                               validation_data=self.dataset.val,
+                               epochs=30, steps_per_epoch=self.train_params[1],
+                               shuffle=True, 
+                               validation_steps=self.dataset.validation_steps,
+                               callbacks=[stop_early], verbose=2)
+                    
     def shuffle_weights(self):
         print("Re-shuffling weights between folds")
         weights = self.km.get_weights()
@@ -340,7 +411,11 @@ class BaseModel():
         #plt.title(self.scope.upper())
         #plt.xlabel('Epochs')
         #plt.show()
-
+        
+    def _confusion_matrix(self, y_true, y_pred):
+        y_p = _onehot(np.argmax(y_pred,1))
+        cm = np.dot(y_p.T, y_true)
+        return cm
 #    def load(self):
 #        """Loads a pretrained model.
 #
@@ -358,14 +433,17 @@ class BaseModel():
 
 
 
-    def update_log(self):
+    def update_log(self, rms=None, prefix=''):
         """Logs experiment to self.model_path + self.scope + '_log.csv'.
 
         If the file exists, appends a line to the existing file.
         """
         appending = os.path.exists(self.model_path + self.scope + '_log.csv')
-
+        
         log = dict()
+        if rms:
+            log.update({prefix+k:v for k,v in rms.items()})
+            
         #dataset info
         log['data_id'] = self.dataset.h_params['data_id']
         log['data_path'] = self.dataset.h_params['savepath']
@@ -392,23 +470,32 @@ class BaseModel():
         log['v_loss'] = self.v_metric
         log['v_metric_sd'] = self.v_metric_sd
         log['v_loss_sd'] = self.v_metric_sd
-
-
+        # if self.dataset.h_params['target_type'] == 'float':
+        #     y_true, y_pred = self.predict(self.dataset.val)
+        #     log['val_cc'], log['val_r2'], log['val_cs'], log['val_bias'], log['val_pve'] = regression_metrics(y_true, y_pred)
+        #     print("Validation set: Corr =", log['val_cc'], " R2 =", log['val_r2'])
         tr_loss, tr_perf = self.evaluate(self.dataset.train)
         log['tr_metric'] = tr_perf
         log['tr_loss'] = tr_loss
+        
 
         if 'test_paths' in self.dataset.h_params and log['mode'] != 'loso':
             t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
             print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
+            if self.dataset.h_params['target_type'] == 'float':
+                y_true, y_pred = self.predict(self.dataset.h_params['test_paths'])
+                rms_test = regression_metrics(y_true, y_pred)
+                print("Test set: Corr =", rms_test['cc'], "R2 =", rms_test['r2'])
+                log.update({'test_'+k:v for k,v in rms_test.items()})
             log['test_metric'] = t_metric
             log['test_loss'] = t_loss
         else:
             log['test_metric'] = "NA"
             log['test_loss'] = "NA"
-        self.log = log
+            
+        self.log.update(log)
 
-        with open(self.model_path + self.scope + '_log.csv', 'a') as csv_file:
+        with open(self.model_path + self.scope + '_log.csv', 'a+', newline='') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=self.log.keys())
             if not appending:
                 writer.writeheader()
@@ -593,6 +680,16 @@ class LFCNN(BaseModel):
         #print('cov:', cov.shape)
         #tf.reduce_mean(n1_covs)
         return cov
+    
+    def collect_patterns(self, fold=0):
+        self.compute_patterns()
+        if not hasattr(self, 'cv_patterns'):
+            n_folds = len(self.dataset.h_params['folds'][0])
+            self.cv_patterns = np.zeros([self.dataset.h_params['n_ch'],
+                                         self.dataset.h_params['y_shape'][0],
+                                         n_folds])
+        self.cv_patterns[:, :, fold] = self.combined_pattern()
+        
 
 
     def compute_patterns(self, data_path=None, output='patterns'):
@@ -649,7 +746,7 @@ class LFCNN(BaseModel):
                                              split=False, 
                                              test_batch=None, 
                                              repeat=True)
-        elif isinstance(data_path, mneflow.data.Dataset):
+        elif isinstance(data_path, Dataset):
             if hasattr(data_path, 'test'):
                 ds = data_path.test
             else:
@@ -672,6 +769,13 @@ class LFCNN(BaseModel):
         
 
         #compute data covariance
+        if self.dataset.h_params['target_type'] == 'float':
+            self.true_evoked_data = X.numpy().mean(0)
+        elif self.dataset.h_params['target_type'] == 'int':
+            y_int = np.argmax(y, 1)
+            y_unique = np.unique(y_int)
+            self.true_evoked_data = np.squeeze(np.array([X.numpy()[y_int==i,...].mean(0) for i in y_unique]))
+                                     
         X = X - tf.reduce_mean(X, axis=-2, keepdims=True)
         X = tf.transpose(X, [3, 0, 1, 2])
         X = tf.reshape(X, [X.shape[0], -1])
@@ -680,6 +784,9 @@ class LFCNN(BaseModel):
         # get spatial extraction fiter weights
         demx = self.dmx.w.numpy()
         self.lat_tcs = np.dot(demx.T, X)
+        nt = self.dataset.h_params['n_t']
+        self.waveforms = np.squeeze(self.lat_tcs.reshape(
+                                [self.specs['n_latent'], -1, nt]).mean(1))
         del X
 
         if 'patterns' in output:
@@ -827,7 +934,7 @@ class LFCNN(BaseModel):
         sorting : str
             heuristic for selecting relevant components. See LFCNN._sorting
         """
-        if not hasattr(self, 'lat_tcs'):
+        if not hasattr(self, 'waveforms'):
             self.compute_patterns(self.dataset)
 
         if not hasattr(self, 'uorder'):
@@ -840,8 +947,7 @@ class LFCNN(BaseModel):
                 f.set_size_inches([16, 16])
         
                 nt = self.dataset.h_params['n_t']
-                self.waveforms = np.squeeze(
-                        self.lat_tcs.reshape([self.specs['n_latent'], -1, nt]).mean(1))
+                
         
                 tstep = 1/float(self.dataset.h_params['fs'])
                 times = tmin + tstep*np.arange(nt)
@@ -865,15 +971,17 @@ class LFCNN(BaseModel):
                                    self.waveforms[uo], mode='same')
                 vmin = conv.min()
                 vmax = conv.max()
-                ax[1, 0].plot(times + 0.5*self.specs['filter_length']/float(self.fs),
+                ax[1, 0].plot(times + 
+                              0.5*self.specs['filter_length']/
+                              float(self.dataset.h_params['fs']),
                               conv)
                 #ax[1, 0].hlines(bias, times[0], times[-1], linestyle='--', color='k')
         
-                tstep = float(self.specs['stride'])/self.fs
+                tstep = float(self.specs['stride'])/self.dataset.h_params['fs']
                 strides = np.arange(times[0], times[-1] + tstep/2, tstep)[1:-1]
                 pool_bins = np.arange(times[0],
                                       times[-1] + tstep,
-                                      self.specs['pooling']/self.fs)[1:]
+                                      self.specs['pooling']/self.dataset.h_params['fs'])[1:]
         
                 ax[1, 0].vlines(strides, vmin, vmax,
                                 linestyle='--', color='c', label='Strides')
@@ -962,7 +1070,7 @@ class LFCNN(BaseModel):
                 self.F = np.abs(self.out_weights[..., i].T
                                 * self.corr_to_output[..., i].T)
                 pat, t = np.where(self.F == np.max(self.F))
-                #print('Maximum spearman r * weight:', np.max(self.F))
+                print('Maximum spearman r:', np.max(self.corr_to_output[..., i].T))
                 order.append(pat)
                 ts.append(t)
 
@@ -970,14 +1078,14 @@ class LFCNN(BaseModel):
             for i in range(self.out_dim):
                 self.F = self.out_weights[..., i].T
                 pat, t = np.where(self.F == np.max(self.F))
-                #print('Maximum weight:', np.max(self.F))
+                print('Maximum weight:', np.max(self.F))
                 order.append(pat)
                 ts.append(t)
 
         elif sorting == 'output_corr':
             for i in range(self.out_dim):
                 self.F = self.corr_to_output[..., i].T
-                #print('Maximum r_spear:', np.max(self.F))
+                print('Maximum r_spear:', np.max(self.F))
                 pat, t = np.where(self.F == np.max(self.F))
                 order.append(pat)
                 ts.append(t)
@@ -988,7 +1096,104 @@ class LFCNN(BaseModel):
         order = np.array(order)
         ts = np.array(ts)
         return order, ts
+    
+    
+    def combined_pattern(self):
+        #TODO: add bias?
+        #TODO: pattern attribution
+        #TODO: other approaches
+        
+        #identify single timestep where all components have max abs weights
+        #t = np.argmax(np.sum(np.abs(self.waveforms), 0), 0)
+        #t = np.argmax(np.sum(np.abs(self.out_weights),1), 0)
+        treated_weights = np.repeat(self.out_weights, self.specs['stride'], axis=0)
+        treated_weights = treated_weights[:self.waveforms.shape[1], ...].transpose([1,0, 2])
+        #compute weighted sum of spatial patterns
+        #pattern_weights = np.dot(self.waveforms, treated_weights)                                     
+        pattern_weights = np.mean(self.waveforms[:,:,None] * treated_weights, 1)
+        combined = np.dot(self.patterns, pattern_weights)
+        
+        
+        return combined#, t
+        
+        
+    def  plot_combined_pattern(self, sensor_layout=None):
+        if hasattr(self, 'cv_patterns'):
+            #compute correlation coefficient between patterns across folds
+            cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
+                  for i in range(self.cv_patterns.shape[1])])
+            combined = np.einsum('ijk, jk -> ij', self.cv_patterns, cc)
+            #combined = np.mean(self.cv_patterns, axis=-1)
+            #combined_sd = np.std(self.cv_patterns, axis=-1)
+            #combined /= combined_sd
+            
+        else:
+            combined = self.combined_pattern()
+        combined /= combined.std(axis=0, keepdims=True) 
+        n = self.y_shape[0]
+        lo = channels.read_layout(sensor_layout)
+        #lo = channels.generate_2d_layout(lo.pos)
+        info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
+        orig_xy = np.mean(lo.pos[:, :2], 0)
+        for i, ch in enumerate(lo.names):
+            if info['chs'][i]['ch_name'] == ch:
+                info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/3. 
+                #info['chs'][i]['loc'][4:] = 0
+            else:
+                print("Channel name mismatch. info: {} vs lo: {}".format(
+                    info['chs'][i]['ch_name'], ch))
+            
+        self.fake_evoked = evoked.EvokedArray(self.patterns, info)
+        self.fake_evoked.data[:, :n] = combined
+#        self.fake_evoked.data[:, 1] = combined
+        true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
+        ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
+        
+        ed /= ed.std(1,keepdims=True)
+        
+        self.true_evoked = evoked.EvokedArray(ed.T, info)
+        erp_inds = np.arange(n)
+        nrows = 1
+        ncols = 1
+            
+#%%
+        #tt = (float(t) * self.dataset.h_params['fs'] / 1000.) - 0.1
+        for ii in range(self.y_shape[-1]):
+            f, ax = plt.subplots(nrows, ncols*2, sharey=True)
+            plt.tight_layout()
+            f.set_size_inches([16, 3])
+            ax = np.atleast_2d(ax)
+                
+            fake_times = np.arange(ii * ncols,  (ii + 1) * ncols, 1.)
+            vmax = np.percentile(self.fake_evoked.data[:, :1], 99)
+            #origin = np.median(lo.pos, 0)
+            #origin[2] = 0.0
+            #origin[3] = 1
+            self.fake_evoked.plot_topomap(times=fake_times,
+                                          axes=ax[0, 0],
+                                          colorbar=False,
+                                          vmax=vmax,
+                                          scalings=1,
+                                          time_format="Combined Pattern for y_%g",
+                                          title='',
+                                          #size=1,
+                                          outlines='head',
+                                          )
+ 
+            self.true_evoked.plot_topomap(times=erp_inds[ii],
+                                          axes=ax[0, 1],
+                                          colorbar=False,
+                                          vmax=vmax,
+                                          scalings=1,
+                                          time_format="True Pattern for %g",
+                                          title='',
+                                          #size=1,
+                                          outlines='head',
+                                          )
 
+        
+        
+    
     def plot_patterns(self, sensor_layout=None, sorting='l2', percentile=90,
                       scale=False, class_names=None, info=None):
         """Plot informative spatial activations patterns for each class
@@ -1290,8 +1495,8 @@ class VARCNN(BaseModel):
         return y_pred
     
 
-class LFCNNR(BaseModel):
-    """VAR-CNN.
+class VARCNNR(BaseModel):
+    """VAR-CNN-R.
 
     For details see [1].
 
@@ -1329,7 +1534,107 @@ class LFCNNR(BaseModel):
 
         padding : str {'SAME', 'FULL', 'VALID'}
             Convolution padding. Defaults to 'SAME'.}"""
-        self.scope = 'lfcnnr'
+        self.scope = 'VARcnnr'
+        specs.setdefault('filter_length', 7)
+        specs.setdefault('n_latent', 32)
+        specs.setdefault('pooling', 2)
+        specs.setdefault('stride', 2)
+        specs.setdefault('padding', 'SAME')
+        specs.setdefault('pool_type', 'max')
+        specs.setdefault('nonlin', tf.nn.relu)
+        specs.setdefault('l1', 3e-4)
+        specs.setdefault('l2', 0)
+        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
+        specs.setdefault('l2_scope', [])
+        specs.setdefault('maxnorm_scope', [])
+        super(VARCNNR, self).__init__(Dataset, specs)
+
+    def build_graph(self):
+        """Build computational graph using defined placeholder `self.X`
+        as input.
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
+        self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
+                            axis=3, specs=self.specs)(self.inputs)
+        
+        
+        self.tconv = VARConv(size=self.specs['n_latent'],
+                             nonlin=self.specs['nonlin'],
+                             filter_length=self.specs['filter_length'],
+                             padding=self.specs['padding'],
+                             specs=self.specs
+                             )(self.dmx)
+        
+        
+        self.pooled = TempPooling(pooling=self.specs['pooling'],
+                                  pool_type=self.specs['pool_type'],
+                                  stride=self.specs['stride'],
+                                  padding=self.specs['padding'],
+                                  )(self.tconv)
+
+
+        
+        self.fc1 = Dense(size=self.specs['n_latent']*2, 
+                         nonlin=self.specs['nonlin'],
+                         specs=self.specs)(self.pooled)
+        
+        dropout = Dropout(self.specs['dropout'],
+                          noise_shape=None)(self.fc1)
+        
+
+        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+                            specs=self.specs)
+
+        y_pred = self.fin_fc(dropout)
+
+        return y_pred
+    
+
+class LFCNNR(BaseModel):
+    """LF-CNN-R.
+
+    For details see [1].
+
+    References
+    ----------
+        [1] I. Zubarev, et al., Adaptive neural network classifier for
+        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+    """
+    def __init__(self, Dataset, specs=dict()):
+        """
+        Parameters
+        ----------
+        Dataset : mneflow.Dataset
+
+        specs : dict
+                dictionary of model hyperparameters {
+
+        n_latent : int
+            Number of latent components.
+            Defaults to 32.
+
+        nonlin : callable
+            Activation function of the temporal convolution layer.
+            Defaults to tf.nn.relu
+
+        filter_length : int
+            Length of spatio-temporal kernels in the temporal
+            convolution layer. Defaults to 7.
+
+        pooling : int
+            Pooling factor of the max pooling layer. Defaults to 2
+
+        pool_type : str {'avg', 'max'}
+            Type of pooling operation. Defaults to 'max'.
+
+        padding : str {'SAME', 'FULL', 'VALID'}
+            Convolution padding. Defaults to 'SAME'.}"""
+        self.scope = 'LFcnnr'
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -1364,30 +1669,18 @@ class LFCNNR(BaseModel):
                              padding=self.specs['padding'],
                              specs=self.specs
                              )(self.dmx)
-
+        
         self.pooled = TempPooling(pooling=self.specs['pooling'],
                                   pool_type=self.specs['pool_type'],
                                   stride=self.specs['stride'],
                                   padding=self.specs['padding'],
                                   )(self.tconv)
-        
-        self.tconv2 = VARConv(size=self.specs['n_latent'],
-                             nonlin=self.specs['nonlin'],
-                             filter_length=self.specs['filter_length'],
-                             padding=self.specs['padding'],
-                             specs=self.specs
-                             )(self.pooled)
-        self.pooled2 = TempPooling(pooling=self.specs['pooling'],
-                                  pool_type=self.specs['pool_type'],
-                                  stride=self.specs['stride'],
-                                  padding=self.specs['padding'],
-                                  )(self.tconv2)
 
 
         
         self.fc1 = Dense(size=self.specs['n_latent']*2, 
-                         nonlin=tf.nn.tanh,
-                         specs=self.specs)(self.pooled2)
+                         nonlin=self.specs['nonlin'],
+                         specs=self.specs)(self.pooled)
         
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.fc1)
