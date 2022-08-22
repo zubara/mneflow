@@ -78,7 +78,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     elif isinstance(baseline, tuple):
         print("Scaling to interval {:.1f} - {:.1f}".format(*baseline))
         interval = np.arange(baseline[0], baseline[1])
-    X0m = X[..., interval].mean(axis=(1,2), keepdims=True)
+    X0m = X[..., interval].mean(axis=2, keepdims=True)
     X0sd = X[..., interval].std(axis=(1,2), keepdims=True)
 
     X -= X0m
@@ -883,3 +883,26 @@ def _process_labels(y, scale=False, decimate=False, normalize=False,
         y_out = np.expand_dims(y_out, -1)
     print("_process_labels out:", y_out.shape)
     return y_out
+
+def regression_metrics(y_true, y_pred):
+    cc = np.corrcoef(y_true.T, y_pred.T)[0][1]
+    r2 =  r2_score(y_true, y_pred)
+    cs = cosine_similarity(y_true, y_pred)
+    bias = np.mean(y_true) - np.mean(y_pred)
+    #ve = pve(y_true, y_pred)
+    return dict(cc=cc, r2=r2, cs=cs, bias=bias)
+
+def cosine_similarity(y_true, y_pred):
+    # y_true -= y_true.mean()
+    # y_pred -= y_pred.mean()
+    return np.dot(y_pred.T, y_true)[0][0] / (np.sqrt(np.sum(y_pred**2)) * np.sqrt(np.sum(y_true**2)))
+    
+def pve(y_true, y_pred):
+    y_true -= y_true.mean()
+    y_pred -= y_pred.mean()
+    return np.dot(y_pred.T, y_true)[0][0] / np.sum(y_pred**2)
+    
+def r2_score(y_true, y_pred):
+    res = np.sum((y_true - y_pred)**2)
+    tot = np.sum((y_true - np.mean(y_true))**2)
+    return 1 - res/tot
