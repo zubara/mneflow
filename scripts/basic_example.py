@@ -5,11 +5,13 @@ Created on Mon Nov 30 12:46:54 2020
 @author: ipzub
 """
 import os
+
 os.chdir("C:\\Users\\ipzub\\projs\\mneflow")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 import tensorflow as tf
-tf.get_logger().setLevel('ERROR')
-tf.autograph.set_verbosity(0)
+#tf.get_logger().setLevel('ERROR')
+#tf.autograph.set_verbosity(0)
 
 import numpy as np
 import mne
@@ -18,19 +20,19 @@ from mne.datasets import multimodal
 import mneflow
 mne.set_log_level(verbose='CRITICAL')
 
-#fname_raw = os.path.join(multimodal.data_path(), 'multimodal_raw.fif')
-#raw = mne.io.read_raw_fif(fname_raw)
-#
-#cond = raw.acqparser.get_condition(raw, None)
-## get the list of condition names
-#condition_names = [k for c in cond for k,v in c['event_id'].items()]
-#epochs_list = [mne.Epochs(raw, **c) for c in cond]
-#epochs = mne.concatenate_epochs(epochs_list)
-#epochs = epochs.pick_types(meg='mag')
-#print(epochs.info)
+fname_raw = os.path.join(multimodal.data_path(), 'multimodal_raw.fif')
+raw = mne.io.read_raw_fif(fname_raw)
+
+cond = raw.acqparser.get_condition(raw, None)
+# get the list of condition names
+condition_names = [k for c in cond for k,v in c['event_id'].items()]
+epochs_list = [mne.Epochs(raw, **c) for c in cond]
+epochs = mne.concatenate_epochs(epochs_list)
+epochs = epochs.pick_types(meg='mag')
+print(epochs.info)
 #%%
 
-
+#%%
 #Specify import options
 import_opt = dict(savepath='C:\\data\\tfr\\',  # path where TFR files will be saved
                   out_name='mne_sample_epochs',  # name of TFRecords files
@@ -48,7 +50,7 @@ import_opt = dict(savepath='C:\\data\\tfr\\',  # path where TFR files will be sa
 
 #write TFRecord files and metadata file to disk
 #meta = mneflow.produce_tfrecords([epochs], **import_opt)
-meta = mneflow.produce_tfrecords([], **import_opt)
+meta = mneflow.produce_tfrecords([epochs], **import_opt)
 
 
 dataset = mneflow.Dataset(meta, train_batch=100)
