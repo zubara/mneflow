@@ -58,14 +58,14 @@ class BaseModel():
         specs : dict
             Dictionary of model-specific hyperparameters. Must include
             at least `model_path` - path for saving a trained model
-            See `Model` subclass definitions for details. Unless otherwise 
-            specified uses default hyperparameters for each implemented model. 
+            See `Model` subclass definitions for details. Unless otherwise
+            specified uses default hyperparameters for each implemented model.
         """
         self.specs = specs
         self.dataset = Dataset
         self.specs.setdefault('model_path', self.dataset.h_params['savepath'])
         self.model_path = specs['model_path']
-        
+
         self.input_shape = (self.dataset.h_params['n_seq'],
                             self.dataset.h_params['n_t'],
                             self.dataset.h_params['n_ch'])
@@ -81,23 +81,23 @@ class BaseModel():
         self.y_pred = self.build_graph()
 
 
-    def build(self, optimizer="adam", loss=None, metrics=None, mapping=None, 
+    def build(self, optimizer="adam", loss=None, metrics=None, mapping=None,
               learn_rate=3e-4, weighted=False):
         """Compile a model.
-        
+
         Parameters
         ----------
         optimizer : str, tf.optimizers.Optimizer
             Deafults to "adam"
-        
+
         loss : str, tf.keras.losses.Loss
-            Defaults to MSE in target_type is "float" and 
+            Defaults to MSE in target_type is "float" and
             "softmax_crossentropy" if "target_type" is int
-        
+
         metrics : str, tf.keras.metrics.Metric
-            Defaults to RMSE in target_type is "float" and 
+            Defaults to RMSE in target_type is "float" and
                 "categorical_accuracy" if "target_type" is int
-        
+
         learn_rate : float
             Learning rate, defaults to 3e-4
         """
@@ -105,32 +105,33 @@ class BaseModel():
         if mapping:
             map_fun = tf.keras.activations.get(mapping)
             self.y_pred= map_fun(self.y_pred)
-        
+
         self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
-        
-        params = {"optimizer": tf.optimizers.get(optimizer).from_config({"learning_rate":learn_rate})}
-        
+
+        self.params = {"optimizer": tf.optimizers.get(optimizer).from_config({"learning_rate":learn_rate})}
+
         if loss:
-            params["loss"] = tf.keras.losses.get(loss)
-        
+            self.params["loss"] = tf.keras.losses.get(loss)
+
         if metrics:
             if not isinstance(metrics, list):
                 metrics = [metrics]
-            params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
-        
+            self.params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
+
         # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
-            params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
-            params.setdefault("metrics", tf.keras.metrics.RootMeanSquaredError(name="RMSE"))
-            
+            self.params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
+            self.params.setdefault("metrics", tf.keras.metrics.RootMeanSquaredError(name="RMSE"))
+
         elif self.dataset.h_params["target_type"] in ['int']:
-            params.setdefault("loss", tf.nn.softmax_cross_entropy_with_logits)
-            params.setdefault("metrics", tf.keras.metrics.CategoricalAccuracy(name="cat_ACC"))
-              
+            #self.params.setdefault("loss", tf.nn.softmax_cross_entropy_with_logits)
+            self.params.setdefault("loss", tf.keras.losses.CategoricalCrossentropy(from_logits=True, name='cce'))
+            self.params.setdefault("metrics", tf.keras.metrics.CategoricalAccuracy(name="cat_ACC"))
+
         #print(params)
-        self.km.compile(optimizer=params["optimizer"],
-                        loss=params["loss"],
-                        metrics=params["metrics"])
+        self.km.compile(optimizer=self.params["optimizer"],
+                        loss=self.params["loss"],
+                        metrics=self.params["metrics"])
 
 
         print('Input shape:', self.input_shape)
@@ -188,7 +189,7 @@ class BaseModel():
         min_delta : float, optional
             Convergence threshold for validation cost during training.
             Defaults to 1e-6.
-        
+
         mode : str, optional
             can be 'single_fold', 'cv', 'loso'. Defaults to 'single_fold'
         """
@@ -205,17 +206,17 @@ class BaseModel():
         #     self.validation_steps = max(1, val_size // val_batch)
         # else:
         #     self.validation_steps = 1
-            
+
         self.train_params = [n_epochs, eval_step, early_stopping, mode]
 
-        
+
         if mode == 'single_fold':
             #self.dataset.train, self.dataset.val = self.dataset._build_dataset()
-            
+
             self.t_hist = self.km.fit(self.dataset.train,
                                    validation_data=self.dataset.val,
                                    epochs=n_epochs, steps_per_epoch=eval_step,
-                                   shuffle=True, 
+                                   shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
                                    callbacks=[stop_early], verbose=2)
             self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
@@ -237,20 +238,20 @@ class BaseModel():
                 self.t_hist = self.km.fit(train,
                                    validation_data=val,
                                    epochs=n_epochs, steps_per_epoch=eval_step,
-                                   shuffle=True, 
+                                   shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
                                    callbacks=[stop_early], verbose=2)
-                
-                
+
+
                 loss, metric = self.evaluate(val)
                 losses.append(loss)
                 metrics.append(metric)
-                    
+
                 if jj < n_folds -1:
                     self.shuffle_weights()
                 else:
                     "Not shuffling the weights for the last fold"
-                
+
 
                 print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
             self.cv_losses = losses
@@ -262,7 +263,7 @@ class BaseModel():
             print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
             self.update_log()
             return self.cv_losses, self.cv_metrics
-        
+
         elif mode == "loso":
             n_folds = len(self.dataset.h_params['test_paths'])
             print("Running leave-one-subject-out CV with {} subject".format(n_folds))
@@ -270,39 +271,39 @@ class BaseModel():
             losses = []
             for jj in range(n_folds):
                 print("fold:", jj)
-                
+
                 test_subj = self.dataset.h_params['test_paths'][jj]
                 train_subjs = self.dataset.h_params['train_paths'].copy()
                 train_subjs.pop(jj)
-                
+
                 train, val = self.dataset._build_dataset(train_subjs,
                                                    train_batch=self.dataset.training_batch,
                                                    test_batch=self.dataset.validation_batch,
                                                    split=True, val_fold_ind=0)
-                
-                                
+
+
                 self.t_hist = self.km.fit(train,
                                    validation_data=val,
                                    epochs=n_epochs, steps_per_epoch=eval_step,
-                                   shuffle=True, 
+                                   shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
                                    callbacks=[stop_early], verbose=2)
-                
-                
+
+
                 test = self.dataset._build_dataset(test_subj,
                                                    test_batch=None,
                                                    split=False)
-                
-                
+
+
                 loss, metric = self.evaluate(test)
                 losses.append(loss)
                 metrics.append(metric)
-                    
+
                 if jj < n_folds -1:
                     self.shuffle_weights()
                 else:
                     "Not shuffling the weights for the last fold"
-                
+
             self.cv_losses = losses
             self.cv_metrics = metrics
             self.v_loss = np.mean(losses)
@@ -312,10 +313,10 @@ class BaseModel():
             self.update_log()
             print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
             return self.cv_losses, self.cv_metrics
-            
-                
 
-    
+
+
+
     def shuffle_weights(self):
         print("Re-shuffling weights between folds")
         weights = self.km.get_weights()
@@ -323,8 +324,8 @@ class BaseModel():
         # Faster, but less random: only permutes along the first dimension
         # weights = [np.random.permutation(w) for w in weights]
         self.km.set_weights(weights)
-    
-    
+
+
     def plot_hist(self):
         """Plot loss history during training."""
         # "Loss"
@@ -378,17 +379,17 @@ class BaseModel():
 
         log['y_shape'] = np.prod(self.dataset.h_params['y_shape'])
         log['fs'] = str(self.dataset.h_params['fs'])
-        
+
         #architecture and regularization
         log.update(self.specs)
-        
+
         #training paramters
         log['nepochs'], log['eval_step'], log['early_stopping'], log['mode'] = self.train_params
 
         #v_loss, v_metric = self.evaluate(self.dataset.val)
         #self.v_loss, self.v_perf = self.km.evaluate(self.dataset.val, steps=1, verbose=0)
         log['v_metric'] = self.v_metric
-        log['v_loss'] = self.v_metric
+        log['v_loss'] = self.v_loss
         log['v_metric_sd'] = self.v_metric_sd
         log['v_loss_sd'] = self.v_metric_sd
 
@@ -413,50 +414,52 @@ class BaseModel():
             if not appending:
                 writer.writeheader()
             writer.writerow(self.log)
-            
+
     def save(self):
         print("Not implemented")
-        
+
     def restore(self):
         print("Not implemented")
-    
+
     def predict(self, dataset=None):
-        if not dataset: 
+        if not dataset:
             print("No dataset specified using validation dataset (Default)")
             dataset = self.dataset.val
         elif isinstance(dataset, str) or isinstance(dataset, (list, tuple)):
-            dataset = self.dataset._build_dataset(dataset, 
-                                             split=False, 
-                                             test_batch=None, 
+            dataset = self.dataset._build_dataset(dataset,
+                                             split=False,
+                                             test_batch=None,
                                              repeat=True)
         elif not isinstance(dataset, tf.data.Dataset):
             print("Specify dataset")
             return None, None
-        
-        y_pred = self.km.predict(dataset, 
-                                 steps=self.dataset.validation_steps)
-        y_true = [row[1] for row in dataset.take(1)][0]
+
+        #y_pred = self.km.predict(dataset,
+        #                         steps=self.dataset.validation_steps)
+        X, y_true = [row for row in dataset.take(1)][0]
+        y_pred = self.km.predict(X)#.to_numpy()
+
         y_true = y_true.numpy()
         return y_true, y_pred
-    
+
     def evaluate(self, dataset=False):
-        if not dataset: 
+        if not dataset:
             print("No dataset specified using validation dataset (Default)")
             dataset = self.dataset.val
         elif isinstance(dataset, str) or isinstance(dataset, (list, tuple)):
-            dataset = self.dataset._build_dataset(dataset, 
-                                             split=False, 
-                                             test_batch=None, 
+            dataset = self.dataset._build_dataset(dataset,
+                                             split=False,
+                                             test_batch=None,
                                              repeat=True)
         elif not isinstance(dataset, tf.data.Dataset):
             print("Specify dataset")
             return None, None
-            
-        losses, metrics = self.km.evaluate(dataset, 
+
+        losses, metrics = self.km.evaluate(dataset,
                                            steps=self.dataset.validation_steps,
                                            verbose=0)
         return  losses, metrics
-        
+
 
 
 class LFCNN(BaseModel):
@@ -627,13 +630,13 @@ class LFCNN(BaseModel):
             AttributeError: If `data_path` is not specified.
         """
         #vis_dict = None
-        if not data_path: 
+        if not data_path:
             print("Computing patterns: No path specified, using validation dataset (Default)")
             ds = self.dataset.val
         elif isinstance(data_path, str) or isinstance(data_path, (list, tuple)):
-            ds = self.dataset._build_dataset(data_path, 
-                                             split=False, 
-                                             test_batch=None, 
+            ds = self.dataset._build_dataset(data_path,
+                                             split=False,
+                                             test_batch=None,
                                              repeat=True)
         elif isinstance(data_path, mneflow.data.Dataset):
             if hasattr(data_path, 'test'):
@@ -652,10 +655,10 @@ class LFCNN(BaseModel):
                                               self.out_dim])
         self.out_biases = self.fin_fc.b.numpy()
         self.feature_relevances = self.get_component_relevances(X, y)
-        
+
         #compute temporal convolution layer outputs for vis_dics
         tc_out = self.pool(self.tconv(self.dmx(X)).numpy())
-        
+
 
         #compute data covariance
         X = X - tf.reduce_mean(X, axis=-2, keepdims=True)
@@ -809,7 +812,7 @@ class LFCNN(BaseModel):
         tmin : float
             Beginning of the MEG epoch with regard to reference event.
             Defaults to 0.
-            
+
         sorting : str
             heuristic for selecting relevant components. See LFCNN._sorting
         """
@@ -824,43 +827,43 @@ class LFCNN(BaseModel):
             for jj, uo in enumerate(self.uorder):
                 f, ax = plt.subplots(2, 2)
                 f.set_size_inches([16, 16])
-        
+
                 nt = self.dataset.h_params['n_t']
                 self.waveforms = np.squeeze(
                         self.lat_tcs.reshape([self.specs['n_latent'], -1, nt]).mean(1))
-        
+
                 tstep = 1/float(self.dataset.h_params['fs'])
                 times = tmin + tstep*np.arange(nt)
                 scaling = 3*np.mean(np.std(self.waveforms, -1))
                 [ax[0, 0].plot(times, wf + scaling*i)
                  for i, wf in enumerate(self.waveforms) if i not in self.uorder]
-        
+
                 ax[0, 0].plot(times,
                               self.waveforms[uo] + scaling*uo,
                               'k', linewidth=5.)
                 ax[0, 0].set_title('Latent component waveforms')
-        
+
                 bias = self.tconv.b.numpy()[uo]
-                ax[0, 1].stem(self.filters.T[uo], use_line_collection=True)
+                ax[0, 1].stem(self.filters.T[uo])
                 ax[0, 1].hlines(bias, 0, len(self.filters.T[uo]),
                                 linestyle='--', label='Bias')
                 ax[0, 1].legend()
                 ax[0, 1].set_title('Filter coefficients')
-        
+
                 conv = np.convolve(self.filters.T[uo],
                                    self.waveforms[uo], mode='same')
                 vmin = conv.min()
                 vmax = conv.max()
-                ax[1, 0].plot(times + 0.5*self.specs['filter_length']/float(self.fs),
+                ax[1, 0].plot(times + 0.5*self.specs['filter_length']/float(self.dataset.h_params['fs']),
                               conv)
                 #ax[1, 0].hlines(bias, times[0], times[-1], linestyle='--', color='k')
-        
-                tstep = float(self.specs['stride'])/self.fs
+
+                tstep = float(self.specs['stride'])/self.dataset.h_params['fs']
                 strides = np.arange(times[0], times[-1] + tstep/2, tstep)[1:-1]
                 pool_bins = np.arange(times[0],
                                       times[-1] + tstep,
-                                      self.specs['pooling']/self.fs)[1:]
-        
+                                      self.specs['pooling']/self.dataset.h_params['fs'])[1:]
+
                 ax[1, 0].vlines(strides, vmin, vmax,
                                 linestyle='--', color='c', label='Strides')
                 ax[1, 0].vlines(pool_bins, vmin, vmax,
@@ -869,17 +872,17 @@ class LFCNN(BaseModel):
                 #ax[1, 0].set_ylim(2*np.min(conv), 2*np.max(conv))
                 ax[1, 0].legend()
                 ax[1, 0].set_title('Convolution output')
-        
+
                 #if self.out_weights.shape[-1] > 1:
                 #print(self.F.shape, pool_bins.shape)
                 strides1 = np.arange(times[0], times[-1] + tstep/2, tstep)
-                ax[1, 1].pcolor(strides1, np.arange(self.specs['n_latent']), 
+                ax[1, 1].pcolor(strides1, np.arange(self.specs['n_latent']),
                                 self.F)
                 #print()
                 ax[1, 1].hlines(uo + .5, pool_bins[0], pool_bins[-1], color='r')
                 # else:
                 #     ax[1, 1].stem(self.out_weights[:, uo, :])
-        
+
                 ax[1, 1].set_title('Feature relevance map')
                 #f.show()
                 if class_names:
@@ -928,10 +931,10 @@ class LFCNN(BaseModel):
         if sorting == 'l2':
             for i in range(self.out_dim):
                 self.F = self.out_weights[..., i].T
-                
+
                 norms = np.linalg.norm(self.F, axis=1, ord=2)
                 pat = np.argsort(norms)[-n_comp:]
-                order.append(pat[:n_comp]) 
+                order.append(pat[:n_comp])
                 ts.append(np.arange(self.F.shape[-1]))
                 #ts.append(None)
 
@@ -1011,7 +1014,7 @@ class LFCNN(BaseModel):
             lo = channels.read_layout(sensor_layout)
             info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
             self.fake_evoked = evoked.EvokedArray(self.patterns, info)
-            
+
             if l_u > 1:
                 self.fake_evoked.data[:, :l_u] = self.fake_evoked.data[:, self.uorder]
             elif l_u == 1:
@@ -1039,7 +1042,7 @@ class LFCNN(BaseModel):
             f.set_size_inches([16, 3])
             ax = np.atleast_2d(ax)
             for ii in range(nrows):
-                
+
                 fake_times = np.arange(ii * ncols,  (ii + 1) * ncols, 1.)
                 vmax = np.percentile(self.fake_evoked.data[:, :l_u], 95)
                 self.fake_evoked.plot_topomap(times=fake_times,
@@ -1121,26 +1124,30 @@ class LFCNN(BaseModel):
                     comp_names = ["Class " + str(jj) for jj in range(self.out_dim)]
                     #f.suptitle(comp_name, fontsize=16)
                 [ax[0][jj].set_title(c) for jj, c in enumerate(comp_names)]
-            
-            
+
+
             for i in range(nrows):
                 for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
                     w, h = freqz(flt, 1, worN=128)
                     fr1 = w/np.pi*self.fs/2
-                    if  norm_spectra == 'welch':    
-                        
+                    if  norm_spectra == 'welch':
+
                         h0 = self.d_psds[self.uorder[jj], :]*np.abs(h)
                         if log:
                             ax[i, jj].semilogy(fr1, self.d_psds[self.uorder[jj], :],
                                                label='Filter input')
                             ax[i, jj].semilogy(fr1, np.abs(h0),
                                                label='Fitler output')
+                            ax[i, jj].semilogy(fr1, np.abs(h),
+                                               label='Freq response')
                         else:
                             ax[i, jj].plot(fr1, self.d_psds[self.uorder[jj], :],
                                            label='Filter input')
                             ax[i, jj].plot(fr1, np.abs(h0), label='Fitler output')
+                            ax[i, jj].plot(fr1, np.abs(h),
+                                           label='Freq response')
                         #print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
-                    
+
                     else:
                         if log:
                             ax[i, jj].semilogy(fr1, np.abs(h),
@@ -1148,8 +1155,8 @@ class LFCNN(BaseModel):
                         else:
                             ax[i, jj].plot(fr1, np.abs(h),
                                            label='Freq response')
-                    ax[i, jj].set_xlim(0, 125.)
-                    ax[i, jj].set_xlim(0, 125.)
+                    ax[i, jj].set_xlim(0, 75.)
+                    #ax[i, jj].set_xlim(0, 75.)
                     if i == 0 and jj == ncols-1:
                         ax[i, jj].legend(frameon=False)
             return f
@@ -1219,11 +1226,11 @@ class VARCNN(BaseModel):
             Output of the forward pass of the computational graph.
             Prediction of the target variable.
         """
-        
+
         self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
                             axis=3, specs=self.specs)(self.inputs)
-        
-        
+
+
         self.tconv = VARConv(size=self.specs['n_latent'],
                              nonlin=self.specs['nonlin'],
                              filter_length=self.specs['filter_length'],
@@ -1239,7 +1246,7 @@ class VARCNN(BaseModel):
 
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
-        
+
         #fc1 = Dense(size=128, nonlin=tf.nn.elu,
         #                    specs=self.specs)(dropout)
 
@@ -1540,7 +1547,7 @@ class LFLSTM(BaseModel):
 
         pooled = pool1(features)
         print('features:', pooled.shape)
-        
+
         fshape = tf.multiply(pooled.shape[2], pooled.shape[3])
 
         ffeatures = tf.reshape(pooled,
@@ -1574,7 +1581,7 @@ class LFLSTM(BaseModel):
         else:
             self.fin_fc = Dense(size=self.out_dim,
                                     nonlin=tf.identity)
-                    
+
         y_pred = self.fin_fc(self.lstm_out)
         print("fin fc out:", y_pred.shape)
         return y_pred
@@ -1779,25 +1786,25 @@ class EEGNet(BaseModel):
         specs.setdefault('model_path', './model/')
         super(EEGNet, self).__init__(Dataset, specs)
 
-        
-        
+
+
     def build_graph(self):
         self.scope = 'eegnet8'
-        
+
         inputs = tf.transpose(self.inputs,[0,3,2,1])
-        
+
         dropoutType = Dropout
-        
-        block1       = Conv2D(self.specs['n_latent'], 
-                              (1, self.specs['filter_length']), 
+
+        block1       = Conv2D(self.specs['n_latent'],
+                              (1, self.specs['filter_length']),
                               padding = self.specs['padding'],
-                              input_shape = (1, self.dataset.h_params['n_ch'], 
+                              input_shape = (1, self.dataset.h_params['n_ch'],
                                              self.dataset.h_params['n_t']),
                               use_bias = False)(inputs)
         block1       = BatchNormalization(axis = 1)(block1)
         print("Batchnorm:", block1.shape)
-        block1       = DepthwiseConv2D((self.dataset.h_params['n_ch'], 1), 
-                                       use_bias = False, 
+        block1       = DepthwiseConv2D((self.dataset.h_params['n_ch'], 1),
+                                       use_bias = False,
                                        depth_multiplier = self.specs['depth_multiplier'],
                                        depthwise_constraint = constraints.MaxNorm(1.))(block1)
         block1       = BatchNormalization(axis = 1)(block1)
@@ -1805,19 +1812,19 @@ class EEGNet(BaseModel):
         block1       = layers.AveragePooling2D((1, self.specs['pooling']))(block1)
         print("Pooling 1:", block1.shape)
         block1       = dropoutType(self.specs['dropout'])(block1)
-        
+
         block2       = SeparableConv2D(self.specs['n_latent']*self.specs['depth_multiplier'], (1, self.specs['filter_length']//self.specs["pooling"]),
                                        use_bias = False, padding = self.specs['padding'])(block1)
         block2       = BatchNormalization(axis = 1)(block2)
         print("Batchnorm 2:", block2.shape)
-        
+
         block2       = layers.Activation(self.specs['nonlin'])(block2)
         block2       = layers.AveragePooling2D((1, self.specs['pooling']*2))(block2)
         block2       = dropoutType(self.specs['dropout'])(block2)
         print("Pooling 2:", block2.shape)
-        
+
         fin_fc = Dense(size=self.out_dim, nonlin=tf.identity)
         y_pred = fin_fc(block2)
-        
+
         return y_pred
 
