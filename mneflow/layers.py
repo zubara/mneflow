@@ -22,18 +22,18 @@ class BaseLayer(tf.keras.layers.Layer):
         self.size = size
         self.nonlin = nonlin
         self.specs = specs
-        self.specs.setdefault("l1", 0.)
-        self.specs.setdefault("l2", 0.)
-        self.specs.setdefault("l1_scope", [])
-        self.specs.setdefault("l2_scope", [])
-        self.specs.setdefault("maxnorm_scope", [])
+        # self.specs.setdefault("l1_lambda", 0.)
+        # self.specs.setdefault("l2_lambda", 0.)
+        # self.specs.setdefault("l1_scope", [])
+        # self.specs.setdefault("l2_scope", [])
+        # self.specs.setdefault("maxnorm_scope", [])
 
     def _set_regularizer(self):
         if self.scope in self.specs['l1_scope'] or 'weights' in self.specs['l1_scope']:
-            reg = k_reg.l1(self.specs['l1'])
+            reg = k_reg.l1(self.specs['l1_lambda'])
             print('Setting reg for {}, to l1'.format(self.scope))
         elif self.scope in self.specs['l2_scope'] or 'weights' in self.specs['l2_scope']:
-            reg = k_reg.l2(self.specs['l2'])
+            reg = k_reg.l2(self.specs['l2_lambda'])
             print('Setting reg for {}, to l2'.format(self.scope))
         else:
             reg = None
@@ -60,11 +60,11 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
 
-    def get_config(self):
-        config = self.get_config()
-        config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': self.nonlin})
-        return config
+    # def get_config(self):
+    #     config = self.get_config()
+    #     config.update({'scope': self.scope, 'size': self.size,
+    #                    'nonlin': self.nonlin})
+        # return config
 
     def build(self, input_shape):
         super(Dense, self).build(input_shape)
@@ -112,11 +112,11 @@ class DeMixing(BaseLayer):
         super(DeMixing, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
 
-    def get_config(self):
-        config = super(DeMixing, self).get_config()
-        config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': self.nonlin, 'axis': self.axis})
-        return config
+    # def get_config(self):
+    #     config = super(DeMixing, self).get_config()
+    #     config.update({'scope': self.scope, 'size': self.size,
+    #                    'nonlin': self.nonlin, 'axis': self.axis})
+    #     return config
 
     def build(self, input_shape):
 
@@ -169,11 +169,11 @@ class InvCov(BaseLayer):
         super(InvCov, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
 
-    def get_config(self):
-        config = super(InvCov, self).get_config()
-        config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': self.nonlin, 'axis': self.axis})
-        return config
+    # def get_config(self):
+    #     config = super(InvCov, self).get_config()
+    #     config.update({'scope': self.scope, 'size': self.size,
+    #                    'nonlin': self.nonlin, 'axis': self.axis})
+    #     return config
 
     def build(self, input_shape):
 
@@ -235,13 +235,13 @@ class LFTConv(BaseLayer):
         self.filter_length = filter_length
         self.padding = padding
 
-    def get_config(self):
+    # def get_config(self):
 
-        config = super(LFTConv, self).get_config()
-        config.update({'scope': self.scope,
-                       'filter_length': self.filter_length,
-                       'nonlin': self.nonlin, 'padding': self.padding})
-        return config
+    #     config = super(LFTConv, self).get_config()
+    #     config.update({'scope': self.scope,
+    #                    'filter_length': self.filter_length,
+    #                    'nonlin': self.nonlin, 'padding': self.padding})
+    #    return config
 
     def build(self, input_shape):
         super(LFTConv, self).build(input_shape)
@@ -298,13 +298,13 @@ class VARConv(BaseLayer):
         self.padding = padding
 
 
-    def get_config(self):
+    # def get_config(self):
 
-        config = super(VARConv, self).get_config()
-        config.update({'scope': self.scope,
-                       'filter_length': self.filter_length,
-                       'nonlin': self.nonlin, 'padding': self.padding})
-        return config
+    #     config = super(VARConv, self).get_config()
+    #     config.update({'scope': self.scope,
+    #                    'filter_length': self.filter_length,
+    #                    'nonlin': self.nonlin, 'padding': self.padding})
+    #    return config
 
     def build(self, input_shape):
         print("input_shape:", input_shape)
@@ -382,13 +382,13 @@ class TempPooling(BaseLayer):
         super(TempPooling, self).build(input_shape)
         self.built = True
 
-    def get_config(self):
-        config = super(TempPooling, self).get_config()
-        config.update({'scope': self.scope,
-                       'pool_type': self.pool_type,
-                       'stride': self.strides, 'pooling': self.pooling,
-                       'padding': self.padding})
-        return config
+    # def get_config(self):
+    #     config = super(TempPooling, self).get_config()
+    #     config.update({'scope': self.scope,
+    #                    'pool_type': self.pool_type,
+    #                    'stride': self.strides, 'pooling': self.pooling,
+    #                    'padding': self.padding})
+    #     return config
 
 
 
@@ -419,11 +419,11 @@ class LSTM(tf.keras.layers.LSTM):
         self.nonlin = nonlin
         print(self.scope, 'init : OK')
 
-    def get_config(self):
-        config = super(LSTM, self).get_config()
-        config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': self.nonlin})
-        return config
+    # def get_config(self):
+    #     config = super(LSTM, self).get_config()
+    #     config.update({'scope': self.scope, 'size': self.size,
+    #                    'nonlin': self.nonlin})
+    #     return config
 
     def build(self, input_shape):
         # print(self.scope, 'build : OK')

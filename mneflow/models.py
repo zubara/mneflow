@@ -65,8 +65,9 @@ class BaseModel():
             specified uses default hyperparameters for each implemented model.
         """
         self.specs = specs
+                
+        
         self.dataset = Dataset
-        self.specs.setdefault('model_path', self.dataset.h_params['savepath'])
         self.model_path = specs['model_path']
 
         self.input_shape = (self.dataset.h_params['n_seq'],
@@ -122,8 +123,10 @@ class BaseModel():
             if not isinstance(metrics, list):
                 metrics = [metrics]
             self.params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
-
-        # Initialize optimizer
+        
+        self.specs.setdefault('model_path', self.dataset.h_params['savepath'])
+        self.specs.setdefault('maxnorm_scope', self.dataset.h_params['savepath'])
+       # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
             self.params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
             self.params.setdefault("metrics", tf.keras.metrics.RootMeanSquaredError(name="RMSE"))
@@ -171,7 +174,8 @@ class BaseModel():
         return y_pred
 
     def train(self, n_epochs, eval_step=None, min_delta=1e-6,
-              early_stopping=3, mode='single_fold', prune_weights=False):
+              early_stopping=3, mode='single_fold', prune_weights=False,
+              collect_patterns = False):
 
         """
         Train a model
@@ -206,6 +210,7 @@ class BaseModel():
         if not eval_step:
             train_size = self.dataset.h_params['train_size']
             eval_step = train_size // self.dataset.h_params['train_batch'] + 1
+        
         # if val_batch:
         #     val_size = self.dataset.h_params['val_size']
         #     self.validation_steps = max(1, val_size // val_batch)
@@ -261,7 +266,7 @@ class BaseModel():
                 losses.append(loss)
                 metrics.append(metric)
                 
-                if self.scope == 'lfcnn':
+                if collect_patterns == True and self.scope == 'lfcnn':
                     self.collect_patterns(fold=jj)
                     
                 y_true, y_pred = self.predict(val)
@@ -304,16 +309,20 @@ class BaseModel():
 
         elif mode == "loso":
             rmss = []
-            n_folds = len(self.dataset.h_params['test_paths'])
+            n_folds = len(self.dataset.h_params['train_paths'])
             print("Running leave-one-subject-out CV with {} subject".format(n_folds))
             metrics = []
             losses = []
             for jj in range(n_folds):
                 print("fold:", jj)
 
-                test_subj = self.dataset.h_params['test_paths'][jj]
+                test_subj = self.dataset.h_params['train_paths'][jj]
                 train_subjs = self.dataset.h_params['train_paths'].copy()
                 train_subjs.pop(jj)
+                
+                print(train_subjs)
+                print('***')
+                print(test_subj)
 
                 train, val = self.dataset._build_dataset(train_subjs,
                                                    train_batch=self.dataset.training_batch,
@@ -334,7 +343,8 @@ class BaseModel():
                                                    split=False)
 
 
-                loss, metric = self.evaluate(test)
+                loss, metric = self.evaluate(val)
+                print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
                 losses.append(loss)
                 metrics.append(metric)
                 
@@ -378,8 +388,8 @@ class BaseModel():
                                                       patience=10,
                                                       restore_best_weights=True)
         self.rate = 0
-        self.specs["l1"] *= increase_regularization
-        self.specs["l2"] *= increase_regularization
+        self.specs["l1_lambda"] *= increase_regularization
+        self.specs["l2_lambda"] *= increase_regularization
         print('Pruning weights')
         self.t_hist_p = self.km.fit(self.dataset.train,
                                validation_data=self.dataset.val,
@@ -492,6 +502,10 @@ class BaseModel():
                 log.update({'test_'+k:v for k,v in rms_test.items()})
             log['test_metric'] = t_metric
             log['test_loss'] = t_loss
+        elif log['mode'] == 'loso':
+            log['test_metric'] = self.t_metric
+            log['test_loss'] = self.t_loss
+            
         else:
             log['test_metric'] = "NA"
             log['test_loss'] = "NA"
@@ -505,6 +519,12 @@ class BaseModel():
             writer.writerow(self.log)
 
     def save(self):
+        """
+        Saves the model and (optionally, patterns, confusion matrices)
+        """
+        self.model_name = "_".join([self.scope, self.dataset.h_params['data_id']])
+        self.km.save(self.model_path + self.model_name)
+        #if hasattr(self, 'cv_patterns'):
         print("Not implemented")
 
     def restore(self):
@@ -524,9 +544,9 @@ class BaseModel():
             dataset = self.dataset.val
         elif isinstance(dataset, str) or isinstance(dataset, (list, tuple)):
             dataset = self.dataset._build_dataset(dataset,
-                                             split=False,
-                                             test_batch=None,
-                                             repeat=False)
+                                                 split=False,
+                                                 test_batch=None,
+                                                 repeat=False)
         elif not isinstance(dataset, tf.data.Dataset):
             print("Specify dataset")
             return None, None
@@ -615,8 +635,8 @@ class LFCNN(BaseModel):
         specs.setdefault('padding', 'SAME')
         specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1', 0.)
-        specs.setdefault('l2', 0.)
+        specs.setdefault('l1_lambda', 0.)
+        specs.setdefault('l2_lambda', 0.)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
@@ -1462,8 +1482,8 @@ class VARCNN(BaseModel):
         specs.setdefault('padding', 'SAME')
         specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1', 3e-4)
-        specs.setdefault('l2', 0)
+        specs.setdefault('l1_lambda', 3e-4)
+        specs.setdefault('l2_lambda', 0)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
@@ -1558,8 +1578,8 @@ class VARCNNR(BaseModel):
         specs.setdefault('padding', 'SAME')
         specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1', 3e-4)
-        specs.setdefault('l2', 0)
+        specs.setdefault('l1_lambda', 3e-4)
+        specs.setdefault('l2_lambda', 0)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
@@ -1658,8 +1678,8 @@ class LFCNNR(BaseModel):
         specs.setdefault('padding', 'SAME')
         specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1', 3e-4)
-        specs.setdefault('l2', 0)
+        specs.setdefault('l1_lambda', 3e-4)
+        specs.setdefault('l2_lambda', 0)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
@@ -1733,8 +1753,8 @@ class FBCSP_ShallowNet(BaseModel):
         specs.setdefault('pool_type', 'avg')
         specs.setdefault('padding', 'SAME')
         specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1', 3e-4)
-        specs.setdefault('l2', 3e-2)
+        specs.setdefault('l1_lambda', 3e-4)
+        specs.setdefault('l2_lambda', 3e-2)
         specs.setdefault('l1_scope', [])
         specs.setdefault('l2_scope', ['conv', 'fc'])
         specs.setdefault('maxnorm_scope', [])
@@ -1861,8 +1881,8 @@ class LFLSTM(BaseModel):
         specs.setdefault('padding', 'SAME')
         specs.setdefault('pool_type', 'max')
         specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1', 0.)
-        specs.setdefault('l2', 0.)
+        specs.setdefault('l1_lambda', 0.)
+        specs.setdefault('l2_lambda', 0.)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
@@ -1904,14 +1924,14 @@ class LFLSTM(BaseModel):
         ffeatures = tf.reshape(pooled,
                               [-1, self.dataset.h_params['n_seq'], fshape])
         #  features = tf.expand_dims(features, 0)
-        #l1_lambda = self.optimizer.params['l1']
+        #l1_lambda = self.optimizer.params['l1_lambda']
         print('flat features:', ffeatures.shape)
         self.lstm = LSTM(scope="lstm",
                            size=self.specs['n_latent'],
                            kernel_initializer='glorot_uniform',
                            recurrent_initializer='orthogonal',
-                           recurrent_regularizer=k_reg.l1(self.specs['l1']),
-                           kernel_regularizer=k_reg.l2(self.specs['l2']),
+                           recurrent_regularizer=k_reg.l1(self.specs['l1_lambda']),
+                           kernel_regularizer=k_reg.l2(self.specs['l2_lambda']),
                            bias_regularizer=None,
                            # activity_regularizer= regularizers.l1(0.01),
                            # kernel_constraint= constraints.UnitNorm(axis=0),
@@ -1960,8 +1980,8 @@ class Deep4(BaseModel):
         specs.setdefault('pool_type', 'max')
         specs.setdefault('padding', 'SAME')
         specs.setdefault('nonlin', tf.nn.elu)
-        specs.setdefault('l1', 3e-4)
-        specs.setdefault('l2', 3e-2)
+        specs.setdefault('l1_lambda', 3e-4)
+        specs.setdefault('l2_lambda', 3e-2)
         specs.setdefault('l1_scope', [])
         specs.setdefault('l2_scope', ['conv', 'fc'])
         specs.setdefault('maxnorm_scope', [])
