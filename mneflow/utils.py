@@ -543,27 +543,12 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
             if target_type == 'int':
                 Y, n_ev, meta['class_ratio'], _ = produce_labels(Y)
                 Y = _onehot(Y)
-#
-#            if scale_y:
-#                Y -= np.mean(Y, axis=0, keepdims=True)
-#                Y /= np.std(Y, axis=0, keepdims=True)
-#                print("Y {:.2f} +/- {:.2f}".format(Y.mean(), Y.std()))
-
 
             if test_set == 'holdout':
                 X, Y, x_test, y_test, test_fold = _split_sets(X, Y, folds=folds,
                                                               sample_counter=meta['train_size'])
                 meta['test_size'] += x_test.shape[0]
-            if save_as_numpy == True:
-                train_fold = np.concatenate(folds[1:])
-                val_fold = folds[0]
-                np.savez(savepath+out_name,
-                         X_train=X[train_fold, ...],
-                         X_val=X[val_fold, ...],
-                         X_test=x_test,
-                         y_train=Y[train_fold, ...],
-                         y_val=Y[val_fold, ...],
-                         y_test=y_test)
+                #TODO: remove?
             _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
 
             if input_type == 'seq':
@@ -574,6 +559,19 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
             n = np.arange(_n) + meta['train_size']
 
             meta['train_size'] += _n
+                
+            if save_as_numpy == True:
+                train_fold = np.concatenate(folds[1:])
+                val_fold = folds[0]
+                np.savez(savepath+out_name,
+                         X_train=X[train_fold, ...],
+                         X_val=X[val_fold, ...],
+                         X_test=x_test,
+                         y_train=Y[train_fold, ...],
+                         y_val=Y[val_fold, ...],
+                         y_test=y_test)
+                
+            
             # print("sample_count: {}, folds: {} - {}".format(meta["train_size"],
             #                                                 np.min(n), np.max(n)))
             meta['val_size'] += len(folds[0])
@@ -592,7 +590,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                              target_type=target_type)
 
             if test_set == 'loso':
-                meta['test_size'] = len(y_test)
+                meta['test_size'] = len(Y)
                 meta['test_paths'].append(''.join([savepath, out_name,
                                                    '_test_', str(jj),
                                                    '.tfrecord']))
