@@ -554,7 +554,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
             if input_type == 'seq':
                 meta['y_shape'] = Y[0].shape[1:]
             else:
-                meta['y_shape'] = Y[0].shape
+                meta['y_shape'] = Y[-1].shape
 
             n = np.arange(_n) + meta['train_size']
 
@@ -730,13 +730,13 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
 
 def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
     """
-    data - 3d data array (n, t, ch)
+    data - 3d data array (n, ch, t) #(n, t, ch)
     n_folds - number of folds
     test_segments - minimum number of different (non-contiguous)
                     data segments in each fold
 
     """
-    raw_len = data.shape[-2]
+    raw_len = data.shape[-1]
     # Define minimal duration of a single, non-overlapping data segment
     ind_samples = int(raw_len//(segments_per_fold*n_folds))
 
@@ -744,15 +744,16 @@ def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
     segments = np.arange(0, raw_len - ind_samples + 1, ind_samples)
 
     mod = raw_len - (segments[-1] + ind_samples)
-    data = data[:, mod:, :]
+    data = data[:, :, mod:]
     # Split continous data into non-overlapping segments
-    data = data.reshape([-1, ind_samples, data.shape[-1]])
+    data = data.reshape([-1, ind_samples, data.shape[-2]])
 
     #Treat events the same depending on their type
     #case 1: events are signal -> split similarly to the data
-    events = events[mod:, :]
-    events = events.reshape([-1, ind_samples, events.shape[-1]])
-
+    events = events[:, mod:]
+    events = events.reshape([-1, ind_samples, events.shape[-2]])
+    print(data.shape)
+    print(events.shape)
 
     folds = _split_indices(data, events, n_folds=n_folds)
     #test_start = [ds + np.random.randint(interval - test_samples)
@@ -932,7 +933,7 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
             Y = events
         folds = [f + sample_counter for f in folds]
 
-    X = np.swapaxes(X, -2, -1)
+    #X = np.swapaxes(X, -2, -1)
 
     if scale_y:
         Y -= Y.mean(axis=0, keepdims=True)

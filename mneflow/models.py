@@ -85,6 +85,7 @@ class BaseModel():
         self.y_pred = self.build_graph()
         self.log = dict()
         self.cm = np.zeros([self.y_shape[-1], self.y_shape[-1]])
+        #self.cv_patterns = np.zeros([])
 
 
     def build(self, optimizer="adam", loss=None, metrics=None, mapping=None,
@@ -172,6 +173,7 @@ class BaseModel():
         #y_pred = fc_1
         #print("Built graph: y_shape", y_pred.shape)
         return y_pred
+    
 
     def train(self, n_epochs, eval_step=None, min_delta=1e-6,
               early_stopping=3, mode='single_fold', prune_weights=False,
@@ -221,6 +223,7 @@ class BaseModel():
 
 
         if mode == 'single_fold':
+            self.cv_patterns = 0
             #self.dataset.train, self.dataset.val = self.dataset._build_dataset()
 
             self.t_hist = self.km.fit(self.dataset.train,
@@ -229,17 +232,22 @@ class BaseModel():
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
                                    callbacks=[stop_early], verbose=2)
-                
+            
+            #compute validation loss and metric
             self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
-            self.v_loss_sd = 0
-            self.v_metric_sd = 0
+            self.cv_losses = []
+            self.cv_metrics = []
             print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
+            
+            #compute specific metrics for classification and regresssion
+            y_true, y_pred = self.predict(self.dataset.val)
             if self.dataset.h_params['target_type'] == 'float':
-                y_true, y_pred = self.predict(self.dataset.val)
                 rms = regression_metrics(y_true, y_pred)
                 print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])  
             else:
                 rms = None
+                self.cm += self._confusion_matrix(y_true, y_pred)
+                
             self.update_log(rms=rms, prefix='val_')
             
         elif mode == 'cv':
@@ -248,6 +256,7 @@ class BaseModel():
             print("Running cross-validation with {} folds".format(n_folds))
             metrics = []
             losses = []
+            
             for jj in range(n_folds):
                 print("fold:", jj)
                 train, val = self.dataset._build_dataset(self.dataset.h_params['train_paths'],
@@ -266,9 +275,6 @@ class BaseModel():
                 losses.append(loss)
                 metrics.append(metric)
                 
-                if collect_patterns == True and self.scope == 'lfcnn':
-                    self.collect_patterns(fold=jj)
-                    
                 y_true, y_pred = self.predict(val)
 
                 if self.dataset.h_params['target_type'] == 'float':
@@ -279,20 +285,24 @@ class BaseModel():
                 else:
                     self.cm += self._confusion_matrix(y_true, y_pred)                    
                     rms = None
-                    
-                if jj < n_folds -1:
+                
+                if collect_patterns == True and self.scope == 'lfcnn':
+                    self.collect_patterns(fold=jj)
+    
+                if jj < n_folds - 1:
                     self.shuffle_weights()
                 else:
                     "Not shuffling the weights for the last fold"
 
 
                 print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
+            
             self.cv_losses = losses
             self.cv_metrics = metrics
             self.v_loss = np.mean(losses)
             self.v_metric = np.mean(metrics)
-            self.v_loss_sd = np.std(losses)
-            self.v_metric_sd = np.std(metrics)
+            #self.v_loss_sd = np.std(losses)
+            #self.v_metric_sd = np.std(metrics)
             print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
            
             if self.dataset.h_params['target_type'] == 'float':
@@ -343,7 +353,7 @@ class BaseModel():
                                                    split=False)
 
 
-                loss, metric = self.evaluate(val)
+                loss, metric = self.evaluate(test)
                 print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
                 losses.append(loss)
                 metrics.append(metric)
@@ -375,9 +385,10 @@ class BaseModel():
             self.cv_metrics = metrics
             self.v_loss = np.mean(losses)
             self.v_metric = np.mean(metrics)
-            self.v_loss_sd = np.std(losses)
-            self.v_metric_sd = np.std(metrics)
+            # self.v_loss_sd = np.std(losses)
+            # self.v_metric_sd = np.std(metrics)
             self.update_log(rms, prefix='loso_')
+            
             print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
             return self.cv_losses, self.cv_metrics
 
@@ -428,6 +439,7 @@ class BaseModel():
         y_p = _onehot(np.argmax(y_pred,1))
         cm = np.dot(y_p.T, y_true)
         return cm
+
 #    def load(self):
 #        """Loads a pretrained model.
 #
@@ -480,8 +492,8 @@ class BaseModel():
         #self.v_loss, self.v_perf = self.km.evaluate(self.dataset.val, steps=1, verbose=0)
         log['v_metric'] = self.v_metric
         log['v_loss'] = self.v_loss
-        log['v_metric_sd'] = self.v_metric_sd
-        log['v_loss_sd'] = self.v_metric_sd
+        log['cv_metrics'] = self.cv_metrics
+        log['cv_losses'] = self.cv_losses
         # if self.dataset.h_params['target_type'] == 'float':
         #     y_true, y_pred = self.predict(self.dataset.val)
         #     log['val_cc'], log['val_r2'], log['val_cs'], log['val_bias'], log['val_pve'] = regression_metrics(y_true, y_pred)
@@ -522,13 +534,44 @@ class BaseModel():
         """
         Saves the model and (optionally, patterns, confusion matrices)
         """
-        self.model_name = "_".join([self.scope, self.dataset.h_params['data_id']])
+        self.model_name = "_".join([self.scope, 
+                                    self.dataset.h_params['data_id']])
         self.km.save(self.model_path + self.model_name)
-        #if hasattr(self, 'cv_patterns'):
-        print("Not implemented")
+        if hasattr(self, 'cv_patterns'):
+            #if hasattr(self, 'cv_patterns'):
+            print("Saving patterns to: " + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
+            np.savez(self.model_path + self.model_name + "\\mneflow_patterns.npz",
+                 # lat_tcs = self.lat_tcs,
+                 # waveforms=self.waveforms,
+                 # dcov=self.dcov,
+                 # out_w_flat=self.out_w_flat,
+                 # out_biases=self.out_biases,
+                 #out_weights=self.out_weights,
+                 #feature_relevances=self.feature_relevances,
+                 cv_patterns=self.cv_patterns,
+                 specs=self.specs,
+                 meta=self.dataset.h_params,
+                 log=self.log,
+                 cm=self.cm,
+                 )
+        
+
 
     def restore(self):
-        print("Not implemented")
+        self.model_name = "_".join([self.scope, 
+                                    self.dataset.h_params['data_id']])
+        self.km  = tf.keras.models.load_model(self.model_path + self.model_name)
+        #try:
+        print("Restoring from:" + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
+        f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
+                    allow_pickle=True)
+        self.cv_patterns=f["cv_patterns"]
+        self.specs=f["specs"]
+        self.meta=f["meta"]
+        self.log=f["log"]
+        self.cm=f["cm"]
+        #except:
+        #    print("Patterns not found")
 
     def predict(self, dataset=None):
         """Returns:
@@ -712,7 +755,9 @@ class LFCNN(BaseModel):
             self.cv_patterns = np.zeros([self.dataset.h_params['n_ch'],
                                          self.dataset.h_params['y_shape'][0],
                                          n_folds])
-        self.cv_patterns[:, :, fold] = self.combined_pattern()
+        cp = self.combined_pattern()
+        print(cp.shape)
+        self.cv_patterns[:, :, fold] = cp
         
 
 

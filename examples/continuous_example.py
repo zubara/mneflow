@@ -8,14 +8,21 @@ Created on Fri Aug  5 11:32:13 2022
 import numpy as np
 import tensorflow as tf
 import os
-os.chdir('/m/nbe/project/rtmeg/problearn/mneflow/')
+os.chdir('C:\\Users\\ipzub\\projs\\mneflow\\')
 import mneflow
 
 
 
 # Dataset parameters
-dpath = '/m/nbe/work/zubarei1/collabs/bcicomp_ecog/sub1/'
+dpath = 'C:\\data\\bci4_ecog\\'
 fname = 'sub1_comp.mat'
+
+import scipy.io as sio
+datafile = sio.loadmat(dpath + fname)
+data = datafile['train_data'].T[np.newaxis,...]
+print(data.shape)
+events = datafile["train_dg"].T[np.newaxis,...]
+print(events.shape)
 #%% define transform_targets function
 
 def transform_targets(targets):
@@ -27,7 +34,7 @@ def transform_targets(targets):
     ----------
     targets: np.array
              measurements used to produce the target variable. For continous
-             inputs targets should have dimentsions (n_trials, channels, t),
+             inputs targets should have dimentsions (n_trials, t, channels),
              where t is the same number of time samples as in the data X.
     Returns:
     --------
@@ -38,20 +45,20 @@ def transform_targets(targets):
     out = []
     #as an illustration we take the mean of last 50 samples of the 1st channel
     #of the motioncaputre
-    #out = np.array([t[-50:, 0].mean(axis=0, keepdims=True) for t in targets])
-    #print(out.shape)
+    out = np.array([t[-50:, 0].mean(axis=0, keepdims=True) for t in targets])
+    print(out.shape)
     ##alternative treatment
-    targets = np.mean(targets[:,:,0], axis=1)
-    print(targets.shape)
-    targets -= targets.min()
-    targets /= targets.max()
-    for t in targets:
-        t = np.round(t,1)
-        out.append([t])
-    out = np.array(out)
-    out = mneflow.utils.produce_labels(out, return_stats=False)
-    out = np.expand_dims(out, 1)
-    print("Target values: ", np.unique(out))
+    # targets = np.mean(targets[:,:,0], axis=1)
+    # print(targets.shape)
+    # targets -= targets.min()
+    # targets /= targets.max()
+    # for t in targets:
+    #     t = np.round(t,1)
+    #     out.append([t])
+    # out = np.array(out)
+    # out = mneflow.utils.produce_labels(out, return_stats=False)
+    # out = np.expand_dims(out, 1)
+    # print("Target values: ", np.unique(out))
     assert out.ndim == 2
     return out
 #%%
@@ -62,7 +69,7 @@ import_opt = dict(fs=1000,
                   input_type='continuous',
                   overwrite=True,
                   transform_targets=transform_targets,
-                  target_type='int',
+                  target_type='float',
                   segment=625,
                   array_keys={"X":"train_data", "y":"train_dg"},
                   #augment=True,
@@ -71,7 +78,7 @@ import_opt = dict(fs=1000,
                   aug_stride=125,
                   )
 
-meta = mneflow.produce_tfrecords([dpath + fname], **import_opt)
+meta = mneflow.produce_tfrecords((data, events), **import_opt)
 
 #%%
 dataset = mneflow.Dataset(meta, train_batch = 100)
