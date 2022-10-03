@@ -932,8 +932,8 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
         else:
             Y = events
         folds = [f + sample_counter for f in folds]
-
-    #X = np.swapaxes(X, -2, -1)
+    if input_type != 'continuous':
+        X = np.swapaxes(X, -2, -1)
 
     if scale_y:
         Y -= Y.mean(axis=0, keepdims=True)
