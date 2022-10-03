@@ -436,7 +436,7 @@ class BaseModel():
         #plt.show()
         
     def _confusion_matrix(self, y_true, y_pred):
-        y_p = _onehot(np.argmax(y_pred,1))
+        y_p = _onehot(np.argmax(y_pred,1), n_classes=self.y_shape[-1])
         cm = np.dot(y_p.T, y_true)
         return cm
 
@@ -548,6 +548,10 @@ class BaseModel():
                  # out_biases=self.out_biases,
                  #out_weights=self.out_weights,
                  #feature_relevances=self.feature_relevances,
+                 cv_patterns_weight=self.cv_patterns_weight,
+                 cv_filters_weight=self.cv_filters_weight,
+                 cv_patterns_cwl=self.cv_patterns_cwl,
+                 cv_filters_cwl=self.cv_filters_cwl,
                  cv_patterns=self.cv_patterns,
                  specs=self.specs,
                  meta=self.dataset.h_params,
@@ -565,11 +569,15 @@ class BaseModel():
         print("Restoring from:" + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
         f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
                     allow_pickle=True)
-        self.cv_patterns=f["cv_patterns"]
-        self.specs=f["specs"]
-        self.meta=f["meta"]
-        self.log=f["log"]
-        self.cm=f["cm"]
+        self.cv_patterns = f["cv_patterns"]
+        self.specs = f["specs"].item()
+        self.meta = f["meta"].item()
+        self.log = f["log"].item()
+        self.cm = f["cm"]
+        self.cv_patterns_weight = f["cv_patterns_weight"]
+        self.cv_filters_weight = f["cv_filters_weight"]
+        self.cv_patterns_cwl = f["cv_patterns_cwl"]
+        self.cv_filters_cwl = f["cv_filters_cwl"]
         #except:
         #    print("Patterns not found")
 
@@ -750,15 +758,41 @@ class LFCNN(BaseModel):
     
     def collect_patterns(self, fold=0):
         self.compute_patterns()
-        if not hasattr(self, 'cv_patterns'):
+        if not hasattr(self, 'cv_patterns') or fold==0:
             n_folds = len(self.dataset.h_params['folds'][0])
             self.cv_patterns = np.zeros([self.dataset.h_params['n_ch'],
+                                         self.dataset.h_params['y_shape'][0],
+                                         n_folds])
+            self.cv_patterns_weight = np.zeros([self.dataset.h_params['n_ch'],
+                                         self.dataset.h_params['y_shape'][0],
+                                         n_folds])
+            self.cv_patterns_cwl = np.zeros([self.dataset.h_params['n_ch'],
+                                         self.dataset.h_params['y_shape'][0],
+                                         n_folds])
+            self.cv_filters_weight = np.zeros([self.specs['filter_length'],
+                                         self.dataset.h_params['y_shape'][0],
+                                         n_folds])
+            self.cv_filters_cwl = np.zeros([self.specs['filter_length'],
                                          self.dataset.h_params['y_shape'][0],
                                          n_folds])
         cp = self.combined_pattern()
         print(cp.shape)
         self.cv_patterns[:, :, fold] = cp
+        #collect spatial patterns for 'weight' sorting
+        order_weight, _ = self._sorting('weight')
+        #print(order, type(order))
+        wuo = order_weight.ravel()
+        #self.uorder = np.squeeze(self.uorder1)
         
+        self.cv_patterns_weight[:, :, fold] = self.patterns[:, wuo]
+        self.cv_filters_weight[:, :, fold] = self.filters[:, wuo]
+        
+        #collect spatial patterns for 'compwise_loss' sorting
+        order_cwl, _ = self._sorting('compwise_loss')
+        #print(order, type(order))
+        cwluo = order_cwl.ravel()
+        self.cv_patterns_cwl[:, :, fold] = self.patterns[:, cwluo]
+        self.cv_filters_cwl[:, :, fold] = self.filters[:, cwluo]
 
 
     def compute_patterns(self, data_path=None, output='patterns'):
@@ -1216,53 +1250,56 @@ class LFCNN(BaseModel):
                 print("Channel name mismatch. info: {} vs lo: {}".format(
                     info['chs'][i]['ch_name'], ch))
             
-        self.fake_evoked = evoked.EvokedArray(self.patterns, info)
+        self.fake_evoked = evoked.EvokedArray(combined, info)
         self.fake_evoked.data[:, :n] = combined
 #        self.fake_evoked.data[:, 1] = combined
-        true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
-        ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
+        # true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
+        # ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
         
-        ed /= ed.std(1,keepdims=True)
+        # ed /= ed.std(1,keepdims=True)
         
-        self.true_evoked = evoked.EvokedArray(ed.T, info)
+        # self.true_evoked = evoked.EvokedArray(ed.T, info)
         erp_inds = np.arange(n)
         nrows = 1
-        ncols = 1
+        ncols = n
             
 #%%
         #tt = (float(t) * self.dataset.h_params['fs'] / 1000.) - 0.1
-        for ii in range(self.y_shape[-1]):
-            f, ax = plt.subplots(nrows, ncols*2, sharey=True)
-            plt.tight_layout()
-            f.set_size_inches([16, 3])
-            ax = np.atleast_2d(ax)
+        #f, ax = plt.subplots(nrows, ncols, sharey=True)
+        #for ii in range(self.y_shape[-1]):
+            
+        # plt.tight_layout()
+        # f.set_size_inches([16, 3])
+        # ax = np.atleast_2d(ax)
                 
-            fake_times = np.arange(ii * ncols,  (ii + 1) * ncols, 1.)
-            vmax = np.percentile(self.fake_evoked.data[:, :1], 99)
-            #origin = np.median(lo.pos, 0)
-            #origin[2] = 0.0
-            #origin[3] = 1
-            self.fake_evoked.plot_topomap(times=fake_times,
-                                          axes=ax[0, 0],
+        fake_times = np.arange(0,  ncols, 1.)
+        vmax = np.percentile(self.fake_evoked.data[:, :n], 99)
+        #origin = np.median(lo.pos, 0)
+        #origin[2] = 0.0
+        #origin[3] = 1
+        #if names:
+            #time_format = n
+        self.fake_evoked.plot_topomap(times=fake_times,
+                                          #axes=ax[0, 0],
                                           colorbar=False,
                                           vmax=vmax,
                                           scalings=1,
-                                          time_format="Combined Pattern for y_%g",
+                                          time_format="y_%g",
                                           title='',
                                           #size=1,
                                           outlines='head',
                                           )
  
-            self.true_evoked.plot_topomap(times=erp_inds[ii],
-                                          axes=ax[0, 1],
-                                          colorbar=False,
-                                          vmax=vmax,
-                                          scalings=1,
-                                          time_format="True Pattern for %g",
-                                          title='',
-                                          #size=1,
-                                          outlines='head',
-                                          )
+            # self.true_evoked.plot_topomap(times=erp_inds[ii],
+            #                               axes=ax[0, 1],
+            #                               colorbar=False,
+            #                               vmax=vmax,
+            #                               scalings=1,
+            #                               time_format="True Pattern for %g",
+            #                               title='',
+            #                               #size=1,
+            #                               outlines='head',
+            #                               )
 
         
         
@@ -1444,40 +1481,40 @@ class LFCNN(BaseModel):
                 [ax[0][jj].set_title(c) for jj, c in enumerate(comp_names)]
 
 
-            for i in range(nrows):
-                for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
-                    w, h = freqz(flt, 1, worN=128)
-                    fr1 = w/np.pi*self.fs/2
-                    if  norm_spectra == 'welch':
-
-                        h0 = self.d_psds[self.uorder[jj], :]*np.abs(h)
-                        if log:
-                            ax[i, jj].semilogy(fr1, self.d_psds[self.uorder[jj], :],
+                for i in range(nrows):
+                    for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
+                        w, h = freqz(flt, 1, worN=128)
+                        fr1 = w/np.pi*self.fs/2
+                        if  norm_spectra == 'welch':
+    
+                            h0 = self.d_psds[self.uorder[jj], :]*np.abs(h)
+                            if log:
+                                ax[i, jj].semilogy(fr1, self.d_psds[self.uorder[jj], :],
+                                                   label='Filter input')
+                                ax[i, jj].semilogy(fr1, np.abs(h0),
+                                                   label='Fitler output')
+                                ax[i, jj].semilogy(fr1, np.abs(h),
+                                                   label='Freq response')
+                            else:
+                                ax[i, jj].plot(fr1, self.d_psds[self.uorder[jj], :],
                                                label='Filter input')
-                            ax[i, jj].semilogy(fr1, np.abs(h0),
-                                               label='Fitler output')
-                            ax[i, jj].semilogy(fr1, np.abs(h),
+                                ax[i, jj].plot(fr1, np.abs(h0), label='Fitler output')
+                                ax[i, jj].plot(fr1, np.abs(h),
                                                label='Freq response')
+                            #print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
+    
                         else:
-                            ax[i, jj].plot(fr1, self.d_psds[self.uorder[jj], :],
-                                           label='Filter input')
-                            ax[i, jj].plot(fr1, np.abs(h0), label='Fitler output')
-                            ax[i, jj].plot(fr1, np.abs(h),
-                                           label='Freq response')
-                        #print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
-
-                    else:
-                        if log:
-                            ax[i, jj].semilogy(fr1, np.abs(h),
+                            if log:
+                                ax[i, jj].semilogy(fr1, np.abs(h),
+                                                   label='Freq response')
+                            else:
+                                ax[i, jj].plot(fr1, np.abs(h),
                                                label='Freq response')
-                        else:
-                            ax[i, jj].plot(fr1, np.abs(h),
-                                           label='Freq response')
-                    ax[i, jj].set_xlim(0, 75.)
-                    #ax[i, jj].set_xlim(0, 75.)
-                    if i == 0 and jj == ncols-1:
-                        ax[i, jj].legend(frameon=False)
-            return f
+                        ax[i, jj].set_xlim(0, 75.)
+                        #ax[i, jj].set_xlim(0, 75.)
+                        if i == 0 and jj == ncols-1:
+                            ax[i, jj].legend(frameon=False)
+                return f
 
 
 class VARCNN(BaseModel):
