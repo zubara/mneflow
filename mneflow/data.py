@@ -12,12 +12,16 @@ import tensorflow as tf
 # import tensorflow.compat.v1 as tf
 # tf.disable_v2_behavior()
 import numpy as np
+from mneflow.utils import _onehot
 
 class Dataset(object):
     """TFRecords dataset from TFRecords files using the metadata."""
 
-    def __init__(self, h_params, train_batch=200, test_batch=None, split=True
-                 #class_subset=None, combine_classes=False, pick_channels=None, decim=None,
+    def __init__(self, h_params, train_batch=200, test_batch=None, split=True,
+                 class_subset=None,
+                 #combine_classes=False, 
+                 pick_channels=None, decim=None,
+                 rebalance_classes=False
                  ):
 
         r"""Initialize tf.data.TFRdatasets.
@@ -45,9 +49,9 @@ class Dataset(object):
 
         """
         self.h_params = h_params
-        # self.channel_subset = pick_channels
-        # self.class_subset = class_subset
-        # self.decim = decim
+        self.channel_subset = pick_channels
+        self.class_subset = class_subset
+        self.decim = decim
         self.h_params['train_batch'] = train_batch
 
 
@@ -56,12 +60,14 @@ class Dataset(object):
         self.train, self.val = self._build_dataset(self.h_params['train_paths'],
                                                    train_batch=train_batch,
                                                    test_batch=test_batch,
-                                                   split=True, val_fold_ind=0)
+                                                   split=True, val_fold_ind=0,
+                                                   rebalance_classes=rebalance_classes)
         if len(self.h_params['test_paths']) > 0:
             self.test = self._build_dataset(self.h_params['test_paths'],
-                                                       train_batch=train_batch,
-                                                       test_batch=test_batch,
-                                                       split=False)
+                                            train_batch=train_batch,
+                                            test_batch=test_batch,
+                                            split=False,
+                                            rebalance_classes=rebalance_classes)
 
 
         # #self.val = self._build_dataset(self.h_params['val_paths'],
@@ -74,7 +80,8 @@ class Dataset(object):
 
     def _build_dataset(self, path, split=True,
                        train_batch=100, test_batch=None,
-                       repeat=True, val_fold_ind=0, holdout=False):
+                       repeat=True, val_fold_ind=0, holdout=False, 
+                       rebalance_classes=False):
 
         """Produce a tf.Dataset object and apply preprocessing
         functions if specified.
@@ -84,20 +91,31 @@ class Dataset(object):
 
         dataset = dataset.map(self._parse_function)
 
-        # if self.channel_subset is not None:
-        #     dataset = dataset.map(self._select_channels)
+        if self.channel_subset is not None:
+            dataset = dataset.map(self._select_channels)
 
-        # if self.class_subset is not None:
-        #     dataset = dataset.filter(self._select_classes)
+        if self.class_subset is not None and self.h_params['target_type'] == 'int':
+            dataset = dataset.filter(self._select_classes)
+            subset_ratio = np.sum([v for k,v in self.h_params['class_ratio'].items()
+                                   if k in self.class_subset])
+            ratio_multiplier = 1./subset_ratio
+            print("Subset ratio {:.2f}, Multiplier {:.2f}".format(subset_ratio,
+                                                                  ratio_multiplier
+                                                                  ))
+            cp = {k:v*ratio_multiplier for k,v in self.h_params['class_ratio'].items() 
+                  if k in self.class_subset}
+            
+            self.h_params['class_ratio'] = cp
+            #print(self.h_params['class_ratio'])
+            
+        if self.decim is not None:
+            print('decimating')
 
-        # if self.decim is not None:
-        #     print('decimating')
+            self.timepoints = tf.constant(
+                    np.arange(0, self.h_params['n_t'], self.decim))
 
-        #     self.timepoints = tf.constant(
-        #             np.arange(0, self.h_params['n_t'], self.decim))
-
-        #     self.h_params['n_t'] = len(self.timepoints)
-        #     dataset = dataset.map(self._decimate)
+            self.h_params['n_t'] = len(self.timepoints)
+            dataset = dataset.map(self._decimate)
 
         #TODO: test set case
 
@@ -129,6 +147,10 @@ class Dataset(object):
 
             train_dataset = dataset.filter(self._cv_train_fold_filter)
             val_dataset =  dataset.filter(self._cv_val_fold_filter)
+            
+            if rebalance_classes:
+                train_dataset = self._resample(train_dataset)
+                val_dataset = self._resample(val_dataset)
 
             #batch
             if not test_batch:
@@ -157,6 +179,10 @@ class Dataset(object):
                 size = self.h_params['val_size']
             if not test_batch:
                 test_batch = size
+                
+            if rebalance_classes:
+                dataset = self._resample(dataset)
+                
             dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
             dataset.batch = test_batch
 
@@ -186,31 +212,31 @@ class Dataset(object):
 
 
 
-    # def _select_channels(self, example_proto):
-    #     """Pick a subset of channels specified by self.channel_subset."""
-    #     example_proto['X'] = tf.gather(example_proto['X'],
-    #                                    tf.constant(self.channel_subset),
-    #                                    axis=3)
-    #     return example_proto
+    def _select_channels(self, example_proto):
+        """Pick a subset of channels specified by self.channel_subset."""
+        example_proto['X'] = tf.gather(example_proto['X'],
+                                        tf.constant(self.channel_subset),
+                                        axis=3)
+        return example_proto
 
-    # def _select_times(self, example_proto):
-    #     """Pick a subset of channels specified by self.channel_subset."""
-    #     example_proto['X'] = tf.gather(example_proto['X'],
-    #                                    tf.constant(self.times),
-    #                                    axis=2)
-    #     return example_proto
+    def _select_times(self, example_proto):
+        """Pick a subset of channels specified by self.channel_subset."""
+        example_proto['X'] = tf.gather(example_proto['X'],
+                                        tf.constant(self.times),
+                                        axis=2)
+        return example_proto
 
-    # def class_weights(self):
-    #     """Weights take class proportions into account."""
-    #     weights = np.array(
-    #             [v for k, v in self.h_params['class_proportions'].items()])
-    #     return 1./(weights*float(len(weights)))
+    def class_weights(self):
+        """Weights take class proportions into account."""
+        weights = np.array(
+                [v for k, v in self.h_params['class_proportions'].items()])
+        return (1./np.mean(weights))/weights
 
-    # def _decimate(self, example_proto):
-    #     """Downsample data."""
-    #     example_proto['X'] = tf.gather(example_proto['X'],
-    #                                    self.timepoints,
-    #                                    axis=2)
+    def _decimate(self, example_proto):
+        """Downsample data."""
+        example_proto['X'] = tf.gather(example_proto['X'],
+                                        self.timepoints,
+                                        axis=2)
     #     return example_proto
 
 #    def _get_n_samples(self, path):
@@ -255,18 +281,18 @@ class Dataset(object):
                                                   keys_to_features)
         return parsed_features
 
-    # def _select_classes(self, sample):
-    #     """Pick a subset of classes specified in self.class_subset."""
-    #     if self.class_subset:
-    #         # TODO: fix subsetting
-    #         onehot_subset = _onehot(self.class_subset,
-    #                                 n_classes=self.h_params['y_shape'])
-    #         #print(onehot_subset)
-    #         subset = tf.constant(onehot_subset, dtype=tf.int64)
-    #         out = tf.reduce_any(tf.equal(tf.argmax(sample['y']), subset))
-    #         return out
-    #     else:
-    #         return tf.constant(True, dtype=tf.bool)
+    def _select_classes(self, sample):
+        """Pick a subset of classes specified in self.class_subset."""
+        if self.class_subset:
+            # TODO: fix subsetting
+            onehot_subset = _onehot(self.class_subset,
+                                    n_classes=self.h_params['y_shape'][0])
+            #print(onehot_subset)
+            subset = tf.constant(onehot_subset, dtype=tf.int64)
+            out = tf.reduce_any(tf.equal(tf.argmax(sample['y']), subset))
+            return out
+        else:
+            return tf.constant(True, dtype=tf.bool)
 
     def _cv_train_fold_filter(self, sample):
         """Pick a subset of classes specified in self.class_subset."""
@@ -289,7 +315,28 @@ class Dataset(object):
 
     def _unpack(self, sample):
         return sample['X'], sample['y']#, sample['n']
+    
+           
+    
+    def _resample(self, dataset):
+        #print("Oversampling")
+        
+        n_classes = len(self.h_params['class_ratio'].items())
+        print(n_classes)
+        target_dist = 1./n_classes*np.ones(n_classes)
+        empirical_dist = [v for k, v in self.h_params['class_ratio'].items()]
+        resample_ds = dataset.rejection_resample(class_func, 
+                                                 target_dist=target_dist, 
+                                                 initial_dist=empirical_dist)
+        balanced_ds = resample_ds.map(lambda y, xy: xy)
+        new_dist = {k: target_dist[0] 
+                    for k in self.h_params['class_ratio'].keys()}
+        print("New class ratio: ", new_dist)
+        self.h_params['class_ratio'] = new_dist
+        return balanced_ds
 
+def class_func(sample):
+    return tf.argmax(sample['y'], -1)
 # def _onehot(y, n_classes=False):
 #     if not n_classes:
 #         """Create one-hot encoded labels."""
