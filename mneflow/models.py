@@ -220,10 +220,15 @@ class BaseModel():
         #     self.validation_steps = 1
 
         self.train_params = [n_epochs, eval_step, early_stopping, mode]
-
-
+        rmss = defaultdict(list)
+        metrics = []
+        losses = []
+        self.cv_losses = []
+        self.cv_metrics = []
+        
         if mode == 'single_fold':
-            self.cv_patterns = 0
+            n_folds = 1
+            #self.cv_patterns = 0
             #self.dataset.train, self.dataset.val = self.dataset._build_dataset()
 
             self.t_hist = self.km.fit(self.dataset.train,
@@ -235,9 +240,8 @@ class BaseModel():
             
             #compute validation loss and metric
             self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
-            self.cv_losses = []
-            self.cv_metrics = []
-            print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
+            
+            #print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
             
             #compute specific metrics for classification and regresssion
             y_true, y_pred = self.predict(self.dataset.val)
@@ -247,15 +251,15 @@ class BaseModel():
             else:
                 rms = None
                 self.cm += self._confusion_matrix(y_true, y_pred)
-                
-            self.update_log(rms=rms, prefix='val_')
             
+            if collect_patterns == True and self.scope == 'lfcnn':
+                self.collect_patterns(fold=0)
+                
         elif mode == 'cv':
-            rmss = defaultdict(list)
+                        
             n_folds = len(self.dataset.h_params['folds'][0])
             print("Running cross-validation with {} folds".format(n_folds))
-            metrics = []
-            losses = []
+
             
             for jj in range(n_folds):
                 print("fold:", jj)
@@ -272,8 +276,8 @@ class BaseModel():
 
 
                 loss, metric = self.evaluate(val)
-                losses.append(loss)
-                metrics.append(metric)
+                self.cv_losses.append(loss)
+                self.cv_metrics.append(metric)
                 
                 y_true, y_pred = self.predict(val)
 
@@ -297,12 +301,11 @@ class BaseModel():
 
                 print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
             
-            self.cv_losses = losses
-            self.cv_metrics = metrics
-            self.v_loss = np.mean(losses)
-            self.v_metric = np.mean(metrics)
-            #self.v_loss_sd = np.std(losses)
-            #self.v_metric_sd = np.std(metrics)
+            self.v_loss = np.mean(self.cv_losses)
+            self.v_metric = np.mean(self.cv_metrics)
+            metrics = self.cv_metrics
+            losses = self.cv_losses
+            
             print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
            
             if self.dataset.h_params['target_type'] == 'float':
@@ -313,16 +316,13 @@ class BaseModel():
                       rms['cc'], rms['cc_std'], rms['r2'], rms['r2_std']))
             else:
                 rms = None
-            self.update_log(rms=rms, prefix='cv_')
             
-            return self.cv_losses, self.cv_metrics
+            #return self.cv_losses, self.cv_metrics
 
         elif mode == "loso":
-            rmss = []
             n_folds = len(self.dataset.h_params['train_paths'])
             print("Running leave-one-subject-out CV with {} subject".format(n_folds))
-            metrics = []
-            losses = []
+            
             for jj in range(n_folds):
                 print("fold:", jj)
 
@@ -352,12 +352,16 @@ class BaseModel():
                                                    test_batch=None,
                                                    split=False)
 
-
-                loss, metric = self.evaluate(test)
-                print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
-                losses.append(loss)
-                metrics.append(metric)
+                v_loss, v_metric = self.evaluate(val)
+                loso_loss, loso_metric = self.evaluate(test)
                 
+                print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loso_loss, loso_metric))
+                self.cv_losses.append(v_loss)
+                self.cv_metrics.append(v_metric)
+                losses.append(loso_loss)
+                metrics.append(loso_metric)
+                
+                y_true, y_pred = self.predict(val)
                 if self.dataset.h_params['target_type'] == 'float':
                     y_true, y_pred = self.predict(val)
                     rms = regression_metrics(y_true, y_pred)
@@ -365,6 +369,7 @@ class BaseModel():
                         rmss[k].append(v)
                     print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])  
                 else:
+                    self.cm += self._confusion_matrix(y_true, y_pred)                    
                     rms = None
                     
                 if jj < n_folds -1:
@@ -381,16 +386,18 @@ class BaseModel():
             else:
                 rms = None
                 
-            self.cv_losses = losses
-            self.cv_metrics = metrics
-            self.v_loss = np.mean(losses)
-            self.v_metric = np.mean(metrics)
-            # self.v_loss_sd = np.std(losses)
-            # self.v_metric_sd = np.std(metrics)
+            self.loso_losses = losses
+            self.loso_metrics = metrics
             self.update_log(rms, prefix='loso_')
             
-            print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
-            return self.cv_losses, self.cv_metrics
+        print("""{} with {} fold(s) completed. \n
+              Loss: {:.4f} +/- {:.4f}.
+              Metric: {:.4f} +/- {:.4f}"""
+              .format(mode, n_folds, 
+                      np.mean(losses), np.std(losses), 
+                      np.mean(metrics), np.std(metrics)))
+        self.update_log(rms=rms, prefix=mode)
+        #return self.cv_losses, self.cv_metrics
 
     
     def prune_weights(self, increase_regularization=3.):
@@ -490,8 +497,8 @@ class BaseModel():
 
         #v_loss, v_metric = self.evaluate(self.dataset.val)
         #self.v_loss, self.v_perf = self.km.evaluate(self.dataset.val, steps=1, verbose=0)
-        log['v_metric'] = self.v_metric
-        log['v_loss'] = self.v_loss
+        log['v_metric'] = np.mean(self.cv_metrics)
+        log['v_loss'] = np.mean(self.cv_losses)
         log['cv_metrics'] = self.cv_metrics
         log['cv_losses'] = self.cv_losses
         # if self.dataset.h_params['target_type'] == 'float':
@@ -514,13 +521,20 @@ class BaseModel():
                 log.update({'test_'+k:v for k,v in rms_test.items()})
             log['test_metric'] = t_metric
             log['test_loss'] = t_loss
-        elif log['mode'] == 'loso':
-            log['test_metric'] = self.t_metric
-            log['test_loss'] = self.t_loss
+            log['test_metrics'] = "NA"
+            log['test_losses'] = "NA"
             
+        elif log['mode'] == 'loso':
+            log['test_metric'] = np.mean(self.loso_metrics)
+            log['test_loss'] = np.mean(self.loso_losses)
+            log['test_metrics'] = self.loso_metrics
+            log['test_losses'] = self.loso_losses
+    
         else:
             log['test_metric'] = "NA"
             log['test_loss'] = "NA"
+            log['test_metrics'] = "NA"
+            log['test_losses'] = "NA"
             
         self.log.update(log)
 
@@ -552,6 +566,9 @@ class BaseModel():
                  cv_filters_weight=self.cv_filters_weight,
                  cv_patterns_cwl=self.cv_patterns_cwl,
                  cv_filters_cwl=self.cv_filters_cwl,
+                 cv_filters=self.cv_filters,
+                 freqs = self.freqs,
+                 cv_psds=self.cv_psds,
                  cv_patterns=self.cv_patterns,
                  specs=self.specs,
                  meta=self.dataset.h_params,
@@ -570,14 +587,17 @@ class BaseModel():
         f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
                     allow_pickle=True)
         self.cv_patterns = f["cv_patterns"]
+        self.cv_psds = f["cv_psds"]
+        self.freqs = f['freqs']
+        self.cv_filters = f["cv_filters"]
         self.specs = f["specs"].item()
         self.meta = f["meta"].item()
         self.log = f["log"].item()
         self.cm = f["cm"]
-        self.cv_patterns_weight = f["cv_patterns_weight"]
-        self.cv_filters_weight = f["cv_filters_weight"]
-        self.cv_patterns_cwl = f["cv_patterns_cwl"]
-        self.cv_filters_cwl = f["cv_filters_cwl"]
+        # self.cv_patterns_weight = f["cv_patterns_weight"]
+        # self.cv_filters_weight = f["cv_filters_weight"]
+        # self.cv_patterns_cwl = f["cv_patterns_cwl"]
+        # self.cv_filters_cwl = f["cv_filters_cwl"]
         #except:
         #    print("Patterns not found")
 
@@ -763,6 +783,12 @@ class LFCNN(BaseModel):
             self.cv_patterns = np.zeros([self.dataset.h_params['n_ch'],
                                          self.dataset.h_params['y_shape'][0],
                                          n_folds])
+            self.cv_filters = np.zeros([128,
+                                        self.dataset.h_params['y_shape'][0],
+                                        n_folds])
+            self.cv_psds = np.zeros([128,
+                                        self.dataset.h_params['y_shape'][0],
+                                        n_folds])
             self.cv_patterns_weight = np.zeros([self.dataset.h_params['n_ch'],
                                          self.dataset.h_params['y_shape'][0],
                                          n_folds])
@@ -775,9 +801,11 @@ class LFCNN(BaseModel):
             self.cv_filters_cwl = np.zeros([self.specs['filter_length'],
                                          self.dataset.h_params['y_shape'][0],
                                          n_folds])
-        cp = self.combined_pattern()
-        print(cp.shape)
-        self.cv_patterns[:, :, fold] = cp
+        combined_topo, combined_spectra, combined_psds, self.freqs = self.combined_pattern()
+        #print(cp.shape)
+        self.cv_patterns[:, :, fold] = combined_topo
+        self.cv_filters[:, :, fold] = combined_spectra
+        self.cv_psds[:, :, fold] = combined_psds
         #collect spatial patterns for 'weight' sorting
         order_weight, _ = self._sorting('weight')
         #print(order, type(order))
@@ -1213,30 +1241,53 @@ class LFCNN(BaseModel):
         #identify single timestep where all components have max abs weights
         #t = np.argmax(np.sum(np.abs(self.waveforms), 0), 0)
         #t = np.argmax(np.sum(np.abs(self.out_weights),1), 0)
-        treated_weights = np.repeat(self.out_weights, self.specs['stride'], axis=0)
-        treated_weights = treated_weights[:self.waveforms.shape[1], ...].transpose([1,0, 2])
+        #treated_weights = np.repeat(self.out_weights, self.specs['stride'], axis=0)
+        #treated_weights = treated_weights[:self.waveforms.shape[1], ...].transpose([1,0, 2])
+        
         #compute weighted sum of spatial patterns
-        #pattern_weights = np.dot(self.waveforms, treated_weights)                                     
-        pattern_weights = np.mean(self.waveforms[:,:,None] * treated_weights, 1)
-        combined = np.dot(self.patterns, pattern_weights)
-        
-        
-        return combined#, t
-        
+        pattern_weights = np.einsum('ijk, jkl ->ikl', self.tc_out, self.out_weights)
+        pattern_weights = np.maximum(pattern_weights + self.out_biases[None, :], 0.).mean(0)                          
+        #pattern_weights = np.sum(self.waveforms[:,:,None] * treated_weights, 1)
+        combined_topo = np.dot(self.patterns, pattern_weights)
+        realh = []
+        psds = []
+        for i, flt in enumerate(self.filters.T):
+            w, h = freqz(flt, 1, worN=128, fs = self.dataset.h_params['fs'])
+            fr, psd = welch(self.lat_tcs[i, :], fs=self.dataset.h_params['fs'], 
+                            nperseg=256)
+            psds.append(psd[:-1])
+            realh.append(np.abs(h))
+        frs = np.array(realh)
+        psds = np.array(psds)
+
+        combined_spectra = np.dot(frs.T, pattern_weights)
+        combined_psds = np.dot(psds.T, pattern_weights)
+        #plt.plot(w, combined_spectra)
+        return combined_topo, combined_spectra, combined_psds, fr
         
     def  plot_combined_pattern(self, sensor_layout=None):
+        cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
+               for i in range(self.cv_patterns.shape[1])])
         if hasattr(self, 'cv_patterns'):
             #compute correlation coefficient between patterns across folds
-            cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
-                  for i in range(self.cv_patterns.shape[1])])
-            combined = np.einsum('ijk, jk -> ij', self.cv_patterns, cc)
+            
+            #combined_topos = np.einsum('ijk, jk -> ij', self.cv_patterns, cc)
+            combined_topos = np.mean(self.cv_patterns, -1)
+            combined_filters = np.mean(self.cv_filters, -1)
+            combined_psds = np.mean(self.cv_psds, -1)
+            
+            # combined_topos = np.mean(self.cv_patterns, -1)
+            # combined_filters = np.mean(self.cv_filters, -1)
+            freqs = self.freqs
             #combined = np.mean(self.cv_patterns, axis=-1)
             #combined_sd = np.std(self.cv_patterns, axis=-1)
             #combined /= combined_sd
             
         else:
-            combined = self.combined_pattern()
-        combined /= combined.std(axis=0, keepdims=True) 
+            combined_topos, combined_filters, combined_psds, freqs = self.combined_pattern()
+            
+            freqs = self.freqs
+        combined_topos /= combined_topos.std(axis=0, keepdims=True) 
         n = self.y_shape[0]
         lo = channels.read_layout(sensor_layout)
         #lo = channels.generate_2d_layout(lo.pos)
@@ -1244,14 +1295,14 @@ class LFCNN(BaseModel):
         orig_xy = np.mean(lo.pos[:, :2], 0)
         for i, ch in enumerate(lo.names):
             if info['chs'][i]['ch_name'] == ch:
-                info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/3. 
+                info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/4.5 
                 #info['chs'][i]['loc'][4:] = 0
             else:
                 print("Channel name mismatch. info: {} vs lo: {}".format(
                     info['chs'][i]['ch_name'], ch))
             
-        self.fake_evoked = evoked.EvokedArray(combined, info)
-        self.fake_evoked.data[:, :n] = combined
+        self.fake_evoked = evoked.EvokedArray(combined_topos, info)
+        self.fake_evoked.data[:, :n] = combined_topos
 #        self.fake_evoked.data[:, 1] = combined
         # true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
         # ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
@@ -1300,6 +1351,25 @@ class LFCNN(BaseModel):
             #                               #size=1,
             #                               outlines='head',
             #                               )
+        if ncols == 1:
+            plt.figure()
+            ax = plt.gca()
+            ax.plot(freqs[:-1], combined_filters/np.sum(combined_filters), label='Output RPS')
+            ax.plot(freqs[:-1], combined_psds/np.sum(combined_psds), label='Input RPS')
+            ax.legend()
+            ax.set_xlim(0, 90)
+        else:
+            f, ax = plt.subplots(1, ncols)
+            for i in range(ncols):
+                ax[i].semilogy(freqs[:-1], combined_filters[:,i], label='Impulse response')
+                ax[i].semilogy(freqs[:-1], combined_filters[:,i]*combined_psds[:,i], label='Output RPS')
+                ax[i].semilogy(freqs[:-1], combined_psds[:,i], label='Input RPS')
+                #ax[i].plot(freqs[:-1], combined_filters[:,i], label='Output RPS')
+                #ax[i].plot(freqs[:-1], combined_psds[:,i], label='Input RPS')
+                ax[i].set_xlim(0, 90)
+                if i == ncols-1:
+                    ax[i].legend()
+                #ax[i].show()
 
         
         
@@ -1417,6 +1487,12 @@ class LFCNN(BaseModel):
             else:
                 self.plot_out_weights()
             return f
+        
+    # def compute_spectra(self):
+
+        
+    #     return impulse_response, input_spectrum, output_spectrum
+        
 
     def plot_spectra(self, fs=None, sorting='l2', norm_spectra=None,
                      log=False, class_names=None):
@@ -1439,14 +1515,13 @@ class LFCNN(BaseModel):
             Apply log-transform to the spectra.
 
         """
-        if fs is not None:
-            self.fs = fs
-        elif self.dataset.h_params['fs']:
+
+        if self.dataset.h_params['fs']:
             self.fs = self.dataset.h_params['fs']
         else:
            print('Sampling frequency not specified, setting to 1.')
            self.fs = 1.
-
+           
         if norm_spectra:
             if norm_spectra == 'welch':
                 fr, psd = welch(self.lat_tcs, fs=self.fs, nperseg=256)
