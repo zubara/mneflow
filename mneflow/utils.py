@@ -352,7 +352,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                       aug_stride=None,
                       seq_length=None,
                       picks=None,
-                      overwrite=True,
+                      overwrite=False,
                       test_set=False,
                       bp_filter=False,
                       decimate=False,
@@ -559,7 +559,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
             n = np.arange(_n) + meta['train_size']
 
             meta['train_size'] += _n
-                
+
             if save_as_numpy == True:
                 train_fold = np.concatenate(folds[1:])
                 val_fold = folds[0]
@@ -570,8 +570,8 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                          y_train=Y[train_fold, ...],
                          y_val=Y[val_fold, ...],
                          y_test=y_test)
-                
-            
+
+
             # print("sample_count: {}, folds: {} - {}".format(meta["train_size"],
             #                                                 np.min(n), np.max(n)))
             meta['val_size'] += len(folds[0])
@@ -968,12 +968,12 @@ def cosine_similarity(y_true, y_pred):
     # y_true -= y_true.mean()
     # y_pred -= y_pred.mean()
     return np.dot(y_pred.T, y_true)[0][0] / (np.sqrt(np.sum(y_pred**2)) * np.sqrt(np.sum(y_true**2)))
-    
+
 def pve(y_true, y_pred):
     y_true -= y_true.mean()
     y_pred -= y_pred.mean()
     return np.dot(y_pred.T, y_true)[0][0] / np.sum(y_pred**2)
-    
+
 def r2_score(y_true, y_pred):
     res = np.sum((y_true - y_pred)**2)
     tot = np.sum((y_true - np.mean(y_true))**2)
