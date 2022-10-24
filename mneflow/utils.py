@@ -266,6 +266,9 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
 #                    else:
 #                        raise ValueError("Target array misaligned.")
             print('Extracting target variables from {}'.format(array_keys['y']))
+    else:
+        print("Dataset not found")
+        return None, None
 
     data = data.astype(np.float32)
 
@@ -516,100 +519,104 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
         for inp in inputs:
 
             data, events = import_data(inp, picks=picks, array_keys=array_keys)
-            if target_type == 'int':
-                # Specific to classification
-                if combine_events:
-                    events, keep_ind = _combine_labels(events, combine_events)
-
-                    # TODO!  suggest these move inside _combine_labels
-                    data = data[keep_ind, ...]
-                    events = events[keep_ind]
-
-
-            #elif target_type == 'signal':
-            #    print(data.shape, events.shape)
-
-
-            X, Y, folds = preprocess(
-                    data, events, sample_counter=meta['train_size'],
-                    input_type=input_type, scale=scale, fs=fs,
-                    n_folds=n_folds, scale_interval=scale_interval,
-                    segment=segment, aug_stride=aug_stride,
-                    crop_baseline=crop_baseline, decimate=decimate,
-                    bp_filter=bp_filter, seq_length=seq_length,
-                    transform_targets=transform_targets,
-                    scale_y=scale_y)
-
-            if target_type == 'int':
-                Y, n_ev, meta['class_ratio'], _ = produce_labels(Y)
-                Y = _onehot(Y)
-
-            if test_set == 'holdout':
-                X, Y, x_test, y_test, test_fold = _split_sets(X, Y, folds=folds,
-                                                              sample_counter=meta['train_size'])
-                meta['test_size'] += x_test.shape[0]
-                #TODO: remove?
-            _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
-
-            if input_type == 'seq':
-                meta['y_shape'] = Y[0].shape[1:]
+            if np.any(data) == None:
+                return
             else:
-                meta['y_shape'] = Y[-1].shape
-
-            n = np.arange(_n) + meta['train_size']
-
-            meta['train_size'] += _n
                 
-            if save_as_numpy == True:
-                train_fold = np.concatenate(folds[1:])
-                val_fold = folds[0]
-                np.savez(savepath+out_name,
-                         X_train=X[train_fold, ...],
-                         X_val=X[val_fold, ...],
-                         X_test=x_test,
-                         y_train=Y[train_fold, ...],
-                         y_val=Y[val_fold, ...],
-                         y_test=y_test)
+                if target_type == 'int':
+                    # Specific to classification
+                    if combine_events:
+                        events, keep_ind = _combine_labels(events, combine_events)
+    
+                        # TODO!  suggest these move inside _combine_labels
+                        data = data[keep_ind, ...]
+                        events = events[keep_ind]
+    
+    
+                #elif target_type == 'signal':
+                #    print(data.shape, events.shape)
+    
+    
+                X, Y, folds = preprocess(
+                        data, events, sample_counter=meta['train_size'],
+                        input_type=input_type, scale=scale, fs=fs,
+                        n_folds=n_folds, scale_interval=scale_interval,
+                        segment=segment, aug_stride=aug_stride,
+                        crop_baseline=crop_baseline, decimate=decimate,
+                        bp_filter=bp_filter, seq_length=seq_length,
+                        transform_targets=transform_targets,
+                        scale_y=scale_y)
+    
+                if target_type == 'int':
+                    Y, n_ev, meta['class_ratio'], _ = produce_labels(Y)
+                    Y = _onehot(Y)
+    
+                if test_set == 'holdout':
+                    X, Y, x_test, y_test, test_fold = _split_sets(X, Y, folds=folds,
+                                                                  sample_counter=meta['train_size'])
+                    meta['test_size'] += x_test.shape[0]
+                    #TODO: remove?
+                _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
+    
+                if input_type == 'seq':
+                    meta['y_shape'] = Y[0].shape[1:]
+                else:
+                    meta['y_shape'] = Y[-1].shape
+    
+                n = np.arange(_n) + meta['train_size']
+    
+                meta['train_size'] += _n
+                    
+                if save_as_numpy == True:
+                    train_fold = np.concatenate(folds[1:])
+                    val_fold = folds[0]
+                    np.savez(savepath+out_name,
+                             X_train=X[train_fold, ...],
+                             X_val=X[val_fold, ...],
+                             X_test=x_test,
+                             y_train=Y[train_fold, ...],
+                             y_val=Y[val_fold, ...],
+                             y_test=y_test)
+                    
                 
-            
-            # print("sample_count: {}, folds: {} - {}".format(meta["train_size"],
-            #                                                 np.min(n), np.max(n)))
-            meta['val_size'] += len(folds[0])
-
-            print('Prepocessed sample shape:', X[0].shape)
-            print('Target shape actual/metadata: ', Y[0].shape, meta['y_shape'])
-
-            print('Saving TFRecord# {}'.format(jj))
-
-            meta['folds'].append(folds)
-            meta['train_paths'].append(''.join([savepath, out_name,
-                                                '_train_', str(jj),
-                                                '.tfrecord']))
-
-            _write_tfrecords(X, Y, n, meta['train_paths'][-1],
-                             target_type=target_type)
-
-            if test_set == 'loso':
-                meta['test_size'] = len(Y)
-                meta['test_paths'].append(''.join([savepath, out_name,
-                                                   '_test_', str(jj),
-                                                   '.tfrecord']))
-                _write_tfrecords(X, Y, n, meta['test_paths'][-1],
+                # print("sample_count: {}, folds: {} - {}".format(meta["train_size"],
+                #                                                 np.min(n), np.max(n)))
+                meta['val_size'] += len(folds[0])
+    
+                print('Prepocessed sample shape:', X[0].shape)
+                print('Target shape actual/metadata: ', Y[0].shape, meta['y_shape'])
+    
+                print('Saving TFRecord# {}'.format(jj))
+    
+                meta['folds'].append(folds)
+                meta['train_paths'].append(''.join([savepath, out_name,
+                                                    '_train_', str(jj),
+                                                    '.tfrecord']))
+    
+                _write_tfrecords(X, Y, n, meta['train_paths'][-1],
                                  target_type=target_type)
-
-            elif test_set == 'holdout':
-                meta['test_fold'].append(test_fold)
-
-                meta['test_paths'].append(''.join([savepath, out_name,
-                                                   '_test_', str(jj),
-                                                   '.tfrecord']))
-                n_test = np.arange(len(test_fold))
-                _write_tfrecords(x_test, y_test, n_test, meta['test_paths'][-1],
-                                 target_type=target_type)
-            jj += 1
-        with open(savepath+out_name+'_meta.pkl', 'wb') as f:
-            pickle.dump(meta, f)
-
+    
+                if test_set == 'loso':
+                    meta['test_size'] = len(Y)
+                    meta['test_paths'].append(''.join([savepath, out_name,
+                                                       '_test_', str(jj),
+                                                       '.tfrecord']))
+                    _write_tfrecords(X, Y, n, meta['test_paths'][-1],
+                                     target_type=target_type)
+    
+                elif test_set == 'holdout':
+                    meta['test_fold'].append(test_fold)
+    
+                    meta['test_paths'].append(''.join([savepath, out_name,
+                                                       '_test_', str(jj),
+                                                       '.tfrecord']))
+                    n_test = np.arange(len(test_fold))
+                    _write_tfrecords(x_test, y_test, n_test, meta['test_paths'][-1],
+                                     target_type=target_type)
+                jj += 1
+                with open(savepath+out_name+'_meta.pkl', 'wb') as f:
+                    pickle.dump(meta, f)
+    
     elif os.path.exists(savepath+out_name+'_meta.pkl'):
         print('Metadata file found, restoring')
         meta = load_meta(savepath, data_id=out_name)
@@ -693,15 +700,15 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
 
     #print(len(data), data[0].shape)
     for jj, xx in enumerate(data):
-        #print('xx :', xx.shape)
-        n_t, n_ch = xx.shape
+        print('xx :', xx.shape)
+        n_ch, n_t = xx.shape
         last_segment_start = n_t - segment_length
         #  print('last start:', last_segment_start)
 
         # print("stride:", stride)
         starts = np.arange(0, last_segment_start+1, stride)
 
-        segments = [xx[s:s+segment_length, ...] for s in starts]
+        segments = [xx[..., s:s+segment_length] for s in starts]
         #print("n_segm:", len(segments))
         if input_type == 'seq':
             if not seq_length:
@@ -742,18 +749,19 @@ def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
 
     #interval = raw_len//(test_segments+1)
     segments = np.arange(0, raw_len - ind_samples + 1, ind_samples)
-
-    mod = raw_len - (segments[-1] + ind_samples)
-    data = data[:, :, mod:]
+    data = np.concatenate([data[:,:, s: s + ind_samples] for s in segments])
+    #mod = raw_len - (segments[-1] + ind_samples)
+    #data = data[:, :, mod:]
     # Split continous data into non-overlapping segments
-    data = data.reshape([-1, ind_samples, data.shape[-2]])
+    #data = data.reshape([-1, ind_samples, data.shape[-2]])
 
     #Treat events the same depending on their type
     #case 1: events are signal -> split similarly to the data
-    events = events[:, mod:]
-    events = events.reshape([-1, ind_samples, events.shape[-2]])
-    print(data.shape)
-    print(events.shape)
+    events = np.concatenate([events[:, :, s: s + ind_samples] for s in segments])
+    #events = events[:, mod:]
+    #events = events.reshape([-1, ind_samples, events.shape[-2]])
+    #print(data.shape)
+    #print(events.shape)
 
     folds = _split_indices(data, events, n_folds=n_folds)
     #test_start = [ds + np.random.randint(interval - test_samples)
@@ -932,8 +940,8 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
         else:
             Y = events
         folds = [f + sample_counter for f in folds]
-    if input_type != 'continuous':
-        X = np.swapaxes(X, -2, -1)
+    
+    X = np.swapaxes(X, -2, -1)
 
     if scale_y:
         Y -= Y.mean(axis=0, keepdims=True)
