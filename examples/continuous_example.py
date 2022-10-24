@@ -100,7 +100,7 @@ lf_params = dict(n_ls=32, #number of latent factors
 model = mneflow.models.LFCNN(dataset, lf_params)
 model.build(loss='mae')
 
-model.train(n_epochs=500, eval_step=500, early_stopping=10)
+model.train(n_epochs=500, eval_step=50, early_stopping=10)
 #model.update_log()
 #%%
 from matplotlib import pyplot as plt
