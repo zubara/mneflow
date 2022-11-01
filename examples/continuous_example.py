@@ -76,9 +76,10 @@ import_opt = dict(fs=1000,
                   scale = True,
 #                  scale_y = True,
                   aug_stride=125,
+                  save_as_numpy=True
                   )
 
-meta = mneflow.produce_tfrecords((data, events), **import_opt)
+meta = mneflow.produce_tfrecords((np.squeeze(data), events), **import_opt)
 
 #%%
 dataset = mneflow.Dataset(meta, train_batch = 100)
