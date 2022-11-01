@@ -253,7 +253,7 @@ class BaseModel():
                 self.cm += self._confusion_matrix(y_true, y_pred)
             
             if collect_patterns == True and self.scope == 'lfcnn':
-                self.collect_patterns(fold=0)
+                self.collect_patterns(fold=0, n_folds=n_folds)
                 
         elif mode == 'cv':
                         
@@ -291,7 +291,7 @@ class BaseModel():
                     rms = None
                 
                 if collect_patterns == True and self.scope == 'lfcnn':
-                    self.collect_patterns(fold=jj)
+                    self.collect_patterns(fold=jj, n_folds=n_folds)
     
                 if jj < n_folds - 1:
                     self.shuffle_weights()
@@ -371,7 +371,10 @@ class BaseModel():
                 else:
                     self.cm += self._confusion_matrix(y_true, y_pred)                    
                     rms = None
-                    
+                
+                if collect_patterns == True and self.scope == 'lfcnn':
+                    self.collect_patterns(fold=jj, n_folds=n_folds) 
+                
                 if jj < n_folds -1:
                     self.shuffle_weights()
                 else:
@@ -652,6 +655,60 @@ class BaseModel():
                                            steps=self.dataset.validation_steps,
                                            verbose=0)
         return  losses, metrics
+    
+    def plot_confusion_matrix(self, cm=None, 
+                              classes=None,
+                              normalize=False,
+                              title=None,
+                              cmap=plt.cm.Blues):
+        """
+        This function prints and plots the confusion matrix.
+        Normalization can be applied by setting `normalize=True`.
+        """
+        if not title:
+            if normalize:
+                title = 'Normalized confusion matrix'
+            else:
+                title = 'Confusion matrix, without normalization'
+
+        # Compute confusion matrix
+        if not np.any(cm):
+            cm = self.cm
+        # Only use the labels that appear in the data
+        #classes = classes[unique_labels(y_true, y_pred)]
+        if normalize:
+            cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+            print("Normalized confusion matrix")
+        else:
+            print('Confusion matrix, without normalization')
+
+        #print(cm)
+        fig, ax = plt.subplots()
+        im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+        ax.figure.colorbar(im, ax=ax)
+        # We want to show all ticks...
+        ax.set(xticks=np.arange(cm.shape[1]),
+               yticks=np.arange(cm.shape[0]),
+               # ... and label them with the respective list entries
+               xticklabels=classes, yticklabels=classes,
+               title=title,
+               ylabel='True label',
+               xlabel='Predicted label')
+
+        # Rotate the tick labels and set their alignment.
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+                 rotation_mode="anchor")
+
+        # Loop over data dimensions and create text annotations.
+        fmt = '.2f' if normalize else 'd'
+        thresh = cm.max() / 2.
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, format(cm[i, j], fmt),
+                        ha="center", va="center",
+                        color="white" if cm[i, j] > thresh else "black")
+        fig.tight_layout()
+        return fig
 
 
 
@@ -776,10 +833,10 @@ class LFCNN(BaseModel):
         #tf.reduce_mean(n1_covs)
         return cov
     
-    def collect_patterns(self, fold=0):
+    def collect_patterns(self, fold=0, n_folds=1):
         self.compute_patterns()
         if not hasattr(self, 'cv_patterns') or fold==0:
-            n_folds = len(self.dataset.h_params['folds'][0])
+            #n_folds = len(self.dataset.h_params['folds'][0])
             self.cv_patterns = np.zeros([self.dataset.h_params['n_ch'],
                                          self.dataset.h_params['y_shape'][0],
                                          n_folds])
@@ -1266,8 +1323,8 @@ class LFCNN(BaseModel):
         return combined_topo, combined_spectra, combined_psds, fr
         
     def  plot_combined_pattern(self, sensor_layout=None):
-        cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
-               for i in range(self.cv_patterns.shape[1])])
+#        cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
+#               for i in range(self.cv_patterns.shape[1])])
         if hasattr(self, 'cv_patterns'):
             #compute correlation coefficient between patterns across folds
             
@@ -1330,7 +1387,7 @@ class LFCNN(BaseModel):
         #origin[3] = 1
         #if names:
             #time_format = n
-        self.fake_evoked.plot_topomap(times=fake_times,
+        ft = self.fake_evoked.plot_topomap(times=fake_times,
                                           #axes=ax[0, 0],
                                           colorbar=False,
                                           vmax=vmax,
@@ -1340,7 +1397,7 @@ class LFCNN(BaseModel):
                                           #size=1,
                                           outlines='head',
                                           )
- 
+        ft.set_size_inches([12,3.5])
             # self.true_evoked.plot_topomap(times=erp_inds[ii],
             #                               axes=ax[0, 1],
             #                               colorbar=False,
@@ -1359,14 +1416,17 @@ class LFCNN(BaseModel):
             ax.legend()
             ax.set_xlim(0, 90)
         else:
-            f, ax = plt.subplots(1, ncols)
+            f, ax = plt.subplots(1, ncols, sharey=True)
+            plt.tight_layout()
+            f.set_size_inches([12, 3.])
             for i in range(ncols):
-                ax[i].semilogy(freqs[:-1], combined_filters[:,i], label='Impulse response')
+                #ax[i].semilogy(freqs[:-1], combined_filters[:,i], label='Impulse response')
                 ax[i].semilogy(freqs[:-1], combined_filters[:,i]*combined_psds[:,i], label='Output RPS')
                 ax[i].semilogy(freqs[:-1], combined_psds[:,i], label='Input RPS')
                 #ax[i].plot(freqs[:-1], combined_filters[:,i], label='Output RPS')
                 #ax[i].plot(freqs[:-1], combined_psds[:,i], label='Input RPS')
-                ax[i].set_xlim(0, 90)
+                ax[i].set_xlim(0, 70)
+                #ax[i].set_ylim(1e-5, 1.)
                 if i == ncols-1:
                     ax[i].legend()
                 #ax[i].show()

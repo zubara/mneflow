@@ -278,9 +278,8 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         #(x, y) -> (1, x, y)
         data = np.expand_dims(data, 0)
 
-    if events.ndim < 2:
-        events = np.expand_dims(events, -1)
 
+    
     if isinstance(picks, (np.ndarray, list, tuple)):
         picks = np.asarray(picks)
         if np.any(data.shape[1] <= picks):
@@ -298,7 +297,7 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     #         else:
     #             warnings.warn('Targets cannot be transposed.', UserWarning)
 
-    print('input shapes: X-', data.shape, 'targets-', events.shape)
+    print('input shapes: X:', data.shape, 'targets:', events.shape)
     assert data.ndim == 3, "Import data panic: output.ndim != 3"
     return data, events
 
@@ -519,6 +518,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
         for inp in inputs:
 
             data, events = import_data(inp, picks=picks, array_keys=array_keys)
+            print(events.shape)
             if np.any(data) == None:
                 return
             else:
@@ -533,10 +533,19 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                         events = events[keep_ind]
     
     
-                #elif target_type == 'signal':
-                #    print(data.shape, events.shape)
-    
-    
+                # Check label dimensions again
+                if input_type == 'continuous':
+                    while events.ndim < 3:
+                        events = np.expand_dims(events, 0)
+                else:
+                    if events.ndim < 2:
+                        events = np.expand_dims(events, -1)
+                        
+                    
+                if (data.ndim != 3):
+                    warnings.warn('Input misshaped, using import_data.', UserWarning)
+                    return
+                
                 X, Y, folds = preprocess(
                         data, events, sample_counter=meta['train_size'],
                         input_type=input_type, scale=scale, fs=fs,
@@ -571,12 +580,13 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                     train_fold = np.concatenate(folds[1:])
                     val_fold = folds[0]
                     np.savez(savepath+out_name,
-                             X_train=X[train_fold, ...],
-                             X_val=X[val_fold, ...],
-                             X_test=x_test,
+                             X_train=np.swapaxes(X[train_fold, ...], -2, -1),
+                             X_val=np.swapaxes(X[val_fold, ...], -2, -1),
+                             #X_test=np.swapaxes(x_test,-2, -1),
                              y_train=Y[train_fold, ...],
                              y_val=Y[val_fold, ...],
-                             y_test=y_test)
+                             #y_test=y_test
+                             )
                     
                 
                 # print("sample_count: {}, folds: {} - {}".format(meta["train_size"],
@@ -700,7 +710,7 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
 
     #print(len(data), data[0].shape)
     for jj, xx in enumerate(data):
-        print('xx :', xx.shape)
+        #print('xx :', xx.shape)
         n_ch, n_t = xx.shape
         last_segment_start = n_t - segment_length
         #  print('last start:', last_segment_start)
@@ -749,7 +759,7 @@ def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
 
     #interval = raw_len//(test_segments+1)
     segments = np.arange(0, raw_len - ind_samples + 1, ind_samples)
-    data = np.concatenate([data[:,:, s: s + ind_samples] for s in segments])
+    data = np.concatenate([data[:, :, s: s + ind_samples] for s in segments])
     #mod = raw_len - (segments[-1] + ind_samples)
     #data = data[:, :, mod:]
     # Split continous data into non-overlapping segments
@@ -852,9 +862,7 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
     """
     print("Preprocessing:")
     #print(data.shape, events.shape)
-    if (data.ndim != 3) or (events.ndim < 2):
-        warnings.warn('Input misshaped, using import_data.', UserWarning)
-        data, events = import_data((data, events))
+
 
     if bp_filter:
         #assert len(bp_filter) == 2, "Invalid bp_filter values."
