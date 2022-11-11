@@ -48,9 +48,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     """Perform global scaling based on a specified baseline.
 
     Subtracts the mean and divides by the standard deviation of the
-    amplitude of all channels during the baseline interval. If input
-    contains 306 channels, performs separate scaling for magnetometers
-    and gradiometers.
+    amplitude of all channels during the baseline interval. 
 
     Parameters
     ----------
@@ -120,11 +118,14 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
     ----------
     X_ : list of ndarrays
         (Preprocessed) data matrix.
-        len = `n_epochs`, shape = `(time_steps, n_channels, n_timepoints)`
+        len = `n_epochs`, shape = `(squence_length, n_channels, n_timepoints)`
 
     y_ : list of ndarrays
         Class labels.
         len =  `n_epochs`, shape = `y_shape`
+    
+    n_ : int
+        nubmer of training examples
 
     output_file : str
         Name of the TFRecords file.
@@ -254,17 +255,7 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
                 datafile = np.load(fname)
 
             data = datafile[array_keys['X']]
-            # if np.any(target_picks):
-            #     events = data[:, target_picks, :]
-            #     data = np.delete(data, target_picks, axis=1)
-            #     print('Extracting target variables from target_picks')
-            # else:
             events = datafile[array_keys['y']]
-#                if (events.shape[0] != data.shape[0]):
-#                    if (events.shape[0] == 1):
-#                        events = np.squeeze(events, axis=0)
-#                    else:
-#                        raise ValueError("Target array misaligned.")
             print('Extracting target variables from {}'.format(array_keys['y']))
     else:
         print("Dataset not found")
@@ -277,8 +268,6 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         #(x, ) -> (1, 1, x)
         #(x, y) -> (1, x, y)
         data = np.expand_dims(data, 0)
-
-
     
     if isinstance(picks, (np.ndarray, list, tuple)):
         picks = np.asarray(picks)
@@ -557,7 +546,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                         scale_y=scale_y)
     
                 if target_type == 'int':
-                    Y, n_ev, meta['class_ratio'], _ = produce_labels(Y)
+                    Y, n_ev, meta['class_ratio'], meta['orig_classes'] = produce_labels(Y)
                     Y = _onehot(Y)
     
                 if test_set == 'holdout':

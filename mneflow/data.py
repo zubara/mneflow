@@ -17,12 +17,9 @@ from mneflow.utils import _onehot
 class Dataset(object):
     """TFRecords dataset from TFRecords files using the metadata."""
 
-    def __init__(self, h_params, train_batch=200, test_batch=None, split=True,
-                 class_subset=None,
-                 #combine_classes=False, 
-                 pick_channels=None, decim=None,
-                 rebalance_classes=False
-                 ):
+    def __init__(self, h_params, train_batch=50, test_batch=None, split=True,
+                 class_subset=None, pick_channels=None, decim=None,
+                 rebalance_classes=False):
 
         r"""Initialize tf.data.TFRdatasets.
 
@@ -33,7 +30,7 @@ class Dataset(object):
             See mneflow.utils.produce_tfrecords for details.
 
         train_batch : int, None, optional
-            Training mini-batch size. Defaults to 200. If None equals to the
+            Training mini-batch size. Defaults to 50. If None equals to the
             whole training set size
 
         test_batch : int, None, optional
@@ -45,7 +42,23 @@ class Dataset(object):
             on h_params['folds']. Defaults to True. Can be False if dataset is
             imported for evaluationg performance on the held-out set or
             vizualisations
-
+            
+        class_subset : list of int
+            Pick a susbet of the classes. Example in 5-class clalssification 
+            problem class_subset=[0, 2, 4] will filter the dataset to 
+            discriminate between these classes, without changing the parameters
+            of the whole dataset (e.g. y_shape=5)
+        
+        pick_channels : array of int
+            Pick a subset of channels
+            
+        decim : int
+            Apply decimation in time. Note this feature does not check for 
+            aliasing effects.
+            
+        rebalance_classes : bool
+            Apply rejection sampling to oversample underrepresented classes.
+            Defaults to False.
 
         """
         self.h_params = h_params
@@ -53,6 +66,7 @@ class Dataset(object):
         self.class_subset = class_subset
         self.decim = decim
         self.h_params['train_batch'] = train_batch
+        self.y_shape = self.h_params['y_shape']
 
 
         #%%%%%%%%%%%%
@@ -85,6 +99,7 @@ class Dataset(object):
 
         """Produce a tf.Dataset object and apply preprocessing
         functions if specified.
+        
         """
         # import and process parent dataset
         dataset = tf.data.TFRecordDataset(path)
@@ -96,9 +111,13 @@ class Dataset(object):
 
         if self.class_subset is not None and self.h_params['target_type'] == 'int':
             dataset = dataset.filter(self._select_classes)
+            dataset = dataset.map(self._select_class_subset)
+            
             subset_ratio = np.sum([v for k,v in self.h_params['class_ratio'].items()
                                    if k in self.class_subset])
             ratio_multiplier = 1./subset_ratio
+            print("Using class_subset with {} classes:".format(len(self.class_subset)))
+            print(*[self.h_params['orig_classes'][i] for i in self.class_subset])
             print("Subset ratio {:.2f}, Multiplier {:.2f}".format(subset_ratio,
                                                                   ratio_multiplier
                                                                   ))
@@ -106,7 +125,10 @@ class Dataset(object):
                   if k in self.class_subset}
             
             self.h_params['class_ratio'] = cp
-            #print(self.h_params['class_ratio'])
+            self.y_shape = (len(self.class_subset),)
+
+            
+            #print("y_shape:", self.h_params['y_shape'])
             
         if self.decim is not None:
             print('decimating')
@@ -173,17 +195,21 @@ class Dataset(object):
         else:
             #print(dataset)
             #batch
+            if rebalance_classes:
+                dataset = self._resample(dataset)
             if np.any(['train' in tp for tp in path]):
                 size = self.h_params['train_size']
             else:
                 size = self.h_params['val_size']
             if not test_batch:
                 test_batch = size
+                dataset = dataset.shuffle(5).batch(test_batch)
+            else:
+                dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
                 
-            if rebalance_classes:
-                dataset = self._resample(dataset)
+
                 
-            dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
+            #dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
             dataset.batch = test_batch
 
 
@@ -210,7 +236,12 @@ class Dataset(object):
 
 
 
-
+    def _select_class_subset(self, example_proto):
+        """Pick classes defined in self.class_subset from y"""
+        example_proto['y'] = tf.gather(example_proto['y'], 
+                                       tf.constant(self.class_subset),
+                                       axis=0)
+        return example_proto
 
     def _select_channels(self, example_proto):
         """Pick a subset of channels specified by self.channel_subset."""
@@ -289,7 +320,12 @@ class Dataset(object):
                                     n_classes=self.h_params['y_shape'][0])
             #print(onehot_subset)
             subset = tf.constant(onehot_subset, dtype=tf.int64)
-            out = tf.reduce_any(tf.equal(tf.argmax(sample['y']), subset))
+            out = tf.reduce_any(tf.reduce_all(tf.equal(sample['y'], subset), axis=1))
+            # if out == False:
+            #     print("X")
+            # else:
+            #     print("+")
+                
             return out
         else:
             return tf.constant(True, dtype=tf.bool)
@@ -322,7 +358,7 @@ class Dataset(object):
         #print("Oversampling")
         
         n_classes = len(self.h_params['class_ratio'].items())
-        print(n_classes)
+        #print(n_classes)
         target_dist = 1./n_classes*np.ones(n_classes)
         empirical_dist = [v for k, v in self.h_params['class_ratio'].items()]
         resample_ds = dataset.rejection_resample(class_func, 
