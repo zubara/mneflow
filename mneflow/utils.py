@@ -48,9 +48,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     """Perform global scaling based on a specified baseline.
 
     Subtracts the mean and divides by the standard deviation of the
-    amplitude of all channels during the baseline interval. If input
-    contains 306 channels, performs separate scaling for magnetometers
-    and gradiometers.
+    amplitude of all channels during the baseline interval.
 
     Parameters
     ----------
@@ -120,11 +118,14 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
     ----------
     X_ : list of ndarrays
         (Preprocessed) data matrix.
-        len = `n_epochs`, shape = `(time_steps, n_channels, n_timepoints)`
+        len = `n_epochs`, shape = `(squence_length, n_channels, n_timepoints)`
 
     y_ : list of ndarrays
         Class labels.
         len =  `n_epochs`, shape = `y_shape`
+
+    n_ : int
+        nubmer of training examples
 
     output_file : str
         Name of the TFRecords file.
@@ -254,17 +255,7 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
                 datafile = np.load(fname)
 
             data = datafile[array_keys['X']]
-            # if np.any(target_picks):
-            #     events = data[:, target_picks, :]
-            #     data = np.delete(data, target_picks, axis=1)
-            #     print('Extracting target variables from target_picks')
-            # else:
             events = datafile[array_keys['y']]
-#                if (events.shape[0] != data.shape[0]):
-#                    if (events.shape[0] == 1):
-#                        events = np.squeeze(events, axis=0)
-#                    else:
-#                        raise ValueError("Target array misaligned.")
             print('Extracting target variables from {}'.format(array_keys['y']))
     else:
         print("Dataset not found")
@@ -277,9 +268,6 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         #(x, ) -> (1, 1, x)
         #(x, y) -> (1, x, y)
         data = np.expand_dims(data, 0)
-
-    if events.ndim < 2:
-        events = np.expand_dims(events, -1)
 
     if isinstance(picks, (np.ndarray, list, tuple)):
         picks = np.asarray(picks)
@@ -298,7 +286,7 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     #         else:
     #             warnings.warn('Targets cannot be transposed.', UserWarning)
 
-    print('input shapes: X-', data.shape, 'targets-', events.shape)
+    print('input shapes: X:', data.shape, 'targets:', events.shape)
     assert data.ndim == 3, "Import data panic: output.ndim != 3"
     return data, events
 
@@ -519,6 +507,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
         for inp in inputs:
 
             data, events = import_data(inp, picks=picks, array_keys=array_keys)
+            print(events.shape)
             if np.any(data) == None:
                 return
             else:
@@ -533,9 +522,18 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                         events = events[keep_ind]
 
 
-                #elif target_type == 'signal':
-                #    print(data.shape, events.shape)
+                # Check label dimensions again
+                if input_type == 'continuous':
+                    while events.ndim < 3:
+                        events = np.expand_dims(events, 0)
+                else:
+                    if events.ndim < 2:
+                        events = np.expand_dims(events, -1)
 
+
+                if (data.ndim != 3):
+                    warnings.warn('Input misshaped, using import_data.', UserWarning)
+                    return
 
                 X, Y, folds = preprocess(
                         data, events, sample_counter=meta['train_size'],
@@ -548,7 +546,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                         scale_y=scale_y)
 
                 if target_type == 'int':
-                    Y, n_ev, meta['class_ratio'], _ = produce_labels(Y)
+                    Y, n_ev, meta['class_ratio'], meta['orig_classes'] = produce_labels(Y)
                     Y = _onehot(Y)
 
                 if test_set == 'holdout':
@@ -571,15 +569,15 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                     train_fold = np.concatenate(folds[1:])
                     val_fold = folds[0]
                     np.savez(savepath+out_name,
-                             X_train=X[train_fold, ...],
-                             X_val=X[val_fold, ...],
-                             X_test=x_test,
+                             X_train=np.swapaxes(X[train_fold, ...], -2, -1),
+                             X_val=np.swapaxes(X[val_fold, ...], -2, -1),
+                             #X_test=np.swapaxes(x_test,-2, -1),
                              y_train=Y[train_fold, ...],
                              y_val=Y[val_fold, ...],
-                             y_test=y_test)
+                             #y_test=y_test
+                             )
 
 
-                # print("sample_count: {}, folds: {} - {}".format(meta["train_size"],
                 #                                                 np.min(n), np.max(n)))
                 meta['val_size'] += len(folds[0])
 
@@ -700,7 +698,7 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
 
     #print(len(data), data[0].shape)
     for jj, xx in enumerate(data):
-        print('xx :', xx.shape)
+        #print('xx :', xx.shape)
         n_ch, n_t = xx.shape
         last_segment_start = n_t - segment_length
         #  print('last start:', last_segment_start)
@@ -749,7 +747,7 @@ def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
 
     #interval = raw_len//(test_segments+1)
     segments = np.arange(0, raw_len - ind_samples + 1, ind_samples)
-    data = np.concatenate([data[:,:, s: s + ind_samples] for s in segments])
+    data = np.concatenate([data[:, :, s: s + ind_samples] for s in segments])
     #mod = raw_len - (segments[-1] + ind_samples)
     #data = data[:, :, mod:]
     # Split continous data into non-overlapping segments
@@ -852,9 +850,7 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
     """
     print("Preprocessing:")
     #print(data.shape, events.shape)
-    if (data.ndim != 3) or (events.ndim < 2):
-        warnings.warn('Input misshaped, using import_data.', UserWarning)
-        data, events = import_data((data, events))
+
 
     if bp_filter:
         #assert len(bp_filter) == 2, "Invalid bp_filter values."
