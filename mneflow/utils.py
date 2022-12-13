@@ -962,25 +962,27 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
     # return y_out
 
 def regression_metrics(y_true, y_pred):
-    cc = np.corrcoef(y_true.T, y_pred.T)[0][1]
+    y_shape = y_true.shape[-1]
+    
+    cc = np.diag(np.corrcoef(y_true.T, y_pred.T)[:y_shape,-y_shape:])
     r2 =  r2_score(y_true, y_pred)
     cs = cosine_similarity(y_true, y_pred)
-    bias = np.mean(y_true) - np.mean(y_pred)
+    bias = np.mean(y_true, axis=0) - np.mean(y_pred, axis=0)
     #ve = pve(y_true, y_pred)
     return dict(cc=cc, r2=r2, cs=cs, bias=bias)
 
 def cosine_similarity(y_true, y_pred):
     # y_true -= y_true.mean()
     # y_pred -= y_pred.mean()
-    return np.dot(y_pred.T, y_true)[0][0] / (np.sqrt(np.sum(y_pred**2)) * np.sqrt(np.sum(y_true**2)))
+    return np.dot(y_pred.T, y_true) / (np.sqrt(np.sum(y_pred**2,axis=0)) * np.sqrt(np.sum(y_true**2, axis=0)))
     
 def pve(y_true, y_pred):
-    y_true -= y_true.mean()
-    y_pred -= y_pred.mean()
-    return np.dot(y_pred.T, y_true)[0][0] / np.sum(y_pred**2)
+    y_true -= y_true.mean(axis=0)
+    y_pred -= y_pred.mean(axis=0)
+    return np.dot(y_pred.T, y_true) / np.sum(y_pred**2, axis=0)
     
 def r2_score(y_true, y_pred):
-    res = np.sum((y_true - y_pred)**2)
-    tot = np.sum((y_true - np.mean(y_true))**2)
+    res = np.sum((y_true - y_pred)**2, axis=0)
+    tot = np.sum((y_true - np.mean(y_true, axis=0, keepdims=True))**2, axis=0)
     return 1 - res/tot
 
