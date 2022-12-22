@@ -66,8 +66,8 @@ class BaseModel():
             specified uses default hyperparameters for each implemented model.
         """
         self.specs = specs
-                
-        
+
+
         self.dataset = Dataset
         self.model_path = specs['model_path']
 
@@ -108,9 +108,9 @@ class BaseModel():
 
         learn_rate : float
             Learning rate, defaults to 3e-4
-            
+
         mapping : str
-            
+
         """
         # Initialize computational graph
         if mapping:
@@ -129,7 +129,7 @@ class BaseModel():
             if not isinstance(metrics, list):
                 metrics = [metrics]
             self.params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
-        
+
         self.specs.setdefault('model_path', self.dataset.h_params['savepath'])
         self.specs.setdefault('maxnorm_scope', self.dataset.h_params['savepath'])
        # Initialize optimizer
@@ -179,7 +179,7 @@ class BaseModel():
         #y_pred = fc_1
         #print("Built graph: y_shape", y_pred.shape)
         return y_pred
-    
+
 
     def train(self, n_epochs, eval_step=None, min_delta=1e-6,
               early_stopping=3, mode='single_fold', prune_weights=False,
@@ -218,7 +218,7 @@ class BaseModel():
         if not eval_step:
             train_size = self.dataset.h_params['train_size']
             eval_step = train_size // self.dataset.h_params['train_batch'] + 1
-        
+
         # if val_batch:
         #     val_size = self.dataset.h_params['val_size']
         #     self.validation_steps = max(1, val_size // val_batch)
@@ -231,7 +231,7 @@ class BaseModel():
         losses = []
         self.cv_losses = []
         self.cv_metrics = []
-        
+
         if mode == 'single_fold':
             n_folds = 1
             #self.cv_patterns = 0
@@ -243,7 +243,7 @@ class BaseModel():
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
                                    callbacks=[stop_early], verbose=2)
-            
+
             #compute validation loss and metric
             self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
             losses.append(self.v_loss)
@@ -251,25 +251,25 @@ class BaseModel():
             self.cv_losses.append(self.v_loss)
             self.cv_metrics.append(self.v_metric)
             #print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
-            
+
             #compute specific metrics for classification and regresssion
             y_true, y_pred = self.predict(self.dataset.val)
             if self.dataset.h_params['target_type'] == 'float':
                 rms = regression_metrics(y_true, y_pred)
-                print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])  
+                print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])
             else:
                 rms = None
                 self.cm += self._confusion_matrix(y_true, y_pred)
-            
+
             if collect_patterns == True and self.scope == 'lfcnn':
                 self.collect_patterns(fold=0, n_folds=n_folds)
-                
+
         elif mode == 'cv':
-                        
+
             n_folds = len(self.dataset.h_params['folds'][0])
             print("Running cross-validation with {} folds".format(n_folds))
 
-            
+
             for jj in range(n_folds):
                 print("fold:", jj)
                 train, val = self.dataset._build_dataset(self.dataset.h_params['train_paths'],
@@ -287,21 +287,21 @@ class BaseModel():
                 loss, metric = self.evaluate(val)
                 self.cv_losses.append(loss)
                 self.cv_metrics.append(metric)
-                
+
                 y_true, y_pred = self.predict(val)
 
                 if self.dataset.h_params['target_type'] == 'float':
                     rms = regression_metrics(y_true, y_pred)
                     for k,v in rms.items():
                         rmss[k].append(v)
-                    print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])  
+                    print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])
                 else:
-                    self.cm += self._confusion_matrix(y_true, y_pred)                    
+                    self.cm += self._confusion_matrix(y_true, y_pred)
                     rms = None
-                
+
                 if collect_patterns == True and self.scope == 'lfcnn':
                     self.collect_patterns(fold=jj, n_folds=n_folds)
-    
+
                 if jj < n_folds - 1:
                     self.shuffle_weights()
                 else:
@@ -309,36 +309,36 @@ class BaseModel():
 
 
                 print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
-            
+
             self.v_loss = np.mean(self.cv_losses)
             self.v_metric = np.mean(self.cv_metrics)
             metrics = self.cv_metrics
             losses = self.cv_losses
-            
+
             print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
-           
+
             if self.dataset.h_params['target_type'] == 'float':
                 rms = {k:np.mean(v) for k, v in rmss.items()}
-                rms.update({k + '_std':np.std(v) for k, v in rmss.items()}) 
+                rms.update({k + '_std':np.std(v) for k, v in rmss.items()})
                 print("Validation set: Corr : {:.3f} +/- {:.3f}. \
                       R^2: {:.3f} +/- {:.3f}".format(
                       rms['cc'], rms['cc_std'], rms['r2'], rms['r2_std']))
             else:
                 rms = None
-            
+
             #return self.cv_losses, self.cv_metrics
 
         elif mode == "loso":
             n_folds = len(self.dataset.h_params['train_paths'])
             print("Running leave-one-subject-out CV with {} subject".format(n_folds))
-            
+
             for jj in range(n_folds):
                 print("fold:", jj)
 
                 test_subj = self.dataset.h_params['train_paths'][jj]
                 train_subjs = self.dataset.h_params['train_paths'].copy()
                 train_subjs.pop(jj)
-                
+
                 print(train_subjs)
                 print('***')
                 print(test_subj)
@@ -363,55 +363,55 @@ class BaseModel():
 
                 v_loss, v_metric = self.evaluate(val)
                 loso_loss, loso_metric = self.evaluate(test)
-                
+
                 print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loso_loss, loso_metric))
                 self.cv_losses.append(v_loss)
                 self.cv_metrics.append(v_metric)
                 losses.append(loso_loss)
                 metrics.append(loso_metric)
-                
+
                 y_true, y_pred = self.predict(val)
                 if self.dataset.h_params['target_type'] == 'float':
                     y_true, y_pred = self.predict(val)
                     rms = regression_metrics(y_true, y_pred)
                     for k,v in rms.items():
                         rmss[k].append(v)
-                    print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])  
+                    print("Validation set: Corr =", rms['cc'], " R2 =", rms['r2'])
                 else:
-                    self.cm += self._confusion_matrix(y_true, y_pred)                    
+                    self.cm += self._confusion_matrix(y_true, y_pred)
                     rms = None
-                
+
                 if collect_patterns == True and self.scope == 'lfcnn':
-                    self.collect_patterns(fold=jj, n_folds=n_folds) 
-                
+                    self.collect_patterns(fold=jj, n_folds=n_folds)
+
                 if jj < n_folds -1:
                     self.shuffle_weights()
                 else:
                     "Not shuffling the weights for the last fold"
-                
+
             if self.dataset.h_params['target_type'] == 'float':
                 rms = {k:np.mean(v) for k, v in rmss.items()}
-                rms.update({k + '_std':np.std(v) for k, v in rmss.items()})  
+                rms.update({k + '_std':np.std(v) for k, v in rmss.items()})
                 print("Validation set: Corr : {:.3f} +/- {:.3f}. \
                       R^2: {:.3f} +/- {:.3f}".format(
                       rms['cc'], rms['cc_std'], rms['r2'], rms['r2_std']))
             else:
                 rms = None
-                
+
             self.loso_losses = losses
             self.loso_metrics = metrics
             self.update_log(rms, prefix='loso_')
-            
+
         print("""{} with {} fold(s) completed. \n
               Loss: {:.4f} +/- {:.4f}.
               Metric: {:.4f} +/- {:.4f}"""
-              .format(mode, n_folds, 
-                      np.mean(losses), np.std(losses), 
+              .format(mode, n_folds,
+                      np.mean(losses), np.std(losses),
                       np.mean(metrics), np.std(metrics)))
         self.update_log(rms=rms, prefix=mode)
         #return self.cv_losses, self.cv_metrics
 
-    
+
     def prune_weights(self, increase_regularization=3.):
         stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
                                                       min_delta=1e-6,
@@ -424,10 +424,10 @@ class BaseModel():
         self.t_hist_p = self.km.fit(self.dataset.train,
                                validation_data=self.dataset.val,
                                epochs=30, steps_per_epoch=self.train_params[1],
-                               shuffle=True, 
+                               shuffle=True,
                                validation_steps=self.dataset.validation_steps,
                                callbacks=[stop_early], verbose=2)
-                    
+
 
     def shuffle_weights(self):
         print("Re-shuffling weights between folds")
@@ -453,7 +453,7 @@ class BaseModel():
         #plt.title(self.scope.upper())
         #plt.xlabel('Epochs')
         #plt.show()
-        
+
     def _confusion_matrix(self, y_true, y_pred):
         y_p = _onehot(np.argmax(y_pred,1), n_classes=self.y_shape[-1])
         cm = np.dot(y_p.T, y_true)
@@ -482,11 +482,11 @@ class BaseModel():
         If the file exists, appends a line to the existing file.
         """
         appending = os.path.exists(self.model_path + self.scope + '_log.csv')
-        
+
         log = dict()
         if rms:
             log.update({prefix+k:v for k,v in rms.items()})
-            
+
         #dataset info
         log['data_id'] = self.dataset.h_params['data_id']
         log['data_path'] = self.dataset.h_params['savepath']
@@ -520,7 +520,7 @@ class BaseModel():
         tr_loss, tr_perf = self.evaluate(self.dataset.train)
         log['tr_metric'] = tr_perf
         log['tr_loss'] = tr_loss
-        
+
 
         if 'test_paths' in self.dataset.h_params and log['mode'] != 'loso':
             print('Test performance:')
@@ -535,19 +535,19 @@ class BaseModel():
             log['test_loss'] = t_loss
             log['test_metrics'] = "NA"
             log['test_losses'] = "NA"
-            
+
         elif log['mode'] == 'loso':
             log['test_metric'] = np.mean(self.loso_metrics)
             log['test_loss'] = np.mean(self.loso_losses)
             log['test_metrics'] = self.loso_metrics
             log['test_losses'] = self.loso_losses
-    
+
         else:
             log['test_metric'] = "NA"
             log['test_loss'] = "NA"
             log['test_metrics'] = "NA"
             log['test_losses'] = "NA"
-            
+
         self.log.update(log)
 
         with open(self.model_path + self.scope + '_log.csv', 'a+', newline='') as csv_file:
@@ -560,7 +560,7 @@ class BaseModel():
         """
         Saves the model and (optionally, patterns, confusion matrices)
         """
-        self.model_name = "_".join([self.scope, 
+        self.model_name = "_".join([self.scope,
                                     self.dataset.h_params['data_id']])
         self.km.save(self.model_path + self.model_name)
         if hasattr(self, 'cv_patterns'):
@@ -587,11 +587,11 @@ class BaseModel():
                  log=self.log,
                  cm=self.cm,
                  )
-        
+
 
 
     def restore(self):
-        self.model_name = "_".join([self.scope, 
+        self.model_name = "_".join([self.scope,
                                     self.dataset.h_params['data_id']])
         self.km  = tf.keras.models.load_model(self.model_path + self.model_name)
         #try:
@@ -664,8 +664,8 @@ class BaseModel():
                                            steps=self.dataset.validation_steps,
                                            verbose=0)
         return  losses, metrics
-    
-    def plot_confusion_matrix(self, cm=None, 
+
+    def plot_confusion_matrix(self, cm=None,
                               classes=None,
                               normalize=False,
                               title=None,
@@ -841,7 +841,7 @@ class LFCNN(BaseModel):
         #print('cov:', cov.shape)
         #tf.reduce_mean(n1_covs)
         return cov
-    
+
     def collect_patterns(self, fold=0, n_folds=1):
         self.compute_patterns()
         if not hasattr(self, 'cv_patterns') or fold==0:
@@ -877,10 +877,10 @@ class LFCNN(BaseModel):
         #print(order, type(order))
         wuo = order_weight.ravel()
         #self.uorder = np.squeeze(self.uorder1)
-        
+
         self.cv_patterns_weight[:, :, fold] = self.patterns[:, wuo]
         self.cv_filters_weight[:, :, fold] = self.filters[:, wuo]
-        
+
         #collect spatial patterns for 'compwise_loss' sorting
         order_cwl, _ = self._sorting('compwise_loss')
         #print(order, type(order))
@@ -956,7 +956,7 @@ class LFCNN(BaseModel):
         X, y = [row for row in ds.take(1)][0]
 
         self.out_w_flat = self.fin_fc.w.numpy()
-        
+
         self.out_weights = np.reshape(self.out_w_flat, [-1, self.dmx.size,
                                               self.out_dim])
         self.out_biases = self.fin_fc.b.numpy()
@@ -973,7 +973,7 @@ class LFCNN(BaseModel):
             y_int = np.argmax(y, 1)
             y_unique = np.unique(y_int)
             self.true_evoked_data = np.squeeze(np.array([X.numpy()[y_int==i,...].mean(0) for i in y_unique]))
-                                     
+
         X = X - tf.reduce_mean(X, axis=-2, keepdims=True)
         X = tf.transpose(X, [3, 0, 1, 2])
         X = tf.reshape(X, [X.shape[0], -1])
@@ -1002,7 +1002,7 @@ class LFCNN(BaseModel):
         #  Temporal conv stuff
         self.filters = np.squeeze(kern)
         self.tc_out = np.squeeze(tc_out)
-        self.y_true = np.squeeze(y.numpy()) 
+        self.y_true = np.squeeze(y.numpy())
         self.corr_to_output = self.get_output_correlations(y)
         #self.y_true = y
 
@@ -1139,12 +1139,12 @@ class LFCNN(BaseModel):
         #if not hasattr(self, 'uorder'):
         order, _ = self._sorting(sorting)
         self.uorder = order.ravel()
-            
+
             #self.uorder = np.squeeze(order)
         print(self.uorder)
         if not class_names:
             class_names = ["Class {}".format(i) for i in range(self.y_shape[-1])]
-        
+
         f, ax = plt.subplots(2, 2)
         f.set_size_inches([16, 16])
         if np.any(self.uorder):
@@ -1159,22 +1159,23 @@ class LFCNN(BaseModel):
              for i, wf in enumerate(scaled_waveforms) if i not in self.uorder]
 
             [ax[0, 0].plot(times,
-                          scaled_waveforms[uo] + uo, 
-                          linewidth=5., label=class_names[i]) 
+                          scaled_waveforms[uo] + uo,
+                          linewidth=5., label=class_names[i])
              for i, uo in enumerate(self.uorder)]
             ax[0, 0].set_title('Latent component waveforms')
-            
+
             tstep = float(self.specs['stride'])/self.dataset.h_params['fs']
             strides1 = np.arange(times[0], times[-1] + tstep/2, tstep)
-            ax[1, 0].pcolor(strides1, np.arange(self.specs['n_latent']), 
-                           np.mean(self.tc_out, 0).T, shading='auto')
+            ax[1, 0].pcolor(strides1, np.arange(self.specs['n_latent']),
+                           np.mean(self.tc_out, 0).T, #shading='auto'
+                           )
             ax[1, 0].set_title("Avg. Temporal Convolution Output")
             ax[1, 0].set_ylabel("Component index")
             ax[1, 0].set_xlabel("Time, s")
             if not hasattr(self, 'pattern_weights'):
                 pattern_weights = np.einsum('ijk, jkl ->ikl', self.tc_out, self.out_weights)
-                self.pattern_weights = np.maximum(pattern_weights + self.out_biases[None, :], 0.).mean(0) 
-            
+                self.pattern_weights = np.maximum(pattern_weights + self.out_biases[None, :], 0.).mean(0)
+
             a = ax[0, 1].pcolor(self.pattern_weights, cmap='bone_r')
             divider = make_axes_locatable(ax[0,1])
             cax = divider.append_axes('right', size='5%', pad=0.05)
@@ -1185,7 +1186,7 @@ class LFCNN(BaseModel):
                                              linewidth=2.,
                                              edgecolor='tab:orange')
             ax[0, 1].add_collection(pc)
-            
+
             ax[0, 1].set_title("Pattern weights")
             ax[0, 1].set_ylabel("Component index")
             ax[0, 1].set_xticks(np.arange(0.5, 0.5+len(class_names), 1))
@@ -1194,19 +1195,19 @@ class LFCNN(BaseModel):
             for i, flt in enumerate(self.filters.T):
                 flt -= flt.mean()
                 w, h = freqz(flt, 1, worN=128, fs = self.dataset.h_params['fs'])
-                fr, psd = welch(self.lat_tcs[i, :] - self.lat_tcs[i, :].mean(), 
+                fr, psd = welch(self.lat_tcs[i, :] - self.lat_tcs[i, :].mean(),
                                 fs=self.dataset.h_params['fs'], nperseg=256)
-                
+
                 rpss.append(np.sqrt(psd[:-1])*np.abs(h)/np.sum(np.sqrt(psd[:-1])*np.abs(h)))
-            
-            [ax[1, 1].plot(w, rpss[uo], linewidth=2.5, label=class_names[i]) 
+
+            [ax[1, 1].plot(w, rpss[uo], linewidth=2.5, label=class_names[i])
                              for i, uo in enumerate(self.uorder)]
             ax[1, 1].set_xlim(1.,70.)
             ax[1, 1].set_title("Relative Power Spectra")
             ax[1, 1].set_xlabel("Frequency, Hz")
             ax[1, 1].legend()
             #ax[1,0].colorbar()
-            
+
             #ax[1,0].pcolor(self.component_relevance_loss)
             # bias = self.tconv.b.numpy()[uo]
             # ax[0, 1].stem(self.filters.T[uo])
@@ -1220,12 +1221,12 @@ class LFCNN(BaseModel):
             # vmin = conv.min()
             # vmax = conv.max()
 
-            # ax[1, 0].plot(times + 
+            # ax[1, 0].plot(times +
             #               0.5*self.specs['filter_length']/
             #               float(self.dataset.h_params['fs']),
             #               conv)
             # #ax[1, 0].hlines(bias, times[0], times[-1], linestyle='--', color='k')
-    
+
 
             # tstep = float(self.specs['stride'])/self.dataset.h_params['fs']
             # # strides = np.arange(times[0], times[-1] + tstep/2, tstep)[1:-1]
@@ -1306,12 +1307,12 @@ class LFCNN(BaseModel):
                 order.append(pat[:n_comp])
                 ts.append(np.arange(self.F.shape[-1]))
                 #ts.append(None)
-        
+
         elif sorting == 'combined':
             #self.F = self.out_weights[..., i].T
             order = np.argmax(self.pattern_weights, 0)
             ts = [np.arange(self.out_weights.shape[0]) for i in range(self.y_shape[0])]
-            
+
         elif sorting == 'compwise_loss':
             for i in range(self.out_dim):
                 self.F = self.out_weights[..., i].T
@@ -1351,24 +1352,24 @@ class LFCNN(BaseModel):
         order = np.array(order)
         ts = np.array(ts)
         return order, ts
-    
-    
+
+
     def combined_pattern(self, subset=None):
         #TODO: add bias?
         #TODO: pattern attribution
         #TODO: other approaches
-        
+
         #identify single timestep where all components have max abs weights
         #t = np.argmax(np.sum(np.abs(self.waveforms), 0), 0)
         #t = np.argmax(np.sum(np.abs(self.out_weights),1), 0)
         #treated_weights = np.repeat(self.out_weights, self.specs['stride'], axis=0)
         #treated_weights = treated_weights[:self.waveforms.shape[1], ...].transpose([1,0, 2])
-        
+
         #compute weighted sum of spatial patterns
         pattern_weights = np.einsum('ijk, jkl ->ikl', self.tc_out, self.out_weights)
         self.pattern_weights = np.maximum(pattern_weights + self.out_biases[None, :], 0.).mean(0)
-             
-        
+
+
         if subset:
             picks = np.argsort(self.pattern_weights)[-subset:]
         else:
@@ -1380,8 +1381,8 @@ class LFCNN(BaseModel):
         for i, flt in enumerate(self.filters.T):
             flt -= flt.mean()
             w, h = freqz(flt, 1, worN=128, fs = self.dataset.h_params['fs'])
-            fr, psd = welch(self.lat_tcs[i, :] - self.lat_tcs[i, :].mean(), 
-                            fs=self.dataset.h_params['fs'], 
+            fr, psd = welch(self.lat_tcs[i, :] - self.lat_tcs[i, :].mean(),
+                            fs=self.dataset.h_params['fs'],
                             nperseg=256)
             psds.append(psd[:-1])
             realh.append(np.abs(h))
@@ -1392,31 +1393,31 @@ class LFCNN(BaseModel):
         combined_psds = np.dot(psds.T, self.pattern_weights)
         #plt.plot(w, combined_spectra)
         return combined_topo, combined_spectra, combined_psds, fr
-        
+
     def  plot_combined_pattern(self, sensor_layout=None, names=None):
         if not names:
             names = ['Class {}'.format(i) for i in range(self.y_shape[-1])]
-            
+
 #        cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
 #               for i in range(self.cv_patterns.shape[1])])
         if hasattr(self, 'cv_patterns'):
             #compute correlation coefficient between patterns across folds
-            
+
             #combined_topos = np.einsum('ijk, jk -> ij', self.cv_patterns, cc)
             combined_topos = np.mean(self.cv_patterns, -1)
             combined_filters = np.mean(self.cv_filters, -1)
             combined_psds = np.mean(self.cv_psds, -1)
-            
+
             # combined_topos = np.mean(self.cv_patterns, -1)
             # combined_filters = np.mean(self.cv_filters, -1)
             freqs = self.freqs
             #combined = np.mean(self.cv_patterns, axis=-1)
             #combined_sd = np.std(self.cv_patterns, axis=-1)
             #combined /= combined_sd
-            
+
         else:
             combined_topos, combined_filters, combined_psds, freqs = self.combined_pattern()
-            
+
             freqs = self.freqs
         combined_topos /= np.maximum(combined_topos.std(axis=0, keepdims=True), 1e-3)
         n = self.y_shape[0]
@@ -1426,35 +1427,36 @@ class LFCNN(BaseModel):
         orig_xy = np.mean(lo.pos[:, :2], 0)
         for i, ch in enumerate(lo.names):
             if info['chs'][i]['ch_name'] == ch:
-                info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/4.5 
+                info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/4.5
                 #info['chs'][i]['loc'][4:] = 0
             else:
                 print("Channel name mismatch. info: {} vs lo: {}".format(
                     info['chs'][i]['ch_name'], ch))
-            
+
         self.fake_evoked = evoked.EvokedArray(combined_topos, info)
         self.fake_evoked.data[:, :n] = combined_topos
 #        self.fake_evoked.data[:, 1] = combined
         # true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
         # ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
-        
+
         # ed /= ed.std(1,keepdims=True)
-        
+
         # self.true_evoked = evoked.EvokedArray(ed.T, info)
         erp_inds = np.arange(n)
         nrows = 1
         ncols = n
-            
+
 #%%
         #tt = (float(t) * self.dataset.h_params['fs'] / 1000.) - 0.1
         #f, ax = plt.subplots(nrows, ncols, sharey=True)
         #for ii in range(self.y_shape[-1]):
-            
+
         # plt.tight_layout()
         # f.set_size_inches([16, 3])
         # ax = np.atleast_2d(ax)
-                
+
         fake_times = np.arange(0,  ncols, 1.)
+        print(fake_times)
         vmax = np.percentile(self.fake_evoked.data[:, :n], 99)
         #origin = np.median(lo.pos, 0)
         #origin[2] = 0.0
@@ -1482,12 +1484,12 @@ class LFCNN(BaseModel):
             #                               #size=1,
             #                               outlines='head',
             #                               )
-        
+
         if ncols == 1:
             plt.figure()
             ax = plt.gca()
             normalized_input_rps = combined_psds/np.maximum(np.sum(combined_psds), 1e-6)
-            normalized_output_rps = combined_filters*combined_psds 
+            normalized_output_rps = combined_filters*combined_psds
             normalized_output_rps /= np.maximum(np.sum(combined_filters*combined_psds), 1-6)
             ax.plot(freqs[:-1], normalized_input_rps, label='Input RPS')
             ax.plot(freqs[:-1], normalized_output_rps, label='Output RPS')
@@ -1499,11 +1501,11 @@ class LFCNN(BaseModel):
             f.set_size_inches([12, 3.])
             for i in range(ncols):
                 #ax[i].semilogy(freqs[:-1], combined_filters[:,i], label='Impulse response')
-                normalized_output_rps = combined_filters[:,i]*combined_psds[:,i] 
-                normalized_output_rps /= np.maximum(np.sum(combined_filters[:,i]*combined_psds[:,i]), 1e-6) 
+                normalized_output_rps = combined_filters[:,i]*combined_psds[:,i]
+                normalized_output_rps /= np.maximum(np.sum(combined_filters[:,i]*combined_psds[:,i]), 1e-6)
                 normalized_input_rps = combined_psds[:,i] / np.maximum(np.sum(combined_psds[:,i]), 1e-6)
-                
-                
+
+
                 ax[i].plot(freqs[:-1], normalized_input_rps, label='Input RPS')
                 ax[i].set_title(names[i])
                 ax[i].plot(freqs[:-1], normalized_output_rps, label='Output RPS')
@@ -1515,9 +1517,9 @@ class LFCNN(BaseModel):
                     ax[i].legend()
                 #ax[i].show()
 
-        
-        
-    
+
+
+
     def plot_patterns(self, sensor_layout=None, sorting='l2', percentile=90,
                       scale=False, class_names=None, info=None):
         """Plot informative spatial activations patterns for each class
@@ -1631,12 +1633,12 @@ class LFCNN(BaseModel):
             else:
                 self.plot_out_weights()
             return f
-        
+
     # def compute_spectra(self):
 
-        
+
     #     return impulse_response, input_spectrum, output_spectrum
-        
+
 
     def plot_spectra(self, fs=None, sorting='l2', norm_spectra=None,
                      log=False, class_names=None, debias=True):
@@ -1665,7 +1667,7 @@ class LFCNN(BaseModel):
         else:
            print('Sampling frequency not specified, setting to 1.')
            self.fs = 1.
-           
+
         if norm_spectra:
             if norm_spectra == 'welch':
                 fr, psd = welch(self.lat_tcs, fs=self.fs, nperseg=256)
@@ -1698,9 +1700,9 @@ class LFCNN(BaseModel):
                     comp_names = ["Class " + str(jj) for jj in range(self.out_dim)]
                     #f.suptitle(comp_name, fontsize=16)
                 [ax[0][jj].set_title(c) for jj, c in enumerate(comp_names)]
-                
+
                 #bias = self.tconv.b.numpy()
-                
+
                 for i in range(nrows):
                     for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
                         if debias:
@@ -1708,10 +1710,10 @@ class LFCNN(BaseModel):
                         w, h = freqz(flt, 1, worN=128)
                         fr1 = w/np.pi*self.fs/2
                         if  norm_spectra == 'welch':
-    
+
                             h0 = self.d_psds[self.uorder[jj], :]*np.abs(h)
                             p_input = self.d_psds[self.uorder[jj], :]
-                            
+
                             if log:
                                 ax[i, jj].semilogy(fr1, p_input,
                                                    label='Filter input')
@@ -1726,7 +1728,7 @@ class LFCNN(BaseModel):
                                 ax[i, jj].plot(fr1, np.abs(h)/np.abs(h).sum(),
                                                label='Freq response')
                             #print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
-    
+
                         else:
                             if log:
                                 ax[i, jj].semilogy(fr1, np.abs(h),
@@ -1903,16 +1905,16 @@ class VARCNNR(BaseModel):
         """
         self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
                             axis=3, specs=self.specs)(self.inputs)
-        
-        
+
+
         self.tconv = VARConv(size=self.specs['n_latent'],
                              nonlin=self.specs['nonlin'],
                              filter_length=self.specs['filter_length'],
                              padding=self.specs['padding'],
                              specs=self.specs
                              )(self.dmx)
-        
-        
+
+
         self.pooled = TempPooling(pooling=self.specs['pooling'],
                                   pool_type=self.specs['pool_type'],
                                   stride=self.specs['stride'],
@@ -1920,14 +1922,14 @@ class VARCNNR(BaseModel):
                                   )(self.tconv)
 
 
-        
-        self.fc1 = Dense(size=self.specs['n_latent']*2, 
+
+        self.fc1 = Dense(size=self.specs['n_latent']*2,
                          nonlin=self.specs['nonlin'],
                          specs=self.specs)(self.pooled)
-        
+
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.fc1)
-        
+
 
         self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
@@ -1935,7 +1937,7 @@ class VARCNNR(BaseModel):
         y_pred = self.fin_fc(dropout)
 
         return y_pred
-    
+
 
 class LFCNNR(BaseModel):
     """LF-CNN-R.
@@ -2012,7 +2014,7 @@ class LFCNNR(BaseModel):
                              padding=self.specs['padding'],
                              specs=self.specs
                              )(self.dmx)
-        
+
         self.pooled = TempPooling(pooling=self.specs['pooling'],
                                   pool_type=self.specs['pool_type'],
                                   stride=self.specs['stride'],
@@ -2020,11 +2022,11 @@ class LFCNNR(BaseModel):
                                   )(self.tconv)
 
 
-        
-        self.fc1 = Dense(size=self.specs['n_latent']*2, 
+
+        self.fc1 = Dense(size=self.specs['n_latent']*2,
                          nonlin=self.specs['nonlin'],
                          specs=self.specs)(self.pooled)
-        
+
 
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.fc1)
