@@ -367,8 +367,8 @@ class Dataset(object):
         balanced_ds = resample_ds.map(lambda y, xy: xy)
         new_dist = {k: target_dist[0] 
                     for k in self.h_params['class_ratio'].keys()}
-        print("New class ratio: ", new_dist)
-        self.h_params['class_ratio'] = new_dist
+        #print("New class ratio: ", new_dist)
+        #self.h_params['class_ratio'] = new_dist
         return balanced_ds
 
 def class_func(sample):
