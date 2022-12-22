@@ -52,7 +52,7 @@ class BaseModel():
     _set_optimizer methods.
     """
 
-    def __init__(self, Dataset, specs=dict()):
+    def __init__(self, dataset=None, specs=dict(), meta=None):
         """
         Parameters
         -----------
@@ -67,14 +67,24 @@ class BaseModel():
         """
         self.specs = specs
 
-
-        self.dataset = Dataset
         self.model_path = specs['model_path']
+
+        if not dataset and meta:
+            self.dataset = Dataset(meta,
+                                 train_batch=50,
+                                 test_batch=None,
+                                 class_subset=None,
+                                 rebalance_classes=False
+                                 )
+        elif dataset:
+            self.dataset = dataset
+        else:
+            print("Provide Dataset ot Metadata file")
 
         self.input_shape = (self.dataset.h_params['n_seq'],
                             self.dataset.h_params['n_t'],
                             self.dataset.h_params['n_ch'])
-        self.y_shape = Dataset.y_shape#Dataset.h_params['y_shape']
+        self.y_shape = self.dataset.y_shape #Dataset.h_params['y_shape']
         self.out_dim = np.prod(self.y_shape)
 
 
@@ -183,7 +193,7 @@ class BaseModel():
 
     def train(self, n_epochs, eval_step=None, min_delta=1e-6,
               early_stopping=3, mode='single_fold', prune_weights=False,
-              collect_patterns = False):
+              collect_patterns = False, class_weights = None) :
 
         """
         Train a model
@@ -215,6 +225,7 @@ class BaseModel():
                                                       min_delta=min_delta,
                                                       patience=early_stopping,
                                                       restore_best_weights=True)
+
         if not eval_step:
             train_size = self.dataset.h_params['train_size']
             eval_step = train_size // self.dataset.h_params['train_batch'] + 1
@@ -232,6 +243,13 @@ class BaseModel():
         self.cv_losses = []
         self.cv_metrics = []
 
+        if class_weights:
+            multiplier = 1. / min(class_weights.values())
+            class_weights = {k:v*multiplier for k,v in class_weights.items()}
+
+        else:
+            class_weights = None
+        print("Class weights: ", class_weights)
         if mode == 'single_fold':
             n_folds = 1
             #self.cv_patterns = 0
@@ -242,7 +260,9 @@ class BaseModel():
                                    epochs=n_epochs, steps_per_epoch=eval_step,
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
-                                   callbacks=[stop_early], verbose=2)
+
+                                   callbacks=[stop_early], verbose=2,
+                                   class_weight=class_weights)
 
             #compute validation loss and metric
             self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
@@ -281,7 +301,8 @@ class BaseModel():
                                    epochs=n_epochs, steps_per_epoch=eval_step,
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
-                                   callbacks=[stop_early], verbose=2)
+                                   callbacks=[stop_early], verbose=2,
+                                   class_weight=class_weights)
 
 
                 loss, metric = self.evaluate(val)
@@ -354,7 +375,8 @@ class BaseModel():
                                    epochs=n_epochs, steps_per_epoch=eval_step,
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
-                                   callbacks=[stop_early], verbose=2)
+                                   callbacks=[stop_early], verbose=2,
+                                   class_weight=class_weights)
 
 
                 test = self.dataset._build_dataset(test_subj,
@@ -563,6 +585,8 @@ class BaseModel():
         self.model_name = "_".join([self.scope,
                                     self.dataset.h_params['data_id']])
         self.km.save(self.model_path + self.model_name)
+
+        #Save results from multiple folds
         if hasattr(self, 'cv_patterns'):
             #if hasattr(self, 'cv_patterns'):
             print("Saving patterns to: " + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
@@ -588,30 +612,51 @@ class BaseModel():
                  cm=self.cm,
                  )
 
-
+        #Update metadata with specs and new self.dataset options
+        #For LFCNN save patterns
 
     def restore(self):
+        #TODO: take path, scope, and data_id as inputs.
+        #TODO: build dataset from metadata
+        #TODO: initialize from specs
+
         self.model_name = "_".join([self.scope,
                                     self.dataset.h_params['data_id']])
         self.km  = tf.keras.models.load_model(self.model_path + self.model_name)
         #try:
-        print("Restoring from:" + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
-        f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
-                    allow_pickle=True)
-        self.cv_patterns = f["cv_patterns"]
-        self.cv_psds = f["cv_psds"]
-        self.freqs = f['freqs']
-        self.cv_filters = f["cv_filters"]
-        self.specs = f["specs"].item()
-        self.meta = f["meta"].item()
-        self.log = f["log"].item()
-        self.cm = f["cm"]
-        # self.cv_patterns_weight = f["cv_patterns_weight"]
-        # self.cv_filters_weight = f["cv_filters_weight"]
-        # self.cv_patterns_cwl = f["cv_patterns_cwl"]
-        # self.cv_filters_cwl = f["cv_filters_cwl"]
-        #except:
-        #    print("Patterns not found")
+
+        if os.path.exists(self.model_path + self.model_name + "\\mneflow_patterns.npz"):
+            print("Restoring from:" + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
+            f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
+                        allow_pickle=True)
+            self.cv_patterns = f["cv_patterns"]
+            self.cv_psds = f["cv_psds"]
+            self.freqs = f['freqs']
+            self.cv_filters = f["cv_filters"]
+            self.specs = f["specs"].item()
+            self.meta = f["meta"].item()
+            self.log = f["log"].item()
+            self.cm = f["cm"]
+            # self.cv_patterns_weight = f["cv_patterns_weight"]
+            # self.cv_filters_weight = f["cv_filters_weight"]
+            # self.cv_patterns_cwl = f["cv_patterns_cwl"]
+            # self.cv_filters_cwl = f["cv_filters_cwl"]
+            #except:
+            #    print("Patterns not found")
+    def predict_sample(self, x):
+        n_ch = self.dataset.h_params['n_ch']
+        n_t = self.dataset.h_params['n_t']
+        assert x.shape[-2:] == (n_t, n_ch),  "Shape mismatch! Expected {}x{}, \
+            got {}x{}".format(n_t, n_ch, x.shape[-2], x.shape[-1])
+
+        while x.ndim < 4:
+            x = np.expand_dims(x, 0)
+
+        out = self.km.predict(x)
+        if self.dataset.h_params['target_type'] == 'int':
+            out = np.argmax(out, -1)
+
+        return out
 
     def predict(self, dataset=None):
         """Returns:
@@ -685,6 +730,8 @@ class BaseModel():
             cm = self.cm
         # Only use the labels that appear in the data
         #classes = classes[unique_labels(y_true, y_pred)]
+        if not classes:
+            classes = [' '.join(["Class", str(i)]) for i in range(cm.shape[0])]
         if normalize:
             cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
             print("Normalized confusion matrix")
@@ -701,15 +748,15 @@ class BaseModel():
                # ... and label them with the respective list entries
                xticklabels=classes, yticklabels=classes,
                title=title,
-               ylabel='True label',
-               xlabel='Predicted label')
+               ylabel='Predicted label',
+               xlabel='True label')
 
         # Rotate the tick labels and set their alignment.
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
                  rotation_mode="anchor")
 
         # Loop over data dimensions and create text annotations.
-        fmt = '.2f' if normalize else 'd'
+        fmt = '.2f' if normalize else '.0f'
         thresh = cm.max() / 2.
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
@@ -730,7 +777,7 @@ class LFCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, Dataset, specs=dict()):
+    def __init__(self, Dataset=None, specs=dict(), meta=None):
         """
 
         Parameters
@@ -778,7 +825,7 @@ class LFCNN(BaseModel):
         specs.setdefault('l2_scope', [])
         specs.setdefault('maxnorm_scope', [])
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
-        super(LFCNN, self).__init__(Dataset, specs)
+        super(LFCNN, self).__init__(Dataset, specs, meta)
 
 
 
