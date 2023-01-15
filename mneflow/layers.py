@@ -16,6 +16,9 @@ from tensorflow.keras import constraints as k_con, regularizers as k_reg
 # tf.disable_v2_behavior()
 import numpy as np
 
+bias_const = 0.1
+bias_traiable = True
+
 class BaseLayer(tf.keras.layers.Layer):
     def __init__(self, size, nonlin, specs, **args):
         super(BaseLayer, self).__init__(**args)
@@ -103,7 +106,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
 
 class DeMixing(BaseLayer):
     """
-    Spatial demixing Layer
+    Spatial demixing Layerю
     """
     def __init__(self, scope="dmx", size=None, nonlin=tf.identity, axis=-1,
                  specs={},  **args):
@@ -134,9 +137,9 @@ class DeMixing(BaseLayer):
                 dtype=tf.float32)
 
         self.b_in = self.add_weight(shape=([self.size]),
-                                    initializer=Constant(0.1),
+                                    initializer=Constant(bias_const),
                                     regularizer=None,
-                                    trainable=True,
+                                    trainable=bias_traiable,
                                     name='bias',
                                     dtype=tf.float32)
         print("Built: {} input: {}".format(self.scope, input_shape))
@@ -155,7 +158,7 @@ class DeMixing(BaseLayer):
                     input_shape = x.shape
                     self.build(input_shape)
                     #print(self.scope, 'building from call')
-                    
+
 class InvCov(BaseLayer):
     """
     Spatial demixing Layer
@@ -204,11 +207,11 @@ class InvCov(BaseLayer):
         while True:
             with tf.name_scope(self.scope):
                 try:
-                    
+
                     _cov = tf.tensordot(x, x, axes=[[self.axis], [self.axis]],
                                          name='_cov')
                     print("_cov", _cov.shape)
-                    
+
                     cov =  tf.reduce_mean(tf.divide(_cov, self.scaler),axis=0)
                     print("det:", tf.det(cov))
                     invcov = tf.linalg.pinv(cov)
@@ -257,9 +260,9 @@ class LFTConv(BaseLayer):
                                        dtype=tf.float32)
 
         self.b = self.add_weight(shape=([input_shape[-1]]),
-                                 initializer=Constant(0.1),
+                                 initializer=Constant(bias_const),
                                  regularizer=None,
-                                 trainable=True,
+                                 trainable=bias_traiable,
                                  name='bias',
                                  dtype=tf.float32)
         print("Built: {} input: {}".format(self.scope, input_shape))
@@ -275,7 +278,7 @@ class LFTConv(BaseLayer):
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-                    
+
                     #print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
@@ -309,7 +312,7 @@ class VARConv(BaseLayer):
     def build(self, input_shape):
         print("input_shape:", input_shape)
         super(VARConv, self).build(input_shape)
-        
+
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
         shape = [1, self.filter_length, input_shape[-1], self.size]
@@ -338,7 +341,7 @@ class VARConv(BaseLayer):
                                         padding=self.padding,
                                         strides=[1, 1, 1, 1],
                                         data_format='NHWC')
-                    
+
                     conv = self.nonlin(conv + self.b)
                     #print(self.scope, ": output :", conv.shape)
                     return conv
@@ -434,7 +437,7 @@ class LSTM(tf.keras.layers.LSTM):
         # print(self.scope, inputs.shape)
         return super(LSTM, self).call(inputs, mask=mask, training=training,
                                         initial_state=initial_state)
-        
+
 
 
 

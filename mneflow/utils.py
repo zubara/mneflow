@@ -206,6 +206,7 @@ def _split_sets(X, y, folds, ind=-1, sample_counter=0):
         Pairs of data / targets split in Training and Validation sets.
 
     test_fold : np.array
+        Array of indices of data samples in the held out fold
 
 
     """
@@ -248,7 +249,7 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         targets.shape =  [n_epochs, y_shape]
 
     """
-    if isinstance(inp, mne.epochs.BaseEpochs):
+    if isinstance(inp, (mne.epochs.EpochsFIF, mne.epochs.BaseEpochs)):
         print('processing epochs')
         # if isinstance(picks, dict):
         #     picks = mne.pick_types(inp.info, include=picks)
@@ -308,45 +309,6 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         data = data[:, picks, :]
 
     return data, events
-
-
-def produce_labels(y, return_stats=True):
-    """Produce labels array from e.g. event (unordered) trigger codes.
-
-    Parameters
-    ----------
-    y : ndarray, shape (n_epochs,)
-        Array of trigger codes.
-
-    return_stats : bool
-        Whether to return optional outputs.
-
-    Returns
-    -------
-    inv : ndarray, shape (n_epochs)
-        Ordered class labels.
-
-    total_counts : int, optional
-        Total count of events.
-
-    class_proportions : dict, optional
-        {new_class: proportion of new_class in the dataset}.
-
-    orig_classes : dict, optional
-        Mapping {new_class_label: old_class_label}.
-    """
-    classes, inds, inv, counts = np.unique(y,
-                                           return_index=True,
-                                           return_inverse=True,
-                                           return_counts=True)
-    total_counts = np.sum(counts)
-    counts = counts/float(total_counts)
-    class_proportions = {clss: cnt for clss, cnt in zip(inv[inds], counts)}
-    orig_classes = {new: old for new, old in zip(inv[inds], classes)}
-    if return_stats:
-        return inv, total_counts, class_proportions, orig_classes
-    else:
-        return inv
 
 
 def produce_tfrecords(inputs, savepath, out_name, fs=1.,
@@ -671,6 +633,44 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
         print('Metadata file found, restoring')
         meta = load_meta(savepath, data_id=out_name)
     return meta
+
+def produce_labels(y, return_stats=True):
+    """Produce labels array from e.g. event (unordered) trigger codes.
+
+    Parameters
+    ----------
+    y : ndarray, shape (n_epochs,)
+        Array of trigger codes.
+
+    return_stats : bool
+        Whether to return optional outputs.
+
+    Returns
+    -------
+    inv : ndarray, shape (n_epochs)
+        Ordered class labels.
+
+    total_counts : int, optional
+        Total count of events.
+
+    class_proportions : dict, optional
+        {new_class: proportion of new_class in the dataset}.
+
+    orig_classes : dict, optional
+        Mapping {new_class_label: old_class_label}.
+    """
+    classes, inds, inv, counts = np.unique(y,
+                                           return_index=True,
+                                           return_inverse=True,
+                                           return_counts=True)
+    total_counts = np.sum(counts)
+    counts = counts/float(total_counts)
+    class_proportions = {clss: cnt for clss, cnt in zip(inv[inds], counts)}
+    orig_classes = {new: old for new, old in zip(inv[inds], classes)}
+    if return_stats:
+        return inv, total_counts, class_proportions, orig_classes
+    else:
+        return inv
 
 
 def _combine_labels(labels, new_mapping):
@@ -1005,8 +1005,10 @@ def preprocess(data, events, sample_counter,
         folds = segmented_folds
     else:
         # If not segmented add a singleton "n_seq" dminesion to X
-        if X.ndim == 3:
+        if data.ndim == 3:
             X = np.expand_dims(data, 1)
+        elif data.ndim == 4:
+            X = data
 
         Y = events
         folds = [f + sample_counter for f in folds]
@@ -1040,7 +1042,7 @@ def preprocess_targets(y, scale_y=False, transform_targets=None):
     # if np.ndim(y_out) == 1:
     #     y_out = np.expand_dims(y_out, -1)
     # print("_process_labels out:", y_out.shape)
-    return y_out
+    #return y_out
 
 def regression_metrics(y_true, y_pred):
     y_shape = y_true.shape[-1]
