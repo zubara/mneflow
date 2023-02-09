@@ -272,6 +272,7 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
                                             verbose='CRITICAL')
             print(np.unique(epochs.events[:, 2]))
             events = epochs.events[:, 2]
+            epochs.crop(tmin=-1., tmax=1.)
             data = epochs.get_data()
             if isinstance(picks, dict):
                 print("Converting picks")
