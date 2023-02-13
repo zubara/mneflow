@@ -905,10 +905,10 @@ class LFCNN(BaseModel):
                 self.cv_patterns[method]['spatial'] = np.zeros([n_ch,
                                              self.y_shape[0],
                                              n_folds])
-                self.cv_patterns[method]['temporal'] = np.zeros([128,
+                self.cv_patterns[method]['temporal'] = np.zeros([self.nfft,
                                                                   self.y_shape[0],
                                                                   n_folds])
-                self.cv_patterns[method]['psds'] = np.zeros([128,
+                self.cv_patterns[method]['psds'] = np.zeros([self.nfft,
                                                               self.y_shape[0],
                                                               n_folds])
 
@@ -1059,17 +1059,21 @@ class LFCNN(BaseModel):
         else:
             self.patterns = demx
 
+        self.nfft = 128
         #  Compute frequency responses and source spectra
         realh = []
         psds = []
         for i, flt in enumerate(self.filters.T):
             flt -= flt.mean()
             #flt -= self.t_conv_biases[i]/self.specs['filter_length']
-
-            w, h = freqz(flt, 1, worN=128, fs = self.dataset.h_params['fs'])
             fr, psd = welch(lat_tcs[:, :, i] - lat_tcs[:, :, i].mean(1, keepdims=True),
                             fs=self.dataset.h_params['fs'],
-                            nperseg=256)
+                            nfft=self.nfft * 2)
+            if len(fr[:-1]) < self.nfft:
+                self.nfft = len(fr[:-1])
+
+            w, h = freqz(flt, 1, worN=self.nfft, fs = self.dataset.h_params['fs'])
+
             psds.append(psd[:, :-1].mean(0))
             realh.append(np.abs(h))
         self.freq_responses = np.array(realh)
@@ -1393,7 +1397,7 @@ class LFCNN(BaseModel):
         order : list of int
             indices of relevant components
 
-        ts : list of int
+        ts : list of inttopo, freq_response, psd
             indices of relevant timepoints
         """
         order = []
@@ -1784,7 +1788,7 @@ class LFCNN(BaseModel):
 
         if norm_spectra:
             if norm_spectra == 'welch':
-                fr, psd = welch(self.lat_tcs, fs=self.fs, nperseg=256)
+                fr, psd = welch(self.lat_tcs, fs=self.fs, nfft=self.nfft * 2)
                 self.d_psds = psd[:, :-1]
 
 #            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
@@ -1821,7 +1825,7 @@ class LFCNN(BaseModel):
                     for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
                         if debias:
                             flt -= np.mean(flt)
-                        w, h = freqz(flt, 1, worN=128)
+                        w, h = freqz(flt, 1, worN=self.nfft)
                         fr1 = w/np.pi*self.fs/2
                         if  norm_spectra == 'welch':
 
