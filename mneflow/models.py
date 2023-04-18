@@ -24,7 +24,7 @@ from matplotlib import patches as ptch
 from matplotlib import collections
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling, InvCov
+from mneflow.layers import LFTConv, VARConv, DeMixing, Dense, TempPooling, LFTConvTranspose1
 from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
 from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
 from tensorflow.keras.initializers import Constant
@@ -44,7 +44,8 @@ def uniquify(seq):
 
 
 
-# ----- Base model -----
+
+#@tf.keras.utils.register_keras_serializable(package="mmneflow")
 class BaseModel():
     """Parent class for all MNEflow models.
 
@@ -100,6 +101,18 @@ class BaseModel():
         #self.cv_patterns = np.zeros([])
 
 
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+    def get_config(self):
+        config = {
+            "fc": self.fc
+        }
+        return config
+
+
+
     def build(self, optimizer="adam", loss=None, metrics=None, mapping=None,
               learn_rate=3e-4):
         """Compile a model.
@@ -142,7 +155,7 @@ class BaseModel():
             self.params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
 
         self.specs.setdefault('model_path', self.dataset.h_params['savepath'])
-        self.specs.setdefault('maxnorm_scope', self.dataset.h_params['savepath'])
+        self.specs.setdefault('unitnorm_scope', [])
        # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
             self.params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
@@ -150,9 +163,9 @@ class BaseModel():
 
         elif self.dataset.h_params["target_type"] in ['int']:
             #self.params.setdefault("loss", tf.nn.softmax_cross_entropy_with_logits)
-            self.params.setdefault("loss", tf.keras.losses.CategoricalCrossentropy(from_logits=True,
-                                                                                   name='cce'))
-            self.params.setdefault("metrics", tf.keras.metrics.CategoricalAccuracy(name="cat_ACC"))
+            self.params.setdefault("loss", [tf.keras.losses.CategoricalCrossentropy(from_logits=True,
+                                                                                   name='cce')])
+            self.params.setdefault("metrics", [tf.keras.metrics.CategoricalAccuracy(name="cat_ACC")])
 
         #print(params)
         self.km.compile(optimizer=self.params["optimizer"],
@@ -330,6 +343,8 @@ class BaseModel():
                 if collect_patterns and self.scope == 'lfcnn':
                     self.collect_patterns(fold=jj, n_folds=n_folds,
                                           n_comp=int(collect_patterns))
+                    # self.plot_topos(self.paternnet(implementation=0), sensor_layout='Vectorview-grad')
+                    # self.plot_topos(self.paternnet(implementation=1), sensor_layout='Vectorview-grad')
 
                 if jj < n_folds - 1:
                     self.shuffle_weights()
@@ -635,6 +650,8 @@ class BaseModel():
             self.cm = f["cm"]
             #except:
             #    print("Patterns not found")
+
+    #@tf.function
     def predict_sample(self, x):
         n_ch = self.dataset.h_params['n_ch']
         n_t = self.dataset.h_params['n_t']
@@ -650,6 +667,7 @@ class BaseModel():
 
         return out
 
+    #@tf.function
     def predict(self, dataset=None):
         """Returns:
         --------
@@ -684,6 +702,7 @@ class BaseModel():
         #y_true = y_true.numpy()
         return y_true, y_pred
 
+    #@tf.function
     def evaluate(self, dataset=False):
         """
         Returns:
@@ -825,7 +844,7 @@ class LFCNN(BaseModel):
         specs.setdefault('l2_lambda', 0.)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
-        specs.setdefault('maxnorm_scope', [])
+        #specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
         super(LFCNN, self).__init__(Dataset, specs, meta)
 
@@ -860,36 +879,118 @@ class LFCNN(BaseModel):
                                   )
         self.pooled = self.pool(self.tconv_out)
 
-        dropout = Dropout(self.specs['dropout'],
+        self.dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
 
         self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
 
-        y_pred = self.fin_fc(dropout)
+        y_pred = self.fin_fc(self.dropout)
 
         return y_pred
 
+    def build_encoder(self, y_pred):
+        self.km.trainable = False
+        print("Freezing the decoder")
+        n_padding = self.dataset.h_params['n_t']%self.specs['stride']
+
+
+        #start with the output of decoder
+        #elf.enc_inputs = layers.Input(self.y_shape)
+        self.enc_fc = Dense(size=self.fin_fc.w.shape[0], nonlin=tf.identity,
+                            specs=self.specs)
+        enc_tconv_activations =  self.enc_fc(self.y_pred)
+        enc_tconv_activations_r = tf.reshape(enc_tconv_activations,
+                                             [-1, 1, self.pooled.shape[-2],
+                                             self.specs['n_latent']])
+        print(enc_tconv_activations_r.shape)
+        #upool and apply transposed depthwise convolution
+        self.enc_tconv_trans = LFTConvTranspose1(filters=self.tconv.filters,
+                                           kernel_size= self.specs['filter_length'],
+                                           stride=self.specs['stride'],
+                                           output_padding=n_padding)
+
+
+        enc_deconv = self.enc_tconv_trans(enc_tconv_activations_r)
+        #enc_deconv = tf.transpose(enc_deconv, perm=[0,3,1,2])
+        print("Enc_deconv:", enc_deconv.shape)
+
+        self.de_dmx = DeMixing(size=self.dataset.h_params['n_ch'], nonlin=tf.identity,
+                            axis=3, specs=self.specs)
+
+        self.X_pred = self.de_dmx(enc_deconv)
+        print(self.X_pred.shape)
+        self.km_enc = tf.keras.Model(inputs=self.inputs, outputs=self.X_pred)
+
+        self.params['enc_loss'] = [tf.keras.losses.MSE]#tf.reduce_mean((self.X_pred - self.inputs)**2)
+        #self.params['enc_metrics'] = tf.keras.metrics.RootMeanSquaredError(name="RMSE")
+
+
+        #print(params)
+        self.km_enc.compile(optimizer=tf.keras.optimizers.legacy.Adam(),
+                        loss=self.params['enc_loss'])
+
+    def train_encoder(self):
+
+        dataset_train = self.dataset.train.map(lambda x, y : (x, x))
+        dataset_val = self.dataset.val.map(lambda x, y : (x, x))
+        stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+                                                      min_delta=1e-6,
+                                                      patience=10,
+                                                      restore_best_weights=True)
+        self.t_hist = self.km_enc.fit(dataset_train,
+                                   validation_data=dataset_val,
+                                   epochs=500, steps_per_epoch=10,
+                                   shuffle=True,
+                                   validation_steps=self.dataset.validation_steps,
+                                   callbacks=[stop_early], verbose=2,
+                                   #class_weight=class_weights
+                                   )
+    def get_config(self):
+            # Do not call super.get_config!
+            # This gave an error for me.
+            config = {
+                "dmx": self.dmx,
+                "dmx_out": self.dmx_out,
+                "tocnv": self.tconv,
+                "tconv_out": self.tconv_out,
+                "pool": self.pool,
+                "pooled": self.pooled,
+                "dropout": self.dropout,
+                "fin_fc": self.fin_fc
+            }
+            return config
+
+
     #@tf.function
-    def _get_spatial_covariance(self, dataset):
-        """Compute spatial covariance matrcix from the dataset
+    def _get_class_conditional_spatial_covariance(self, X, y):
+        """Compute spatial class-conditional covariance matrix from the dataset
 
         Parameters:
         -----------
         dataset : tf.data.Dataset
+
+        Returns : dcov [y_shape, n_ch, n_ch]
+
         """
-        n1_covs = []
-        for x, y in dataset.take(5):
-            #print('x:', x.shape)
-            #print('x[0,0]:', x[0,0].shape)
-            n1cov = tf.tensordot(x[0,0], x[0,0], axes=[[0], [0]])
-            #print('n1cov:', n1cov.shape)
-            n1_covs.append(n1cov)
-        #print('len(n1_covs):', len(n1_covs))
-        cov = tf.reduce_mean(tf.stack(n1_covs, axis=0), axis=0)
-        #print('cov:', cov.shape)
-        #tf.reduce_mean(n1_covs)
-        return cov
+        dcovs = []
+        for class_y in range(self.out_dim):
+            class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
+            xs = np.squeeze(X.numpy()[class_ind, ...])
+            #xs -= np.mean(xs, axis=-2, keepdims=True)
+            ddof_s = (xs.shape[0]*(self.dataset.h_params['n_t'] - 1))
+            cov_s = np.einsum('ijk, ijl -> kl', xs, xs) / ddof_s
+
+            #anti_class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)!=class_y))#[0]
+            # xn = np.squeeze(X[np.argmax(y, 1) != i, ...])
+            # ddof_n = (xn.shape[0]*(self.dataset.h_params['n_t'] - 1))
+            # cov_n = np.einsum('ijk, ijl -> kl', xn, xn) / ddof_n
+
+            dcovs.append(cov_s) #  - cov_n
+
+        return np.array(dcovs)
+
+
 
     def collect_patterns(self, fold=0, n_folds=1, n_comp=1,
                          methods=['combined', 'weight', 'compwise_loss',
@@ -932,6 +1033,307 @@ class LFCNN(BaseModel):
 #        self.cv_patterns['compwise_loss']['spatial'][:, :, fold] = c_topo
 #        self.cv_patterns['compwise_loss']['temporal'][:, :, fold] = c_spectra
 #        self.cv_patterns['compwise_loss']['psds'][:, :, fold] = c_psds
+
+    def paternnet(self, centered=True, subtract_rest=True, rectify=True,
+                  add_bias=True, class_wise=False, implementation=0):
+        ds = self.dataset.val
+        X, y = [row for row in ds.take(1)][0]
+        #%%
+
+        # Extract activations
+        dmx_activations = self.dmx(X)
+        pooled_tconv_activations = self.pool(self.tconv(dmx_activations))
+        fc_activations  = self.fin_fc(pooled_tconv_activations)
+        print(""""Activations: \n
+              DMX: {}
+              TCONV: {}
+              FC_DENSE: {}""".format(dmx_activations.shape,
+              pooled_tconv_activations.shape, fc_activations.shape))
+
+        # Extract weights
+        #%%
+        # Spatial extraction fiters
+        spatial_filters = np.squeeze(self.dmx.w.numpy())
+        #spatial_filters /= np.sum(spatial_filters**2, axis=0, keepdims=True)
+
+        spatial_biases = self.dmx.b_in.numpy()
+        # Temporal kernels
+        tconv_kernels = np.squeeze(self.tconv.filters.numpy())
+        tconv_biases = np.squeeze(self.tconv.b.numpy())
+        # Final layer
+        out_w_flat = self.fin_fc.w.numpy()
+
+        out_weights = np.reshape(out_w_flat,
+                                 [pooled_tconv_activations.shape[2], self.dmx.size, self.out_dim],
+                                 order='C')
+        out_biases = self.fin_fc.b.numpy()
+
+        print(""""Weighs: \n
+              DMX: {}
+              TCONV: {}
+              FC_DENSE: {}""".format(spatial_filters.shape,
+              tconv_kernels.shape, out_weights.shape))
+
+        ddof = fc_activations.shape[0] - 1
+
+        combined_topos = []
+
+        dcovs = self._get_class_conditional_spatial_covariance(X, y)
+        if implementation == 0:
+
+            #uses y explicitely instead of cov[x,y]
+            #accurate but has little to do with the model
+            for class_y in range(self.out_dim):
+                #compute mean activation of final layer for each class
+                class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
+                fc_bp_out = (np.dot(fc_activations.numpy()[class_ind, :],
+                                   out_w_flat.T)).mean(0)
+
+                fc_bp_out = fc_bp_out.reshape([pooled_tconv_activations.shape[2],
+                                               self.dmx.size],
+                                               order='C')
+
+                fc_bp_out = np.maximum(fc_bp_out, 0)
+                class_patterns = np.dot(dcovs[class_y], spatial_filters)
+                cp = np.einsum('ck, ik -> c', class_patterns, fc_bp_out)
+
+
+                # class_patterns = np.einsum('ck, ik -> c', spatial_filters, fc_bp_out)
+                # cp = np.dot(dcovs[class_y], class_patterns)
+                # #cp = np.maximum(cp, 0.)
+                combined_topos.append(cp) # + spatial_biases[class_y]
+
+        elif implementation == 1:
+            # compute full a = cov[x,y]*cov[y]^-1
+            # a.shape = [n_ptp, n_latent, n_classes]
+            # Sx = a*dot(w.T,x)
+
+            #Final lyesr
+            # compute covariance of each input feature with each output
+            cov_xy_out = np.einsum('iklm ,ij -> lmj',
+                                   pooled_tconv_activations,
+                                   fc_activations) / ddof
+
+            #compute inverse covariance of the output
+            cov_yy_out = np.einsum('ij, ik -> jk',
+                                   fc_activations,
+                                   fc_activations) / ddof
+            prec_yy_out = tf.linalg.inv(cov_yy_out)
+
+            #compute directions of Sx: a = cov_xy*(cov_yy)**-1
+            a_out = np.einsum('ijk, kl -> ijl', cov_xy_out, prec_yy_out)
+
+            # A.*w
+            aw = a_out * out_weights
+            # activation of tconv by each signal component of each sample
+            Sx_out = np.einsum('ijkl, klm -> iklm', pooled_tconv_activations, aw)
+
+            ddof_dmx = np.prod(Sx_out.shape[:2]) - 1
+
+
+            #compute covariance of each input feature with each output
+            cov_xy_lat = np.einsum('ijkl, imnp -> lnp',
+                                   X,
+                                   Sx_out) / ddof_dmx
+            #compute invers covariance of the latent_comps
+            cov_yy_lat = np.einsum('ijk, ilk -> kjl', Sx_out[:, 1, :, :], Sx_out[:, 1, :, :]) / ddof_dmx
+            prec_yy_lat = np.linalg.pinv(cov_yy_lat)
+            a_lat = np.einsum('ijk, kjm -> imk', cov_xy_lat, prec_yy_lat)
+            aw_lat = np.einsum('imk, im -> ik', a_lat, spatial_filters)
+            combined_topos = [np.einsum('ij, jk -> i',
+                                        dcovs[class_y], aw_lat)
+                              for class_y in range(self.out_dim)]
+            #Sx_in = np.einsum(aw_lat,
+
+
+                #class_patterns = np.dot(dcovs[class_y, ...], spatial_filters)
+                #class_patterns = np.dot(self.dcov, spatial_filters)
+                #combined_topos.append(np.einsum('ck, jk -> cj', class_patterns, Sx))
+
+        elif implementation == 2:
+            # compute covariance for each element of tconv_out with y_c
+            ptca = tf.reshape(pooled_tconv_activations[:, 0, 1, :],
+                              [pooled_tconv_activations[:, 0 , 1, :].shape[0], -1])
+            cov_x = np.einsum('ij ,ik -> jk',
+                                   ptca,
+                                   ptca) / ddof
+            cov_yy_out = np.einsum('ij, ik -> jk',
+                                   fc_activations,
+                                   fc_activations) / ddof
+            prec_yy_out = tf.linalg.inv(cov_yy_out)
+
+            #compute directions of Sx: a = cov_xy*(cov_yy)**-1
+            a_out = np.einsum('ij, jk, kl -> il', cov_x, out_weights[1, :, :], prec_yy_out)
+            Sx = np.einsum('ik, kl -> ikl',
+                           pooled_tconv_activations[:, 0, 1, :],
+                           a_out)
+
+
+            a_out_pinv = np.linalg.pinv(np.dot(a_out, a_out.T))
+            #for class_y in range(self.out_dim):
+            combined_topos = [np.einsum('ij, jk, kl -> i',
+                                        dcovs[class_y],
+                                        spatial_filters,
+                                        a_out_pinv)
+                              for class_y in range(self.out_dim)]
+
+        elif implementation == 3:
+            #If y = w.Tx, then S_x = pinv(w)*y
+            #Compute pseudoinverses for each layer
+            pinv_dmx = np.linalg.pinv(spatial_filters).T#np.dot(spatial_filters, np.linalg.inv(np.dot(spatial_filters.T, spatial_filters)))
+            pinv_wfc = np.linalg.pinv(out_w_flat).T#np.dot(out_w_flat, np.linalg.inv(np.dot(out_w_flat.T, out_w_flat)))
+            pinv_tck = np.linalg.pinv(tconv_kernels).T #np.dot(tconv_kernels, np.linalg.inv(np.dot(tconv_kernels.T, tconv_kernels)))
+
+            #Least square singal estimate in tconv given wfc and fc_activations
+            Sx_tconv = np.einsum('jk, ik ->ij', pinv_wfc, fc_activations)
+            Sx_tconv = np.reshape(Sx_tconv, pooled_tconv_activations.shape)
+
+            #Reverse pooling and depthwise convolution for each class
+            Sx_dmx = []
+            n_padding = self.dataset.h_params['n_t']%self.specs['stride']
+            for class_y in range(self.out_dim):
+                class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
+                Sxm = Sx_tconv[class_ind, :].mean(0, keepdims=True)
+                dconv1d_trans = LFTConvTranspose(
+                    filters=pinv_tck[None, :, :, None],
+                    kernel_size= self.specs['filter_length'],
+                    stride=self.specs['stride'],
+                    output_padding=n_padding)
+                sx = dconv1d_trans(Sxm)
+                combined_topos.append(np.einsum('ii,ij,kltj->klti', dcovs[class_y], spatial_filters, sx))
+            #Sx_dmx = np.concatenate(Sx_dmx, axis=0)
+            #Sx_inp = np.einsum('kjtl,cc,cl -> kjtc', Sx_dmx, self.dcov, spatial_filters)
+
+        #elif implementation == 4:
+            #Same as 3 but with activation covariances
+
+
+
+
+
+
+
+        #Experiment 4
+
+
+
+
+            #
+            #combined_topos = []
+            #class_patterns = np.dot(self.dcov, spatial_filters)
+            #for class_y in range(self.out_dim):
+            #class_y = 0 # true class
+                #class_not_y = np.array([i for i in range(self.out_dim) if i!=class_y])
+                #class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
+                #anti_class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)!=class_y))#[0]
+                #Experiment 1
+                # fc_bp_out = np.dot(fc_activations.numpy()[class_ind, :], out_w_flat.T).mean(0)
+                # fc_anti_out = np.dot(fc_activations.numpy()[anti_class_ind, :], out_w_flat.T).mean(0)
+                # fc_bp_out -= fc_anti_out
+                # fc_bp_out = fc_bp_out.reshape([pooled_tconv_outputs.shape[2],
+                #                                self.dmx.size],
+                #                               order='C')
+
+                #fc_bp_out = fc_bp_out.numpy().sum(-1) #- np.mean()
+                #fc_bp_out_rect = np.maximum(fc_bp_out, 0)
+
+
+
+                #
+
+            # class_patterns = np.dot(dcovs[class_y, ...], spatial_filters)
+
+            # #combined_topos.append(np.einsum('ck, ik -> c', class_patterns, fc_bp_out_rect))
+            # combined_topos.append(np.einsum('ck, ik -> c', class_patterns, Sx))
+            # topos = np.stack(combined_topos, 1)
+        topos = np.stack(combined_topos, 1)
+        if hasattr(self, 'true_evoked'):
+            if np.ndim(topos) == 2:
+                true_corr = np.diag(np.corrcoef(topos.T, self.true_evoked._data.T),
+                                    self.true_evoked._data.shape[-1])
+            elif np.ndim(topos) == 3:
+                print(topos.shape)
+                true_corr = np.diag(np.corrcoef(topos[:,:, 1].T, self.true_evoked._data.T),
+                                    self.true_evoked._data.shape[-1])
+
+            print('Mean abs corr: {:.2f}  n_bads: {} MinMax: {:.4f}-{:.4f}'.format(
+                np.abs(true_corr).mean(),
+                np.sum(np.abs(true_corr) < .9),
+                np.min(true_corr), np.max(true_corr),
+                  ))
+
+        return topos
+
+    def plot_true_evoked(self, sensor_layout='Vectorview-mag'):
+            n = self.out_dim
+            tt = np.argmax(np.mean(self.true_evoked_data**2, axis=0).mean(-1))
+            ed = np.stack([self.true_evoked_data[i, tt, :] for i in range(n)])
+            lo = channels.read_layout(sensor_layout)
+            #lo = channels.generate_2d_layout(lo.pos)
+            info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
+            orig_xy = np.mean(lo.pos[:, :2], 0)
+            for i, ch in enumerate(lo.names):
+                if info['chs'][i]['ch_name'] == ch:
+                    info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/4.5
+                    #info['chs'][i]['loc'][4:] = 0
+                else:
+                    print("Channel name mismatch. info: {} vs lo: {}".format(
+                        info['chs'][i]['ch_name'], ch))
+            ed /= ed.std(1,keepdims=True)
+            erp_inds = np.arange(n)
+
+            self.true_evoked = evoked.EvokedArray(ed.T, info)
+            true_topo = self.true_evoked.plot_topomap(times=erp_inds,
+                                          #axes=ax[0, 1],
+                                          colorbar=True,
+                                          #vmax=vmax,
+                                          scalings=1,
+                                          time_format="True Pattern for %g",
+                                          #title='',
+                                          #size=1,
+                                          outlines='head',
+                                          )
+
+    def plot_topos(self, topos, sensor_layout='Vectorview-mag'):
+        topos /= np.maximum(topos.std(axis=0, keepdims=True),
+                                     1e-3)
+        n = topos.shape[1]
+        lo = channels.read_layout(sensor_layout)
+        #lo = channels.generate_2d_layout(lo.pos)
+        info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
+        orig_xy = np.mean(lo.pos[:, :2], 0)
+        for i, ch in enumerate(lo.names):
+            if info['chs'][i]['ch_name'] == ch:
+                info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/4.5
+                #info['chs'][i]['loc'][4:] = 0
+            else:
+                print("Channel name mismatch. info: {} vs lo: {}".format(
+                    info['chs'][i]['ch_name'], ch))
+        fake_times = np.arange(0,  n, 1.)
+        if topos.ndim == 2:
+            self.fake_evoked = evoked.EvokedArray(topos, info)
+            #self.fake_evoked.data[:, :n] = topos
+
+            ft = self.fake_evoked.plot_topomap(times=fake_times,
+                                              colorbar=True,
+                                              scalings=1,
+                                              time_format="Class %g",
+                                              outlines='head',
+                                              )
+        elif topos.ndim == 3:
+            for t in range(topos.shape[2]):
+                self.fake_evoked = evoked.EvokedArray(topos[..., t], info)
+                #self.fake_evoked.data[:, :n] = topos
+
+                ft = self.fake_evoked.plot_topomap(times=fake_times,
+                                                  colorbar=True,
+                                                  scalings=1,
+                                                  time_format="Class %g",
+                                                  outlines='head',
+                                                  )
+                ft.show()
+
+
 
 
     def compute_patterns(self, data_path=None, output='patterns'):
@@ -999,17 +1401,17 @@ class LFCNN(BaseModel):
             raise AttributeError('Specify dataset or data path.')
 
         X, y = [row for row in ds.take(1)][0]
-        X = X - tf.reduce_mean(X, axis=-2, keepdims=True)
+        #X = X - tf.reduce_mean(X, axis=-2, keepdims=True)
 
         # Extract activations
         lat_tcs = self.dmx(X)
         self.tc_out = np.squeeze(self.pool(self.tconv(lat_tcs)))
-        self.tc_out_unpooled = np.squeeze(self.tconv(lat_tcs))
+        #self.tc_out_unpooled = np.squeeze(self.tconv(lat_tcs))
 
         # Extract weights
 
         # Spatial extraction fiters
-        demx = self.dmx.w.numpy()
+        demx = self.dmx.w.numpy()# + self.dmx.b_in.numpy()[None, :]
 
         # Temporal kernels
         self.filters = np.squeeze(self.tconv.filters.numpy())
@@ -1030,8 +1432,12 @@ class LFCNN(BaseModel):
         pattern_weights = np.einsum('ijk, jkl ->ikl',
                                     self.tc_out,
                                     self.out_weights)
-        self.pattern_weights = np.maximum(pattern_weights +
-                                          self.out_biases[None, :], 0.).mean(0)
+        # self.pattern_weights = np.maximum(pattern_weights +
+        #                                   self.out_biases[None, :], 0.).mean(0)
+
+        pw =  [pattern_weights[np.argmax(y,1)== i, :, i].mean(0)
+               for i in range(self.out_dim)]
+        self.pattern_weights = np.stack(pw, 1)
 
         if self.dataset.h_params['target_type'] == 'float':
             self.true_evoked_data = X.numpy().mean(0)
@@ -1042,20 +1448,31 @@ class LFCNN(BaseModel):
                                 for i in y_unique])
             self.true_evoked_data = np.squeeze(evokeds)
 
+
         # compute data covariance
 
-        X = tf.transpose(X, [3, 0, 1, 2])
-        X = tf.reshape(X, [X.shape[0], -1])
-        self.dcov = tf.matmul(X, tf.transpose(X))
+        # X = tf.transpose(X, [3, 0, 1, 2])
+        # X = tf.reshape(X, [X.shape[0], -1])
+        #self.dcov = tf.matmul(X, tf.transpose(X))
+        X = tf.squeeze(X).numpy()
+        ndof = X.shape[0] * (self.dataset.h_params['n_t'] - 1)
+        self.dcov = np.einsum('ijk, ijl -> kl', X, X) / ndof
+        dcovs = []
+        for i in range(self.out_dim):
+            xx = X[np.argmax(y, 1) == i, :, :]
+            dcovs.append(np.einsum('ijk, ijl -> kl', xx, xx) / (xx.shape[0]*(self.dataset.h_params['n_t'] - 1)))
         lat_tcs = np.squeeze(lat_tcs)#np.dot(demx.T, X)
 
         # Compute spatial patterns
         if 'patterns' in output:
-            self.patterns = np.dot(self.dcov, demx) + self.dmx.b_in.numpy()[None, :]
-#            if 'full' in output:
-#                self.lat_cov = ledoit_wolf(self.lat_tcs)
+            self.patterns = np.dot(self.dcov, demx) #+ self.dmx.b_in.numpy()[None, :]
+            # if 'full' in output:
+            #     self.lat_cov = np.einsum('ijk, ijl -> kl', lat_tcs, lat_tcs) / ndof
+            #     tikh = 1e-1*np.trace(self.lat_cov)*np.identity(self.specs['n_latent'])
+            #     self.lat_prec = np.linalg.pinv(self.lat_cov + tikh)
+            #     self.patterns = np.dot(self.patterns, self.lat_prec)
 #                self.lat_prec = np.linalg.inv(self.lat_cov)
-#                self.patterns = np.dot(self.patterns, self.lat_prec)
+
         else:
             self.patterns = demx
 
@@ -1068,7 +1485,8 @@ class LFCNN(BaseModel):
             #flt -= self.t_conv_biases[i]/self.specs['filter_length']
             fr, psd = welch(lat_tcs[:, :, i] - lat_tcs[:, :, i].mean(1, keepdims=True),
                             fs=self.dataset.h_params['fs'],
-                            nfft=self.nfft * 2)
+                            nfft=self.nfft * 2,
+                            nperseg=self.nfft)
             if len(fr[:-1]) < self.nfft:
                 self.nfft = len(fr[:-1])
 
@@ -1310,62 +1728,24 @@ class LFCNN(BaseModel):
             ax[1, 1].legend()
             plt.show()
             return
-            #ax[1,0].colorbar()
-
-            #ax[1,0].pcolor(self.component_relevance_loss)
-            # bias = self.tconv.b.numpy()[uo]
-            # ax[0, 1].stem(self.filters.T[uo])
-            # ax[0, 1].hlines(bias, 0, len(self.filters.T[uo]),
-            #                 linestyle='--', label='Bias')
-            # ax[0, 1].legend()
-            # ax[0, 1].set_title('Filter coefficients')
-
-            # conv = np.convolve(self.filters.T[uo],
-            #                    self.waveforms[uo], mode='same')
-            # vmin = conv.min()
-            # vmax = conv.max()
-
-            # ax[1, 0].plot(times +
-            #               0.5*self.specs['filter_length']/
-            #               float(self.dataset.h_params['fs']),
-            #               conv)
-            # #ax[1, 0].hlines(bias, times[0], times[-1], linestyle='--', color='k')
 
 
-            # tstep = float(self.specs['stride'])/self.dataset.h_params['fs']
-            # # strides = np.arange(times[0], times[-1] + tstep/2, tstep)[1:-1]
-            # pool_bins = np.arange(times[0],
-            #                       times[-1] + tstep,
-            #                       self.specs['pooling']/self.dataset.h_params['fs'])[1:]
 
-            # # ax[1, 0].vlines(strides, vmin, vmax,
-            # #                 linestyle='--', color='c', label='Strides')
-            # # ax[1, 0].vlines(pool_bins, vmin, vmax,
-            # #                 linestyle='--', color='m', label='Pooling')
-            # # ax[1, 0].set_xlim(times[0], times[-1])
-            # # #ax[1, 0].set_ylim(2*np.min(conv), 2*np.max(conv))
-            # # ax[1, 0].legend()
-            # # ax[1, 0].set_title('Convolution output')
+    # def _unpool(self, x):
+    #     #intialize output
+    #     out = tf.zeros_like(self.tconv_out)
 
-            # #if self.out_weights.shape[-1] > 1:
-            # #print(self.F.shape, pool_bins.shape)
-            # strides1 = np.arange(times[0], times[-1] + tstep/2, tstep)
-            # ax[0, 1].pcolor(strides1, np.arange(1, self.specs['n_latent'] + 1 ),
-            #                 self.F)
-            # #print()
-            # [ax[0, 1].hlines(uo + 1.5, strides1[0], strides1[-1], color='r') for uo in self.uorder]
-            # # else:
-            # #     ax[1, 1].stem(self.out_weights[:, uo, :])
+    #     sh = x.get_shape().as_list()
 
-            # ax[0, 1].set_title('Feature relevance map')
-            #f.show()
-            # if class_names:
-            #     comp_name = class_names[jj]
-            # else:
-            #     comp_name = "Class " + str(jj)
-            # f.suptitle(comp_name, fontsize=16)
+    #     t_padding = np.minimum(self.specs['stride'], out.shape[-2]//sh[-2] + 1)
+    #     print('t_pad: ', self.specs['stride'], out.shape[-2]//sh[-2] + 1)
+    #     for i in range(sh[-2]):
+    #         start = i*t_padding
+    #         stop = np.minimum(out.shape[-2], (i+1)*t_padding)
+    #         center = (start + stop) // 2
+    #         out[]
 
-             #f
+
 
     def _sorting(self, sorting='compwise_loss', n_comp=1):
         """Specify which components to plot.
@@ -1488,7 +1868,7 @@ class LFCNN(BaseModel):
         return topo, freq_response, psd
 
     def plot_combined_pattern(self, method='combined', sensor_layout=None,
-                              names=None, n_comp=1):
+                              names=None, n_comp=1, plot_true_evoked=False):
         if not names:
             names = ['Class {}'.format(i) for i in range(self.y_shape[-1])]
 
@@ -1517,6 +1897,7 @@ class LFCNN(BaseModel):
         topos /= np.maximum(topos.std(axis=0, keepdims=True),
                                      1e-3)
         n = self.y_shape[0]
+        ncols = n
         lo = channels.read_layout(sensor_layout)
         #lo = channels.generate_2d_layout(lo.pos)
         info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
@@ -1531,29 +1912,8 @@ class LFCNN(BaseModel):
 
         self.fake_evoked = evoked.EvokedArray(topos, info)
         self.fake_evoked.data[:, :n] = topos
-#        self.fake_evoked.data[:, 1] = combined
-        # true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
-        # ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
 
-        # ed /= ed.std(1,keepdims=True)
-
-        # self.true_evoked = evoked.EvokedArray(ed.T, info)
-#        erp_inds = np.arange(n)
-#        nrows = 1
-        ncols = n
-
-#%%
-        #tt = (float(t) * self.dataset.h_params['fs'] / 1000.) - 0.1
-        #f, ax = plt.subplots(nrows, ncols, sharey=True)
-        #for ii in range(self.y_shape[-1]):
-
-        # plt.tight_layout()
-        # f.set_size_inches([16, 3])
-        # ax = np.atleast_2d(ax)
-
-        fake_times = np.arange(0,  ncols, 1.)
-        #print(fake_times)
-
+        fake_times = np.arange(0,  n, 1.)
         ft = self.fake_evoked.plot_topomap(times=fake_times,
                                           #axes=ax[0, 0],
                                           colorbar=True,
@@ -1564,20 +1924,14 @@ class LFCNN(BaseModel):
                                           #size=1,
                                           outlines='head',
                                           )
-
-        ft.set_size_inches([15,3.5])
-        figname = '-'.join([self.model_path + self.scope, self.dataset.h_params['data_id'], method, "topos.svg"])
-        ft.savefig(figname, format='svg', transparent=True)
-            # self.true_evoked.plot_topomap(times=erp_inds[ii],
-            #                               axes=ax[0, 1],
-            #                               colorbar=False,
-            #                               vmax=vmax,
-            #                               scalings=1,
-            #                               time_format="True Pattern for %g",
-            #                               title='',
-            #                               #size=1,
-            #                               outlines='head',
-            #                               )
+        method = "paternnet_rect_cc_covdif_cc_fcactdif"
+        #ft.set_size_inches([15,3.5])
+        #figname = '-'.join([self.model_path + self.scope, self.dataset.h_params['data_id'], method, "topos.svg"])
+        #ft.savefig(figname, format='svg', transparent=True)
+        if plot_true_evoked:
+            #true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
+            #ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
+            self.plot_true_evoked(sensor_layout=sensor_layout)
 
         if ncols == 1:
             plt.figure()
@@ -1786,17 +2140,20 @@ class LFCNN(BaseModel):
            print('Sampling frequency not specified, setting to 1.')
            self.fs = 1.
 
-        if norm_spectra:
-            if norm_spectra == 'welch':
-                fr, psd = welch(self.lat_tcs, fs=self.fs, nfft=self.nfft * 2)
-                self.d_psds = psd[:, :-1]
-
-#            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
-#                ar = []
-#                for i, ltc in enumerate(self.lat_tcs):
-#                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
-#                    ar.append(coef[None, :])
-#                self.ar = np.concatenate(ar)
+#        if norm_spectra:
+#            if norm_spectra == 'welch':
+#                fr, psd = welch(self.lat_tcs,
+#                                fs=self.dataset.h_params['fs'],
+#                                nfft=self.nfft * 2,
+#                                nperseg=self.dataset.h_params['n_t'])
+#                self.d_psds = psd[:, :-1]
+#
+##            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
+##                ar = []
+##                for i, ltc in enumerate(self.lat_tcs):
+##                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
+##                    ar.append(coef[None, :])
+##                self.ar = np.concatenate(ar)
 
         order, ts = self._sorting(sorting)
         self.uorder = order.ravel()
@@ -1833,12 +2190,12 @@ class LFCNN(BaseModel):
                             p_input = self.d_psds[self.uorder[jj], :]
 
                             if log:
-                                ax[i, jj].semilogy(fr1, p_input,
-                                                   label='Filter input')
-                                ax[i, jj].semilogy(fr1, h0,
-                                                   label='Fitler output')
-                                ax[i, jj].semilogy(fr1, np.abs(h),
-                                                   label='Freq response')
+                                ax[i, jj].semilogy(fr1, p_input/p_input.sum(),
+                                                   label='Filter input RPS')
+                                ax[i, jj].semilogy(fr1, h0/h0.sum(),
+                                                   label='Fitler output RPS')
+                                ax[i, jj].semilogy(fr1, np.abs(h)/np.abs(h).sum(),
+                                                   label='Freq response RPS')
                             else:
                                 ax[i, jj].plot(fr1, p_input/p_input.sum(),
                                                label='Filter input RPS')
@@ -1912,7 +2269,7 @@ class VARCNN(BaseModel):
         specs.setdefault('l2_lambda', 0)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
-        specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('unitnorm_scope', [])
         super(VARCNN, self).__init__(Dataset, specs)
 
     def build_graph(self):
@@ -2008,7 +2365,7 @@ class VARCNNR(BaseModel):
         specs.setdefault('l2_lambda', 0)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
-        specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('unitnorm_scope', [])
         super(VARCNNR, self).__init__(Dataset, specs)
 
     def build_graph(self):
@@ -2108,7 +2465,7 @@ class LFCNNR(BaseModel):
         specs.setdefault('l2_lambda', 0)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
-        specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('unitnorm_scope', [])
         super(LFCNNR, self).__init__(Dataset, specs)
 
     def build_graph(self):
@@ -2121,7 +2478,7 @@ class LFCNNR(BaseModel):
             Output of the forward pass of the computational graph.
             Prediction of the target variable.
         """
-        self.invcov = InvCov(axis=3)(self.inputs)
+        #self.invcov = InvCov(axis=3)(self.inputs)
         self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
                             axis=3, specs=self.specs)(self.inputs)
 
@@ -2183,7 +2540,7 @@ class FBCSP_ShallowNet(BaseModel):
         specs.setdefault('l2_lambda', 3e-2)
         specs.setdefault('l1_scope', [])
         specs.setdefault('l2_scope', ['conv', 'fc'])
-        specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('unitnorm_scope', [])
         specs.setdefault('model_path', './')
         super(FBCSP_ShallowNet, self).__init__(Dataset, specs)
 
@@ -2311,7 +2668,7 @@ class LFLSTM(BaseModel):
         specs.setdefault('l2_lambda', 0.)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
-        specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
         super(LFLSTM, self).__init__(Dataset, specs)
 
@@ -2410,7 +2767,7 @@ class Deep4(BaseModel):
         specs.setdefault('l2_lambda', 3e-2)
         specs.setdefault('l1_scope', [])
         specs.setdefault('l2_scope', ['conv', 'fc'])
-        specs.setdefault('maxnorm_scope', [])
+        specs.setdefault('unitnorm_scope', [])
         specs.setdefault('model_path', './')
         super(Deep4, self).__init__(Dataset, specs)
 
