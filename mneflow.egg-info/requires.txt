@@ -1,6 +1,0 @@
-numpy
-scipy
-mne
-tensorflow
-matplotlib
-sklearn
