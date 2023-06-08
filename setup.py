@@ -3,21 +3,20 @@ from setuptools import setup
 import codecs
 import os
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     if os.path.exists('MANIFEST'):
         os.remove('MANIFEST')
 
-    setup(
-        name='mneflow',
+    setup(name='mneflow',
         maintainer='Ivan Zubarev',
         maintainer_email='ivan.zubarev@aalto.fi',
-        description='Interface for running tensorflow models on MEG/EEG data with MNE-python',
+        description='Neural networks for MEG and EEG data',
         license='BSD-3',
         url='https://github.com/zubara/mneflow',
-        version='0.2.0',
+        version='0.4.0',
         download_url='https://github.com/zubara/mneflow/archive/master.zip',
-        long_description=codecs.open('README.md', encoding='utf8').read(),
-        long_description_content_type = 'text/markdown',
+        #long_description=codecs.open('./docs/intro.rst', encoding='utf8').read(),
+        #long_description_content_type="text/x-rst",
         classifiers=['Intended Audience :: Science/Research',
                      'Intended Audience :: Developers',
                      'License :: OSI Approved',
@@ -30,6 +29,4 @@ if __name__ == "__main__":
                      'Operating System :: MacOS'],
         platforms='any',
         packages=['mneflow'],
-        install_requires=['numpy', 'scipy', 'mne', 'tensorflow',  'matplotlib',
-                          'sklearn'],
-    )
+        install_requires=['numpy', 'scipy', 'mne', 'tensorflow', 'matplotlib', 'sklearn'])

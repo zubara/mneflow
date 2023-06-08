@@ -1,18 +1,25 @@
 # MNEflow
 Neural networks for EEG-MEG decoding with MNE-python and Tensorflow.
 
-# Isnatllation
+# Installation
 ```
 pip install mneflow
 ```
+
+# Dependencies
+
+- tensorflow >= 2.1.0
+- mne > 0.24.0
 
 # Documentation
 
 API reference is avalable in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
 
-Also check the [example notebooks](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb).
+Also check the [example notebooks](https://mneflow.readthedocs.io/en/latest/intro.html#examples).
 
 # References 
+Zubarev I, Vranou G, Parkkonen L. MNEflow: Neural networks for EEG/MEG decoding and interpretation [link](https://www.sciencedirect.com/science/article/pii/S2352711021001795)
+
 When using the implemented models please cite: 
 
 ###  for LF-CNN or VAR-CNN 

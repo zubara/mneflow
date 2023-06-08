@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Implemented models &mdash; MNEflow 0.2.0 documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/language_data.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="MNEflow API" href="mneflow_api.html" />
+    <link rel="prev" title="MNEflow" href="intro.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html" class="icon icon-home"> MNEflow
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="intro.html">MNEflow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html#installation">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html#dependencies">Dependencies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html#examples">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html#references">References</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Implemented models</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#lfcnn">LFCNN</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#varcnn">VARCNN</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#eegnet">EEGNet</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fbcsp-shallownet">FBCSP_ShallowNet</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#deep4">Deep4</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="mneflow_api.html">MNEflow API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">History</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">MNEflow</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>Implemented models</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/models.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="section" id="implemented-models">
+<h1>Implemented models<a class="headerlink" href="#implemented-models" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="lfcnn">
+<h2>LFCNN<a class="headerlink" href="#lfcnn" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="mneflow.models.LFCNN">
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">LFCNN</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="mneflow_api.html#mneflow.models.BaseModel" title="mneflow.models.BaseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.BaseModel</span></code></a></p>
+<p>LF-CNN. Includes basic parameter interpretation options.</p>
+<p>For details see [1].
+.. rubric:: References</p>
+<p>[1] I. Zubarev, et al., Adaptive neural network classifier for
+decoding MEG signals. Neuroimage. (2019) May 4;197:425-434</p>
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.__init__">
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Dataset</strong> (<em>mneflow.Dataset</em>) – </p></li>
+<li><p><strong>specs</strong> (<em>dict</em>) – dictionary of model hyperparameters {</p></li>
+<li><p><strong>n_latent</strong> (<em>int</em>) – Number of latent components.
+Defaults to 32.</p></li>
+<li><p><strong>nonlin</strong> (<em>callable</em>) – Activation function of the temporal convolution layer.
+Defaults to tf.nn.relu</p></li>
+<li><p><strong>filter_length</strong> (<em>int</em>) – Length of spatio-temporal kernels in the temporal
+convolution layer. Defaults to 7.</p></li>
+<li><p><strong>pooling</strong> (<em>int</em>) – Pooling factor of the max pooling layer. Defaults to 2</p></li>
+<li><p><strong>pool_type</strong> (<em>str {'avg'</em><em>, </em><em>'max'}</em>) – Type of pooling operation. Defaults to ‘max’.</p></li>
+<li><p><strong>padding</strong> (<em>str {'SAME'</em><em>, </em><em>'FULL'</em><em>, </em><em>'VALID'}</em>) – Convolution padding. Defaults to ‘SAME’.}</p></li>
+<li><p><strong>stride</strong> (<em>int</em>) – </p></li>
+<li><p><strong>of the max pooling layer. Defaults to 1.</strong> (<em>Stride</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.build_graph">
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.build_graph" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build computational graph using defined placeholder <cite>self.X</cite>
+as input.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><strong>y_pred</strong> – Output of the forward pass of the computational graph.
+Prediction of the target variable.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>tf.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.compute_patterns">
+<code class="sig-name descname">compute_patterns</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data_path</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">output</span><span class="o">=</span><span class="default_value">'patterns'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.compute_patterns" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes spatial patterns from filter weights.
+Required for visualization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_path</strong> (<em>str</em><em> or </em><em>list of str</em>) – Path to TFRecord files on which the patterns are estimated.</p></li>
+<li><p><strong>output</strong> (<em>str {'patterns</em><em>, </em><em>'filters'</em><em>, </em><em>'full_patterns'}</em>) – <p>String specifying the output.</p>
+<p>’filters’ - extracts weights of the spatial filters</p>
+<p>’patterns’ - extracts activation patterns, obtained by
+left-multipying the spatial filter weights by the (spatial)
+data covariance.</p>
+<p>’full-patterns’ - additionally multiplies activation
+patterns by the precision (inverse covariance) of the
+latent sources</p>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><em>self.patterns</em> – spatial filters or activation patterns, depending on the
+value of ‘output’ parameter.</p></li>
+<li><p><em>self.lat_tcs</em> – time courses of latent sourses.</p></li>
+<li><p><em>self.filters</em> – temporal convolutional filter coefficients.</p></li>
+<li><p><em>self.out_weights</em> – weights of the output layer.</p></li>
+<li><p><em>self.rfocs</em> – feature relevances for the output layer.
+(See self.get_output_correlations)</p></li>
+<li><p><em>Raises</em></p></li>
+<li><p><em>——-</em> – AttributeError: If <cite>data_path</cite> is not specified.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.get_component_relevances">
+<code class="sig-name descname">get_component_relevances</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">X</span></em>, <em class="sig-param"><span class="n">y</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.get_component_relevances" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute component relevances by recursive elimination</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.get_output_correlations">
+<code class="sig-name descname">get_output_correlations</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">y_true</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.get_output_correlations" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes a similarity metric between each of the extracted
+features and the target variable.</p>
+<p>The metric is a Manhattan distance for dicrete targets, and
+Spearman correlation for continuous targets.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.plot_out_weights">
+<code class="sig-name descname">plot_out_weights</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">pat</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">t</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">tmin</span><span class="o">=</span><span class="default_value">- 0.1</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'weight'</span></em>, <em class="sig-param"><span class="n">class_names</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_out_weights" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the weights of the output layer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pat</strong> (<em>int</em><em> [</em><em>0</em><em>, </em><em>self.specs</em><em>[</em><em>'n_latent'</em><em>]</em><em>)</em>) – Index of the latent component to higlight</p></li>
+<li><p><strong>t</strong> (<em>int</em><em> [</em><em>0</em><em>, </em><em>self.h_params</em><em>[</em><em>'n_t'</em><em>]</em><em>)</em>) – Index of timepoint to highlight</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.plot_patterns">
+<code class="sig-name descname">plot_patterns</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sensor_layout</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'l2'</span></em>, <em class="sig-param"><span class="n">percentile</span><span class="o">=</span><span class="default_value">90</span></em>, <em class="sig-param"><span class="n">scale</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">class_names</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">info</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_patterns" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot informative spatial activations patterns for each class
+of stimuli.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sensor_layout</strong> (<em>str</em><em> or </em><em>mne.channels.Layout</em>) – Sensor layout. See mne.channels.read_layout for details</p></li>
+<li><p><strong>sorting</strong> (<em>str</em><em>, </em><em>optional</em>) – Component sorting heuristics. Defaults to ‘l2’.
+See model._sorting</p></li>
+<li><p><strong>scale</strong> (<em>bool</em><em>, </em><em>otional</em>) – If True will min-max scale the output. Defaults to False.</p></li>
+<li><p><strong>names</strong> (<em>list of str</em><em>, </em><em>optional</em>) – Class names.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p></p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>Figure</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.plot_spectra">
+<code class="sig-name descname">plot_spectra</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'l2'</span></em>, <em class="sig-param"><span class="n">norm_spectra</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">log</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">class_names</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_spectra" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots frequency responses of the temporal convolution filters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fs</strong> (<em>float</em>) – Sampling frequency.</p></li>
+<li><p><strong>sorting</strong> (<em>str optinal</em>) – Component sorting heuristics. Defaults to ‘l2’.
+See model._sorting</p></li>
+<li><p><strong>norm_sepctra</strong> (<em>None</em><em>, </em><em>str {'welch'</em><em>, </em><em>'ar'}</em>) – Whether to apply normalization for extracted spectra.
+Defaults to None.</p></li>
+<li><p><strong>log</strong> (<em>bool</em>) – Apply log-transform to the spectra.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.LFCNN.plot_waveforms">
+<code class="sig-name descname">plot_waveforms</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sorting</span><span class="o">=</span><span class="default_value">'compwise_loss'</span></em>, <em class="sig-param"><span class="n">tmin</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">class_names</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.LFCNN.plot_waveforms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots timecourses of latent components.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tmin</strong> (<em>float</em>) – Beginning of the MEG epoch with regard to reference event.
+Defaults to 0.</p></li>
+<li><p><strong>sorting</strong> (<em>str</em>) – heuristic for selecting relevant components. See LFCNN._sorting</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="varcnn">
+<h2>VARCNN<a class="headerlink" href="#varcnn" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="mneflow.models.VARCNN">
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">VARCNN</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.VARCNN" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="mneflow_api.html#mneflow.models.BaseModel" title="mneflow.models.BaseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.BaseModel</span></code></a></p>
+<p>VAR-CNN.</p>
+<p>For details see [1].</p>
+<p class="rubric">References</p>
+<p>[1] I. Zubarev, et al., Adaptive neural network classifier for
+decoding MEG signals. Neuroimage. (2019) May 4;197:425-434</p>
+<dl class="py method">
+<dt id="mneflow.models.VARCNN.__init__">
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.VARCNN.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Dataset</strong> (<em>mneflow.Dataset</em>) – </p></li>
+<li><p><strong>specs</strong> (<em>dict</em>) – dictionary of model hyperparameters {</p></li>
+<li><p><strong>n_latent</strong> (<em>int</em>) – Number of latent components.
+Defaults to 32.</p></li>
+<li><p><strong>nonlin</strong> (<em>callable</em>) – Activation function of the temporal convolution layer.
+Defaults to tf.nn.relu</p></li>
+<li><p><strong>filter_length</strong> (<em>int</em>) – Length of spatio-temporal kernels in the temporal
+convolution layer. Defaults to 7.</p></li>
+<li><p><strong>pooling</strong> (<em>int</em>) – Pooling factor of the max pooling layer. Defaults to 2</p></li>
+<li><p><strong>pool_type</strong> (<em>str {'avg'</em><em>, </em><em>'max'}</em>) – Type of pooling operation. Defaults to ‘max’.</p></li>
+<li><p><strong>padding</strong> (<em>str {'SAME'</em><em>, </em><em>'FULL'</em><em>, </em><em>'VALID'}</em>) – Convolution padding. Defaults to ‘SAME’.}</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.VARCNN.build_graph">
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.VARCNN.build_graph" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build computational graph using defined placeholder <cite>self.X</cite>
+as input.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><strong>y_pred</strong> – Output of the forward pass of the computational graph.
+Prediction of the target variable.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>tf.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="eegnet">
+<h2>EEGNet<a class="headerlink" href="#eegnet" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="mneflow.models.EEGNet">
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">EEGNet</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.EEGNet" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="mneflow_api.html#mneflow.models.BaseModel" title="mneflow.models.BaseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.BaseModel</span></code></a></p>
+<p>EEGNet.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>specs</strong> (<em>dict</em>) – <dl class="simple">
+<dt>n_latent<span class="classifier">int</span></dt><dd><p>Number of (temporal) convolution kernrels in the first layer.
+Defaults to 8</p>
+</dd>
+<dt>filter_length<span class="classifier">int</span></dt><dd><p>Length of temporal filters in the first layer.
+Defaults to 32</p>
+</dd>
+<dt>stride<span class="classifier">int</span></dt><dd><p>Stride of the average polling layers. Defaults to 4.</p>
+</dd>
+<dt>pooling<span class="classifier">int</span></dt><dd><p>Pooling factor of the average polling layers. Defaults to 4.</p>
+</dd>
+<dt>dropout<span class="classifier">float</span></dt><dd><p>Dropout coefficient.</p>
+</dd>
+</dl>
+</p>
+</dd>
+</dl>
+<p class="rubric">References</p>
+<p>[3] V.J. Lawhern, et al., EEGNet: A compact convolutional neural
+network for EEG-based brain–computer interfaces 10 J. Neural Eng.,
+15 (5) (2018), p. 056013</p>
+<p>[4] Original EEGNet implementation by the authors can be found at
+<a class="reference external" href="https://github.com/vlawhern/arl-eegmodels">https://github.com/vlawhern/arl-eegmodels</a></p>
+<dl class="py method">
+<dt id="mneflow.models.EEGNet.__init__">
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.EEGNet.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Dataset</strong> (<em>mneflow.Dataset</em>) – <cite>Dataset</cite> object.</p></li>
+<li><p><strong>specs</strong> (<em>dict</em>) – Dictionary of model-specific hyperparameters. Must include
+at least <cite>model_path</cite> - path for saving a trained model
+See <cite>Model</cite> subclass definitions for details. Unless otherwise
+specified uses default hyperparameters for each implemented model.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.EEGNet.build_graph">
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.EEGNet.build_graph" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build computational graph using defined placeholder self.X
+as input.</p>
+<p>Can be overriden in a sub-class for customized architecture.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><strong>y_pred</strong> – Output of the forward pass of the computational graph.
+Prediction of the target variable.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>tf.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="fbcsp-shallownet">
+<h2>FBCSP_ShallowNet<a class="headerlink" href="#fbcsp-shallownet" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="mneflow.models.FBCSP_ShallowNet">
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">FBCSP_ShallowNet</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.FBCSP_ShallowNet" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="mneflow_api.html#mneflow.models.BaseModel" title="mneflow.models.BaseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.BaseModel</span></code></a></p>
+<p>Shallow ConvNet model from <a class="reference internal" href="#a" id="id1"><span>[2a]</span></a>.
+.. rubric:: References</p>
+<dl class="citation">
+<dt class="label" id="a"><span class="brackets"><a class="fn-backref" href="#id1">2a</a></span></dt>
+<dd><p>Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
+Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. &amp; Ball, T. (2017).
+Deep learning with convolutional neural networks for EEG decoding and
+visualization.
+Human Brain Mapping , Aug. 2017. Online: <a class="reference external" href="http://dx.doi.org/10.1002/hbm.23730">http://dx.doi.org/10.1002/hbm.23730</a></p>
+</dd>
+</dl>
+<dl class="py method">
+<dt id="mneflow.models.FBCSP_ShallowNet.__init__">
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.FBCSP_ShallowNet.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Dataset</strong> (<em>mneflow.Dataset</em>) – <cite>Dataset</cite> object.</p></li>
+<li><p><strong>specs</strong> (<em>dict</em>) – Dictionary of model-specific hyperparameters. Must include
+at least <cite>model_path</cite> - path for saving a trained model
+See <cite>Model</cite> subclass definitions for details. Unless otherwise
+specified uses default hyperparameters for each implemented model.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.FBCSP_ShallowNet.build_graph">
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.FBCSP_ShallowNet.build_graph" title="Permalink to this definition">¶</a></dt>
+<dd><p>Temporal conv_1 25 10x1 kernels</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="deep4">
+<h2>Deep4<a class="headerlink" href="#deep4" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="mneflow.models.Deep4">
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">Deep4</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Deep4" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="mneflow_api.html#mneflow.models.BaseModel" title="mneflow.models.BaseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.models.BaseModel</span></code></a></p>
+<p>Deep ConvNet model from <a class="reference internal" href="#b" id="id2"><span>[2b]</span></a>.
+.. rubric:: References</p>
+<dl class="citation">
+<dt class="label" id="b"><span class="brackets"><a class="fn-backref" href="#id2">2b</a></span></dt>
+<dd><p>Schirrmeister, R. T., Springenberg, J. T., Fiederer, L. D. J.,
+Glasstetter, M., Eggensperger, K., Tangermann, M., Hutter, F. &amp; Ball, T. (2017).
+Deep learning with convolutional neural networks for EEG decoding and
+visualization.
+Human Brain Mapping , Aug. 2017. Online: <a class="reference external" href="http://dx.doi.org/10.1002/hbm.23730">http://dx.doi.org/10.1002/hbm.23730</a></p>
+</dd>
+</dl>
+<dl class="py method">
+<dt id="mneflow.models.Deep4.__init__">
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Deep4.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Dataset</strong> (<em>mneflow.Dataset</em>) – <cite>Dataset</cite> object.</p></li>
+<li><p><strong>specs</strong> (<em>dict</em>) – Dictionary of model-specific hyperparameters. Must include
+at least <cite>model_path</cite> - path for saving a trained model
+See <cite>Model</cite> subclass definitions for details. Unless otherwise
+specified uses default hyperparameters for each implemented model.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.Deep4.build_graph">
+<code class="sig-name descname">build_graph</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.Deep4.build_graph" title="Permalink to this definition">¶</a></dt>
+<dd><p>Build computational graph using defined placeholder self.X
+as input.</p>
+<p>Can be overriden in a sub-class for customized architecture.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><strong>y_pred</strong> – Output of the forward pass of the computational graph.
+Prediction of the target variable.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>tf.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="intro.html" class="btn btn-neutral float-left" title="MNEflow" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="mneflow_api.html" class="btn btn-neutral float-right" title="MNEflow API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2019, Ivan Zubarev.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

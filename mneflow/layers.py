@@ -16,39 +16,44 @@ from tensorflow.keras import constraints as k_con, regularizers as k_reg
 # tf.disable_v2_behavior()
 import numpy as np
 
+bias_const = 0.
+bias_traiable = False
+
 class BaseLayer(tf.keras.layers.Layer):
     def __init__(self, size, nonlin, specs, **args):
         super(BaseLayer, self).__init__(**args)
         self.size = size
         self.nonlin = nonlin
         self.specs = specs
-        self.specs.setdefault("l1", 0.)
-        self.specs.setdefault("l2", 0.)
-        self.specs.setdefault("l1_scope", [])
-        self.specs.setdefault("l2_scope", [])
-        self.specs.setdefault("maxnorm_scope", [])
+        # self.specs.setdefault("l1_lambda", 0.)
+        # self.specs.setdefault("l2_lambda", 0.)
+        # self.specs.setdefault("l1_scope", [])
+        # self.specs.setdefault("l2_scope", [])
+        # self.specs.setdefault("maxnorm_scope", [])
 
     def _set_regularizer(self):
-        if self.scope in self.specs['l1_scope']:
-            reg = k_reg.l1(self.specs['l1'])
+        if self.scope in self.specs['l1_scope'] or 'weights' in self.specs['l1_scope']:
+            reg = k_reg.l1(self.specs['l1_lambda'])
             print('Setting reg for {}, to l1'.format(self.scope))
-        elif self.scope in self.specs['l2_scope']:
-            reg = k_reg.l1(self.specs['l1'])
+        elif self.scope in self.specs['l2_scope'] or 'weights' in self.specs['l2_scope']:
+            reg = k_reg.l2(self.specs['l2_lambda'])
             print('Setting reg for {}, to l2'.format(self.scope))
         else:
             reg = None
         return reg
 
-    def _set_constraints(self):
-        if self.scope in self.specs['maxnorm_scope']:
-            constr = k_con.MaxNorm(2.)
-            print('Setting constraint for {}, to MaxNorm'.format(self.scope))
+    def _set_constraints(self, axis=0):
+        if self.scope in self.specs['unitnorm_scope']:
+            constr = k_con.UnitNorm(axis=axis)
+            print('Setting constraint for {}, to UnitNorm'.format(self.scope))
         else:
             constr = None
         return constr
 
 
 class Dense(BaseLayer, tf.keras.layers.Layer):
+
+
     """
     Fully-connected layer
     """
@@ -60,17 +65,17 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
 
-    def get_config(self):
-        config = self.get_config()
-        config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': self.nonlin})
-        return config
+    # def get_config(self):
+    #     config = self.get_config()
+    #     config.update({'scope': self.scope, 'size': self.size,
+    #                    'nonlin': self.nonlin})
+        # return config
 
     def build(self, input_shape):
         super(Dense, self).build(input_shape)
         # print(input_shape)
         self.flatsize = np.prod(input_shape[1:])
-        print(self.scope, ':::', )
+        #print(self.scope, ':::', )
 
         self.w = self.add_weight(shape=[self.flatsize, self.size],
                                  initializer='he_uniform',
@@ -83,11 +88,12 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
         self.b = self.add_weight(shape=[self.size],
                                  initializer=Constant(0.1),
                                  regularizer=None,
-                                 trainable=True,
+                                 trainable=bias_traiable,
                                  name='fc_bias',
                                  dtype=tf.float32)
 
         print("Built: {} input: {}".format(self.scope, input_shape))
+
 
     def call(self, x, training=None):
         """Dense layer currying, to apply layer to any input tensor `x`"""
@@ -97,31 +103,178 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
                     x = tf.reshape(x, [-1, self.flatsize])
                 tmp = tf.matmul(x, self.w) + self.b
                 tmp = self.nonlin(tmp, name='out')
-                print(self.scope, ": output :", tmp.shape)
+                #print(self.scope, ": output :", tmp.shape)
                 return tmp
 
+# class LFTConvTranspose1(tf.keras.layers.Layer):
+#     def __init__(self, kernel_size, stride, output_padding, filters=None, **kwargs):
+#         super(LFTConvTranspose1, self).__init__(**kwargs)
+#         self.scope='lft_trans'
+#         self.kernel_size = kernel_size #int
+#         self.stride = stride #int
+#         self.output_padding = output_padding #int
+#         self.filters = filters
+#         #self.use_bias = use_bias #bool
+#         #???
+#         self.input_ax_shape = 0
+#         self.lambdas = []
+#         #self.nm = name
+
+#     def deconv_length(self, input_size, stride_size, kernel_size, output_padding=0):
+
+#         #simple 1 dimentional case
+#         # Get the dilated kernel size
+#         #kernel_size = kernel_size + (kernel_size - 1) * (dilation - 1)
+
+#         # Infer length if output padding is None, else compute the exact length
+#         dim_size = input_size * stride_size - kernel_size + output_padding
+#         return dim_size
+
+#     def build(self, input_shape):
+#         self.n_latent = input_shape[-1]
+#         self.input_ax_shape = input_shape[-2]
+
+#         if self.filters is not None:
+#             self.trainable = False
+#             self.filters = tf.transpose(self.filters, [1,2,3,0])
+#             print("Using Pre-determined filters for inverse convolution")
+#         else:
+#             print("Using Trainable filters for inverse convolution")
+#             self.filters = self.add_weight(name=self.scope + "enc_kernel",
+#                                initializer='he_uniform',
+#                                shape=(self.kernel_size,self.n_latent, 1, 1),
+#                                trainable=True)
+#         print("Filters: ", self.filters.shape)
+
+
+#         #self.lambdas = tf.stack(self.lambdas,axis = 0)
+
+#         #self.input_shape = input_shape
+#         self.output_length = self.deconv_length(self.input_ax_shape,
+#                                            self.stride,
+#                                            self.kernel_size,
+#                                            self.output_padding)
+#         self.out_shape = tf.TensorShape([1, input_shape[1],
+#                                          self.output_length, self.n_latent,
+#                                          ])
+#         #self.out_shape[-2] += (self.deconv_length - self.input_ax_shape)
+
+#         super(LFTConvTranspose1, self).build(input_shape)
+#         print("Built Enc deconv:", input_shape, "->", self.out_shape)
+
+#     #@tf.function
+#     def call(self, inputs):
+
+#         out = tf.nn.conv2d_transpose(inputs, self.filters,
+#                                      output_shape=self.out_shape,
+#                                      strides=(self.stride, 1),
+#                                      data_format='NCHW',
+#                                      padding='SAME')
+
+#         #out_trans = tf.transpose(out, perm=[0,3,1,2])
+#         #print(out_trans.shape)
+
+#         return out
+
+
+# class LFTConvTranspose(tf.keras.layers.Layer):
+#     def __init__(self, kernel_size, stride, output_padding, filters=None, **kwargs):
+#         super(LFTConvTranspose, self).__init__(**kwargs)
+#         self.scope='lft_trans'
+#         self.kernel_size = kernel_size #int
+#         self.stride = stride #int
+#         self.output_padding = output_padding #int
+#         self.filters = filters
+#         #self.use_bias = use_bias #bool
+#         #???
+#         self.input_ax_shape = 0
+#         self.lambdas = []
+#         #self.nm = name
+
+#     def deconv_length(self, input_size, stride_size, kernel_size, output_padding=0):
+
+#         #simple 1 dimentional case
+#         # Get the dilated kernel size
+#         #kernel_size = kernel_size + (kernel_size - 1) * (dilation - 1)
+
+#         # Infer length if output padding is None, else compute the exact length
+#         dim_size = input_size * stride_size - kernel_size + output_padding
+#         return dim_size
+
+#     def build(self, input_shape):
+#         self.n_latent = input_shape[-1]
+#         self.input_ax_shape = input_shape[-2]
+
+#         if self.filters is not None:
+#             self.trainable = False
+#             self.lambdas = tf.split(self.filters, self.n_latent, axis=-2)
+#             print("Using Pre-determined filters for inverse convolution")
+#         else:
+#             print("Using Trainable filters for inverse convolution")
+#             for i in range(input_shape[-1]):
+#                self.lambdas.append(self.add_weight(name = self.scope + "_k" + str(i),
+#                                                    initializer='he_uniform',
+#                                                    shape=(1,self.kernel_size,1,1),
+#                                                    trainable=True))
+
+
+#         #self.lambdas = tf.stack(self.lambdas,axis = 0)
+
+#         #self.input_shape = input_shape
+#         self.output_length = self.deconv_length(self.input_ax_shape,
+#                                            self.stride,
+#                                            self.kernel_size,
+#                                            self.output_padding)
+#         self.out_shape = tf.TensorShape([1, input_shape[1],
+#                                          self.output_length, 1])
+#         #self.out_shape[-2] += (self.deconv_length - self.input_ax_shape)
+#         print(self.out_shape)
+#         super(LFTConvTranspose, self).build(input_shape)
+
+#     @tf.function
+#     def call(self, inputs):
+
+#         inputs_channel_wise =   tf.split(inputs, self.n_latent, axis=-1)
+
+#         #TODO: define strides and padding
+#         # channel_wise_conv = tf.map_fn(lambda x:tf.nn.conv2d_transpose(input=x[0],
+#         #                                                               filters=x[1],
+#         #                                                               output_shape=out_shape,
+#         #                                                               strides=(1, self.strides)),
+#         #                               (inputs_channel_wise,self.lambdas),
+#         #                               fn_output_signature=tf.float32)
+
+#         # channel_wise_conv = tf.transpose(tf.squeeze(channel_wise_conv,axis = -1),[0,2,3,1])
+#         channel_wise_conv = tf.concat([tf.nn.conv2d_transpose(inp, filt,
+#                                           output_shape=self.out_shape,
+#                                           strides=(1, self.stride),
+#                                           padding='SAME')
+#                    for inp, filt in zip(inputs_channel_wise, self.lambdas)],
+#                   axis=-1)
+#         print(channel_wise_conv.shape)
+#         return channel_wise_conv
 
 class DeMixing(BaseLayer):
     """
-    Spatial demixing Layer
+    Spatial demixing Layerю
     """
-    def __init__(self, scope="demix", size=None, nonlin=tf.identity, axis=-1,
+    def __init__(self, scope="dmx", size=None, nonlin=tf.identity, axis=-1,
                  specs={},  **args):
         self.scope = scope
         self.axis = axis
         super(DeMixing, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
 
-    def get_config(self):
-        config = super(DeMixing, self).get_config()
-        config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': self.nonlin, 'axis': self.axis})
-        return config
+    # def get_config(self):
+    #     config = super(DeMixing, self).get_config()
+    #     config.update({'scope': self.scope, 'size': self.size,
+    #                    'nonlin': self.nonlin, 'axis': self.axis})
+    #     return config
 
     def build(self, input_shape):
 
         super(DeMixing, self).build(input_shape)
-        self.constraint = self._set_constraints()
+        self.constraint = self._set_constraints(axis=0)
         self.reg = self._set_regularizer()
 
         self.w = self.add_weight(
@@ -134,9 +287,9 @@ class DeMixing(BaseLayer):
                 dtype=tf.float32)
 
         self.b_in = self.add_weight(shape=([self.size]),
-                                    initializer=Constant(0.1),
+                                    initializer=Constant(bias_const),
                                     regularizer=None,
-                                    trainable=True,
+                                    trainable=bias_traiable,
                                     name='bias',
                                     dtype=tf.float32)
         print("Built: {} input: {}".format(self.scope, input_shape))
@@ -147,9 +300,9 @@ class DeMixing(BaseLayer):
             with tf.name_scope(self.scope):
                 try:
                     demix = tf.tensordot(x, self.w, axes=[[self.axis], [0]],
-                                         name='de-mix')
+                                         name='dmx')
                     demix = self.nonlin(demix + self.b_in)
-                    print(self.scope, ": output :", demix.shape)
+                    #print(self.scope, ": output :", demix.shape)
                     return demix
                 except(AttributeError):
                     input_shape = x.shape
@@ -161,7 +314,7 @@ class LFTConv(BaseLayer):
     """
     Stackable temporal convolutional layer, interpreatble (LF)
     """
-    def __init__(self, scope="lf_conv", size=32,  nonlin=tf.nn.relu,
+    def __init__(self, scope="tconv", size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
@@ -171,17 +324,17 @@ class LFTConv(BaseLayer):
         self.filter_length = filter_length
         self.padding = padding
 
-    def get_config(self):
+    # def get_config(self):
 
-        config = super(LFTConv, self).get_config()
-        config.update({'scope': self.scope,
-                       'filter_length': self.filter_length,
-                       'nonlin': self.nonlin, 'padding': self.padding})
-        return config
+    #     config = super(LFTConv, self).get_config()
+    #     config.update({'scope': self.scope,
+    #                    'filter_length': self.filter_length,
+    #                    'nonlin': self.nonlin, 'padding': self.padding})
+    #    return config
 
     def build(self, input_shape):
         super(LFTConv, self).build(input_shape)
-        self.constraint = self._set_constraints()
+        self.constraint = self._set_constraints(axis=1)
         self.reg = self._set_regularizer()
         shape = [1, self.filter_length, input_shape[-1], 1]
         self.filters = self.add_weight(shape=shape,
@@ -193,9 +346,9 @@ class LFTConv(BaseLayer):
                                        dtype=tf.float32)
 
         self.b = self.add_weight(shape=([input_shape[-1]]),
-                                 initializer=Constant(0.1),
+                                 initializer=Constant(bias_const),
                                  regularizer=None,
-                                 trainable=True,
+                                 trainable=bias_traiable,
                                  name='bias',
                                  dtype=tf.float32)
         print("Built: {} input: {}".format(self.scope, input_shape))
@@ -211,7 +364,8 @@ class LFTConv(BaseLayer):
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-                    print(self.scope, ": output :", conv.shape)
+
+                    #print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
                     input_shape = x.shape
@@ -222,7 +376,7 @@ class VARConv(BaseLayer):
     """
     Stackable temporal convolutional layer, interpreatble (LF)
     """
-    def __init__(self, scope="var_conv", size=32,  nonlin=tf.nn.relu,
+    def __init__(self, scope="tconv", size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
@@ -233,19 +387,21 @@ class VARConv(BaseLayer):
         self.padding = padding
 
 
-    def get_config(self):
+    # def get_config(self):
 
-        config = super(VARConv, self).get_config()
-        config.update({'scope': self.scope,
-                       'filter_length': self.filter_length,
-                       'nonlin': self.nonlin, 'padding': self.padding})
-        return config
+    #     config = super(VARConv, self).get_config()
+    #     config.update({'scope': self.scope,
+    #                    'filter_length': self.filter_length,
+    #                    'nonlin': self.nonlin, 'padding': self.padding})
+    #    return config
 
     def build(self, input_shape):
+        print("input_shape:", input_shape)
         super(VARConv, self).build(input_shape)
+
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
-        shape = [1, self.filter_length, input_shape[-1].value, self.size]
+        shape = [1, self.filter_length, input_shape[-1], self.size]
         self.filters = self.add_weight(shape=shape,
                                        initializer='he_uniform',
                                        regularizer=self.reg,
@@ -254,10 +410,10 @@ class VARConv(BaseLayer):
                                        name='tconv_weights',
                                        dtype=tf.float32)
 
-        self.b = self.add_weight(shape=([input_shape[-1].value]),
-                                 initializer=Constant(0.1),
+        self.b = self.add_weight(shape=([input_shape[-1]]),
+                                 initializer=Constant(bias_const),
                                  regularizer=None,
-                                 trainable=True,
+                                 trainable=bias_traiable,
                                  name='bias',
                                  dtype=tf.float32)
         print("Built: {} input: {}".format(self.scope, input_shape))
@@ -271,9 +427,9 @@ class VARConv(BaseLayer):
                                         padding=self.padding,
                                         strides=[1, 1, 1, 1],
                                         data_format='NHWC')
+
                     conv = self.nonlin(conv + self.b)
-                    conv = self.nonlin(conv + self.b)
-                    print(self.scope, ": output :", conv.shape)
+                    #print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
                     input_shape = x.shape
@@ -289,6 +445,7 @@ class TempPooling(BaseLayer):
                                           **args)
         self.strides = [1, 1, stride,  1]
         self.kernel = [1, 1, pooling,  1]
+
         self.padding = padding
         self.pool_type = pool_type
 
@@ -308,188 +465,80 @@ class TempPooling(BaseLayer):
                                 strides=self.strides,
                                 padding=self.padding,
                                 data_format='NHWC')
-        print(self.scope, ": output :", pooled.shape)
+        #print(self.scope, ": output :", pooled.shape)
         return pooled
 
     def build(self, input_shape):
         super(TempPooling, self).build(input_shape)
         self.built = True
 
-    def get_config(self):
-        config = super(TempPooling, self).get_config()
-        config.update({'scope': self.scope,
-                       'pool_type': self.pool_type,
-                       'stride': self.strides, 'pooling': self.pooling,
-                       'padding': self.padding})
-        return config
+    # def build_reverse(self):
+    #     reverse_kernel = np.zeros(self.strides[2])
+
+    #     if self.pool_type == 'max':
+    #         reverse_kernel[self.strides[2]//2] = 1.
+    #         self.reverse_kernel = tf.constant(value=reverse_kernel,
+    #                                           shape=self.kernel)
+
+
+        # return unpooled
+
+    # def get_config(self):
+    #     config = super(TempPooling, self).get_config()
+    #     config.update({'scope': self.scope,
+    #                    'pool_type': self.pool_type,
+    #                    'stride': self.strides, 'pooling': self.pooling,
+    #                    'padding': self.padding})
+    #     return config
 
 
 
-#def compose(f, g):
-#    return lambda *a, **kw: f(g(*a, **kw))
-#
-#
-#def stack_layers(*args):
-#    return functools.partial(functools.reduce, compose)(*args)
-#
-#
-#def vgg_block(n_layers, layer, kwargs):
-#    layers = []
-#    for i in range(n_layers):
-#        if i > 0:
-#            kwargs['inch'] = kwargs['n_ls']
-#        layers.append(layer(**kwargs))
-#    layers.append(tf.layers.batch_normalization)
-#    layers.append(tf.nn.max_pool)
-#    return stack_layers(layers[::-1])
+class LSTM(tf.keras.layers.LSTM):
+    def __init__(self, scope="lstm", size=32, nonlin='tanh', dropout=0.0,
+                 recurrent_activation='tanh', recurrent_dropout=0.0,
+                 use_bias=True, unit_forget_bias=True,
+                 kernel_regularizer=None, bias_regularizer=None,
+                 return_sequences=True, stateful=False, unroll=False, **args):
+        super(LSTM, self).__init__(name=scope,
+                                     units=size,
+                                     activation=nonlin,
+                                     dropout=dropout,
+                                     recurrent_activation=recurrent_activation,
+                                     recurrent_dropout=recurrent_dropout,
+                                     use_bias=use_bias,
+                                     unit_forget_bias=unit_forget_bias,
+                                     kernel_regularizer=kernel_regularizer,
+                                     # kernel_initializer='glorot_uniform',
+                                     # recurrent_initializer='orthogonal',
+                                     bias_regularizer=bias_regularizer,
+                                     return_sequences=return_sequences,
+                                     stateful=stateful,
+                                     unroll=unroll,
+                                     **args)
+        self.scope = scope
+        self.size = size
+        self.nonlin = nonlin
+        print(self.scope, 'init : OK')
 
+    # def get_config(self):
+    #     config = super(LSTM, self).get_config()
+    #     config.update({'scope': self.scope, 'size': self.size,
+    #                    'nonlin': self.nonlin})
+    #     return config
 
-#def weight_variable(shape, name='', method='he'):
-#    """Initialize weight variable."""
-#    if method == 'xavier':
-#        xavf = 2./sum(np.prod(shape[:-1]))
-#        initial = xavf*tf.random_uniform(shape, minval=-.5, maxval=.5)
-#
-#    elif method == 'he':
-#        hef = np.sqrt(6. / np.prod(shape[:-1]))
-#        initial = hef*tf.random_uniform(shape, minval=-1., maxval=1.)
-#
-#    else:
-#        initial = tf.truncated_normal(shape, stddev=.1)
-#
-#    return tf.Variable(initial, trainable=True, name=name+'weights')
-#
-#
-#def bias_variable(shape):
-#    """Initialize bias variable as constant 0.1."""
-#    initial = tf.constant(0.1, shape=shape)
-#    return tf.Variable(initial, trainable=True, name='bias')
-#
-#
-#def spatial_dropout(x, rate, seed=1234):
-#    num_feature_maps = [tf.shape(x)[0], tf.shape(x)[3]]
-#    random_tensor = 1 - rate
-#    random_tensor = random_tensor + tf.random_uniform(num_feature_maps,
-#                                                      seed=seed,
-#                                                      dtype=x.dtype)
-#    binary_tensor = tf.floor(random_tensor)
-#    binary_tensor = tf.reshape(binary_tensor, [-1, 1, 1, tf.shape(x)[3]])
-#    ret = tf.div(x, (1 - rate)) * binary_tensor
-#    return ret
+    def build(self, input_shape):
+        # print(self.scope, 'build : OK')
+        super(LSTM, self).build(input_shape)
 
-
-
-
-
-
+    @tf.function
+    def call(self, inputs, mask=None, training=None, initial_state=None):
+        # print(self.scope, inputs.shape)
+        return super(LSTM, self).call(inputs, mask=mask, training=training,
+                                        initial_state=initial_state)
 
 
 
 
-#class DeMixing():
-#    """Reduce dimensions across one domain."""
-#    def __init__(self, scope="de-mix", n_ls=32,  nonlin=tf.identity, axis=3):
-#        self.scope = scope
-#        self.size = n_ls
-#        self.nonlin = nonlin
-#        self.axis = axis
-#
-#    def __call__(self, x):
-#        with tf.name_scope(self.scope):
-#            while True:
-#                # reuse weights if already initialized
-#                try:
-#                    x_reduced = self.nonlin(
-#                            tf.tensordot(x, self.W, axes=[[self.axis], [0]],
-#                                         name='de-mix')
-#                            + self.b_in)
-#                    print('dmx', x_reduced.shape)
-#                    return x_reduced
-#                except(AttributeError):
-#                    self.W = weight_variable(
-#                            (x.shape[self.axis].value, self.size), name='dmx_')
-#                    self.b_in = bias_variable([self.size])
-#                    print(self.scope, 'init : OK')
-
-
-#class ConvDSV():
-#    """Standard/Depthwise/Spearable Convolutional Layer constructor."""
-#
-#    def __init__(self, scope="conv", n_ls=None, nonlin=None, inch=None,
-#                 domain=None, padding='SAME', filter_length=5, stride=1,
-#                 pooling=2, dropout=.5, conv_type='depthwise'):
-#
-#        self.scope = '-'.join([conv_type, scope, domain])
-#        self.padding = padding
-#        self.domain = domain
-#        self.inch = inch
-#        self.dropout = dropout
-#        self.size = n_ls
-#        self.filter_length = filter_length
-#        self.stride = stride
-#        self.nonlin = nonlin
-#        self.conv_type = conv_type
-#
-#    def __call__(self, x):
-#        """Calculate the graph for input `X`.
-#
-#        Raises:
-#        -------
-#            ValueError: If the convolution/domain arguments do not have
-#            the supported values.
-#        """
-#        with tf.name_scope(self.scope):
-#            while True:
-#                try:
-#                    if self.conv_type == 'depthwise':
-#                        conv_ = tf.nn.depthwise_conv2d(
-#                                x,
-#                                self.filters,
-#                                strides=[1, self.stride, 1, 1],
-#                                padding=self.padding)
-#
-#                    elif self.conv_type == 'separable':
-#                        conv_ = tf.nn.separable_conv2d(
-#                                x,
-#                                self.filters,
-#                                self.pwf,
-#                                strides=[1, self.stride, 1, 1],
-#                                padding=self.padding)
-#
-#                    elif self.conv_type == '2d':
-#                        conv_ = tf.nn.conv2d(
-#                                x,
-#                                self.filters,
-#                                strides=[1, self.stride, self.stride, 1],
-#                                padding=self.padding)
-#                    else:
-#                        raise ValueError('Invalid convolution type.')
-#
-#                    conv_ = self.nonlin(conv_ + self.b)
-#
-#                    return conv_
-#
-#                except(AttributeError):
-#                    if self.domain == 'time':
-#                        w_sh = [1, self.filter_length, self.inch, self.size]
-#
-#                    elif self.domain == 'space':
-#                        w_sh = [self.filter_length, 1, self.inch, self.size]
-#
-#                    elif self.domain == '2d':
-#                        w_sh = [self.filter_length[0], self.filter_length[1],
-#                                self.inch, self.size]
-#                    else:
-#                        raise ValueError('Invalid domain.')
-#
-#                    self.filters = weight_variable(w_sh, name='weights')
-#                    self.b = bias_variable([self.size])
-#
-#                    if self.conv_type == 'separable':
-#                        self.pwf = weight_variable(
-#                                [1, 1, self.inch*self.size, self.size],
-#                                name='sep-pwf')
-#
-#                    print(self.scope, 'init : OK')
-
+if __name__ == '__main__':
+    print('Reloaded')
 
