@@ -106,75 +106,75 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
                 #print(self.scope, ": output :", tmp.shape)
                 return tmp
 
-class LFTConvTranspose1(tf.keras.layers.Layer):
-    def __init__(self, kernel_size, stride, output_padding, filters=None, **kwargs):
-        super(LFTConvTranspose1, self).__init__(**kwargs)
-        self.scope='lft_trans'
-        self.kernel_size = kernel_size #int
-        self.stride = stride #int
-        self.output_padding = output_padding #int
-        self.filters = filters
-        #self.use_bias = use_bias #bool
-        #???
-        self.input_ax_shape = 0
-        self.lambdas = []
-        #self.nm = name
+# class LFTConvTranspose1(tf.keras.layers.Layer):
+#     def __init__(self, kernel_size, stride, output_padding, filters=None, **kwargs):
+#         super(LFTConvTranspose1, self).__init__(**kwargs)
+#         self.scope='lft_trans'
+#         self.kernel_size = kernel_size #int
+#         self.stride = stride #int
+#         self.output_padding = output_padding #int
+#         self.filters = filters
+#         #self.use_bias = use_bias #bool
+#         #???
+#         self.input_ax_shape = 0
+#         self.lambdas = []
+#         #self.nm = name
 
-    def deconv_length(self, input_size, stride_size, kernel_size, output_padding=0):
+#     def deconv_length(self, input_size, stride_size, kernel_size, output_padding=0):
 
-        #simple 1 dimentional case
-        # Get the dilated kernel size
-        #kernel_size = kernel_size + (kernel_size - 1) * (dilation - 1)
+#         #simple 1 dimentional case
+#         # Get the dilated kernel size
+#         #kernel_size = kernel_size + (kernel_size - 1) * (dilation - 1)
 
-        # Infer length if output padding is None, else compute the exact length
-        dim_size = input_size * stride_size - kernel_size + output_padding
-        return dim_size
+#         # Infer length if output padding is None, else compute the exact length
+#         dim_size = input_size * stride_size - kernel_size + output_padding
+#         return dim_size
 
-    def build(self, input_shape):
-        self.n_latent = input_shape[-1]
-        self.input_ax_shape = input_shape[-2]
+#     def build(self, input_shape):
+#         self.n_latent = input_shape[-1]
+#         self.input_ax_shape = input_shape[-2]
 
-        if self.filters is not None:
-            self.trainable = False
-            self.filters = tf.transpose(self.filters, [1,2,3,0])
-            print("Using Pre-determined filters for inverse convolution")
-        else:
-            print("Using Trainable filters for inverse convolution")
-            self.filters = self.add_weight(name=self.scope + "enc_kernel",
-                               initializer='he_uniform',
-                               shape=(self.kernel_size,self.n_latent, 1, 1),
-                               trainable=True)
-        print("Filters: ", self.filters.shape)
+#         if self.filters is not None:
+#             self.trainable = False
+#             self.filters = tf.transpose(self.filters, [1,2,3,0])
+#             print("Using Pre-determined filters for inverse convolution")
+#         else:
+#             print("Using Trainable filters for inverse convolution")
+#             self.filters = self.add_weight(name=self.scope + "enc_kernel",
+#                                initializer='he_uniform',
+#                                shape=(self.kernel_size,self.n_latent, 1, 1),
+#                                trainable=True)
+#         print("Filters: ", self.filters.shape)
 
 
-        #self.lambdas = tf.stack(self.lambdas,axis = 0)
+#         #self.lambdas = tf.stack(self.lambdas,axis = 0)
 
-        #self.input_shape = input_shape
-        self.output_length = self.deconv_length(self.input_ax_shape,
-                                           self.stride,
-                                           self.kernel_size,
-                                           self.output_padding)
-        self.out_shape = tf.TensorShape([1, input_shape[1],
-                                         self.output_length, self.n_latent,
-                                         ])
-        #self.out_shape[-2] += (self.deconv_length - self.input_ax_shape)
+#         #self.input_shape = input_shape
+#         self.output_length = self.deconv_length(self.input_ax_shape,
+#                                            self.stride,
+#                                            self.kernel_size,
+#                                            self.output_padding)
+#         self.out_shape = tf.TensorShape([1, input_shape[1],
+#                                          self.output_length, self.n_latent,
+#                                          ])
+#         #self.out_shape[-2] += (self.deconv_length - self.input_ax_shape)
 
-        super(LFTConvTranspose1, self).build(input_shape)
-        print("Built Enc deconv:", input_shape, "->", self.out_shape)
+#         super(LFTConvTranspose1, self).build(input_shape)
+#         print("Built Enc deconv:", input_shape, "->", self.out_shape)
 
-    #@tf.function
-    def call(self, inputs):
+#     #@tf.function
+#     def call(self, inputs):
 
-        out = tf.nn.conv2d_transpose(inputs, self.filters,
-                                     output_shape=self.out_shape,
-                                     strides=(self.stride, 1),
-                                     data_format='NCHW',
-                                     padding='SAME')
+#         out = tf.nn.conv2d_transpose(inputs, self.filters,
+#                                      output_shape=self.out_shape,
+#                                      strides=(self.stride, 1),
+#                                      data_format='NCHW',
+#                                      padding='SAME')
 
-        #out_trans = tf.transpose(out, perm=[0,3,1,2])
-        #print(out_trans.shape)
+#         #out_trans = tf.transpose(out, perm=[0,3,1,2])
+#         #print(out_trans.shape)
 
-        return out
+#         return out
 
 
 # class LFTConvTranspose(tf.keras.layers.Layer):

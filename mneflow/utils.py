@@ -93,7 +93,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     #X = X_.copy()
 
     if baseline is None:
-        print("No baseline interval specified, sacling based on the whole epoch")
+        print("No baseline interval specified, scaling based on the whole epoch")
         interval = np.arange(X.shape[-1])
     elif isinstance(baseline, tuple):
         print("Scaling to interval {:.1f} - {:.1f}".format(*baseline))
@@ -543,6 +543,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
 #                    return
                 #Preprocess data and segment labels if needed
                 # TODO define segment_y
+
                 X, Y, folds = preprocess(
                         data, events,
                         sample_counter=meta['train_size'],
@@ -955,6 +956,8 @@ def preprocess(data, events, sample_counter,
 
     # TODO: remove scale_y and transform targets?
 
+
+
     if scale:
         data = scale_to_baseline(data, baseline=scale_interval,
                                  crop_baseline=crop_baseline)
@@ -964,9 +967,15 @@ def preprocess(data, events, sample_counter,
         data, events, folds = cont_split_indices(data, events,
                                                  n_folds=5,
                                                  segments_per_fold=10)
+        shuffle = np.random.permutation(np.arange(events.shape[0]))
+        data = data[shuffle]
+        events = events[shuffle]
         print("Continuous events: ", events.shape)
 
     else:
+        shuffle = np.random.permutation(np.arange(events.shape[0]))
+        data = data[shuffle]
+        events = events[shuffle]
         folds = _split_indices(data, events, n_folds=n_folds)
 
     print("Splitting into: {} folds x {}".format(len(folds), len(folds[0])))
@@ -1070,4 +1079,6 @@ def r2_score(y_true, y_pred):
     res = np.sum((y_true - y_pred)**2, axis=0)
     tot = np.sum((y_true - np.mean(y_true, axis=0, keepdims=True))**2, axis=0)
     return 1 - res/tot
+
+#def reconstruction_pve(X_true, X_pred):
 
