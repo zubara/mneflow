@@ -46,6 +46,7 @@ def transform_targets(targets):
     #as an illustration we take the mean of last 50 samples of the 1st channel
     #of the motioncaputre
     out = np.array([t[-50:, 0].mean(axis=0, keepdims=True) for t in targets])
+    
     print(out.shape)
     ##alternative treatment
     # targets = np.mean(targets[:,:,0], axis=1)
@@ -79,7 +80,7 @@ import_opt = dict(fs=1000,
                   save_as_numpy=True
                   )
 
-meta = mneflow.produce_tfrecords((np.squeeze(data), events), **import_opt)
+meta = mneflow.produce_tfrecords((data, events), **import_opt)
 
 #%%
 dataset = mneflow.Dataset(meta, train_batch = 100)
