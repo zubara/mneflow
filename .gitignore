@@ -2,6 +2,8 @@
 *.pyo
 scripts/*
 examples/*.py
+examples/.ipynb_checkpoints/
 build
 datasets
 dist
+tests

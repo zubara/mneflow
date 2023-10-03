@@ -1498,28 +1498,9 @@ class LFCNN(BaseModel):
 
         self.fake_evoked = evoked.EvokedArray(topos, info)
         self.fake_evoked.data[:, :n] = topos
-#        self.fake_evoked.data[:, 1] = combined
-        # true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
-        # ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
-
-        # ed /= ed.std(1,keepdims=True)
-
-        # self.true_evoked = evoked.EvokedArray(ed.T, info)
-#        erp_inds = np.arange(n)
-#        nrows = 1
         ncols = n
 
-#%%
-        #tt = (float(t) * self.dataset.h_params['fs'] / 1000.) - 0.1
-        #f, ax = plt.subplots(nrows, ncols, sharey=True)
-        #for ii in range(self.y_shape[-1]):
-
-        # plt.tight_layout()
-        # f.set_size_inches([16, 3])
-        # ax = np.atleast_2d(ax)
-
         fake_times = np.arange(0,  ncols, 1.)
-        #print(fake_times)
 
         ft = self.fake_evoked.plot_topomap(times=fake_times,
                                           #axes=ax[0, 0],
@@ -1535,16 +1516,6 @@ class LFCNN(BaseModel):
         ft.set_size_inches([15,3.5])
         figname = '-'.join([self.model_path + self.scope, self.dataset.h_params['data_id'], method, "topos.svg"])
         ft.savefig(figname, format='svg', transparent=True)
-            # self.true_evoked.plot_topomap(times=erp_inds[ii],
-            #                               axes=ax[0, 1],
-            #                               colorbar=False,
-            #                               vmax=vmax,
-            #                               scalings=1,
-            #                               time_format="True Pattern for %g",
-            #                               title='',
-            #                               #size=1,
-            #                               outlines='head',
-            #                               )
 
         if ncols == 1:
             plt.figure()
@@ -1554,37 +1525,22 @@ class LFCNN(BaseModel):
             normalized_output_rps /= np.maximum(np.sum(filters*psds), 1e-6)
             ax.plot(freqs, normalized_input_rps, label='Input RPS')
             ax.plot(freqs, normalized_output_rps, label='Output RPS')
-#            ax.plot(freqs, filters/np.maximum(np.sum(filters), 1e-6),
-#                    label='Freq response')
             ax.legend()
             ax.set_xlim(0, 90)
-            #plt.show()
         else:
             f, ax = plt.subplots(1, ncols, sharey=True) #, constrained_layout=True
-            #f.constrained_layout()
             f.set_size_inches([14, 3.])
             for i in range(ncols):
-                #ax[i].semilogy(freqs[:-1], combined_filters[:,i], label='Impulse response')
                 normalized_output_rps = filters[:,i]*psds[:,i]
                 normalized_output_rps /= np.maximum(np.sum(filters[:,i]*psds[:,i]), 1e-6)
                 normalized_input_rps = psds[:,i] / np.maximum(np.sum(psds[:,i]), 1e-6)
-
-
                 ax[i].plot(freqs, normalized_input_rps, label='Layer Input')
                 ax[i].set_title(names[i])
                 ax[i].plot(freqs, normalized_output_rps, label='Extracted Component')
-#                ax[i].plot(freqs, filters[:, i]/np.maximum(np.sum(filters[:, i]), 1e-6),
-#                    label='Freq response')
-                #ax[i].plot(freqs[:-1], combined_filters[:,i], label='Output RPS')
-                #ax[i].plot(freqs[:-1], combined_psds[:,i], label='Input RPS')
                 ax[i].set_xlim(0, 70)
 
-                # ax[i].set_xticklabels(ax[i].get_xmajorticklabels(),
-                #   fontdict={'fontsize':14})
                 for spine in ['top', 'right']:
                     ax[i].spines[spine].set_visible(False)
-                #ax[i].set_frame_on(False)
-                #ax[i].set_ylim(1e-5, 1.)
                 if i == ncols-1:
                     ax[i].legend()
                 if i == 0:
@@ -1594,15 +1550,8 @@ class LFCNN(BaseModel):
                     else:
                         ind = np.arange(0, len(ticks), 2, dtype=int)
 
-                    # ax[i].set_yticks(ticks[ind])
-                    # ax[i].set_yticklabels(ax[i].get_ymajorticklabels(),
-                    #   fontdict={'fontsize':14})
                     ax[i].set_ylabel('Relative power, %', fontsize=16)
-            #f.supxlabel('Frequency, Hz', fontsize=16)
         plt.show()
-                #ax[i].show()
-
-
 
 
     def plot_patterns(self, sensor_layout=None, sorting='l2', percentile=90,
@@ -1633,9 +1582,7 @@ class LFCNN(BaseModel):
 
         """
         order, ts = self._sorting(sorting)
-        #print(order, type(order))
         self.uorder = order.ravel()
-        #self.uorder = np.squeeze(self.uorder1)
         l_u = len(self.uorder)
         if info:
             info['sfreq'] = 1.
@@ -1651,7 +1598,6 @@ class LFCNN(BaseModel):
 
         elif sensor_layout:
             lo = channels.read_layout(sensor_layout)
-            #lo = channels.generate_2d_layout(lo.pos)
             info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
             orig_xy = np.mean(lo.pos[:, :2], 0)
             for i, ch in enumerate(lo.names):
@@ -1696,10 +1642,6 @@ class LFCNN(BaseModel):
             for ii in range(nrows):
 
                 fake_times = np.arange(ii * ncols,  (ii + 1) * ncols, 1.)
-                #vmax = np.percentile(self.fake_evoked.data[:, :l_u], 95)
-                #origin = np.median(lo.pos, 0)
-                #origin[2] = 0.0
-                #origin[3] = 1
                 self.fake_evoked.plot_topomap(times=fake_times,
                                               axes=ax[ii],
                                               colorbar=False,
@@ -1710,21 +1652,12 @@ class LFCNN(BaseModel):
                                               #size=1,
                                               outlines='head',
                                               )
-            # if sorting in ['output_corr', 'weight', 'weight_corr', 'compwise_loss']:
-            #         [ax[0][jj].set_title(c) for jj, c in enumerate(comp_names)]
 
-#%%
             if np.any(ts):
                 self.plot_out_weights(pat=order, t=ts, sorting=sorting)
             else:
                 self.plot_out_weights()
             return f
-
-    # def compute_spectra(self):
-
-
-    #     return impulse_response, input_spectrum, output_spectrum
-
 
     def plot_spectra(self, fs=None, sorting='l2', norm_spectra=None,
                      log=False, class_names=None, debias=True):
@@ -1759,13 +1692,6 @@ class LFCNN(BaseModel):
                 fr, psd = welch(self.lat_tcs, fs=self.fs, nfft=self.nfft * 2)
                 self.d_psds = psd[:, :-1]
 
-#            elif 'ar' in norm_spectra and not hasattr(self, 'ar'):
-#                ar = []
-#                for i, ltc in enumerate(self.lat_tcs):
-#                    coef, _, _ = aryule(ltc, self.specs['filter_length'])
-#                    ar.append(coef[None, :])
-#                self.ar = np.concatenate(ar)
-
         order, ts = self._sorting(sorting)
         self.uorder = order.ravel()
         #self.uorder = np.squeeze(order)
@@ -1786,8 +1712,6 @@ class LFCNN(BaseModel):
                     comp_names = ["Class " + str(jj) for jj in range(self.out_dim)]
                     #f.suptitle(comp_name, fontsize=16)
                 [ax[0][jj].set_title(c) for jj, c in enumerate(comp_names)]
-
-                #bias = self.tconv.b.numpy()
 
                 for i in range(nrows):
                     for jj, flt in enumerate(out_filters[:, i*ncols:(i+1)*ncols].T):
@@ -1813,7 +1737,6 @@ class LFCNN(BaseModel):
                                 ax[i, jj].plot(fr1, h0/h0.sum(), label='Fitler output RPS')
                                 ax[i, jj].plot(fr1, np.abs(h)/np.abs(h).sum(),
                                                label='Freq response')
-                            #print(np.all(np.round(fr[:-1], -4) == np.round(fr1, -4)))
 
                         else:
                             if log:
