@@ -14,16 +14,38 @@ import mne
 
 
 def _onehot(y, n_classes=False):
+    """
+    Transforms n-by-1 vector of class labels into n-by-n_classes array of
+    one-hot encoded labels
+
+    Parameters
+    ----------
+    y : array of ints
+        Array of class labels
+
+    n_classes : int
+        Number of classes. If set to False (default) n_classes is set to number of
+        unique labels in y
+
+
+    Returns
+    -------
+    y_onehot : array
+        array of onehot encoded labels
+
+    """
     if not n_classes:
         """Create one-hot encoded labels."""
         n_classes = len(set(y))
     out = np.zeros((len(y), n_classes))
     for i, ii in enumerate(y):
         out[i][ii] += 1
-    return out.astype(int)
+    y_onehot = out.astype(int)
+    return y_onehot
 
 
 def load_meta(fname, data_id=''):
+    # TODO: expand functionality?
     """Load a metadata file.
 
     Parameters
@@ -47,8 +69,8 @@ def load_meta(fname, data_id=''):
 def scale_to_baseline(X, baseline=None, crop_baseline=False):
     """Perform global scaling based on a specified baseline.
 
-    Subtracts the mean and divides by the standard deviation of the
-    amplitude of all channels during the baseline interval. 
+    Subtracts the mean of each channel and divides by the standard deviation of
+    all channels during the specified baseline interval.
 
     Parameters
     ----------
@@ -56,12 +78,12 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
         Data array with dimensions [n_epochs, n_channels, time].
 
     baseline : tuple of int, None
-        Baseline definition (in samples). If baseline == None the whole
-        epoch is used for scaling.
+        Baseline definition (in samples). If baseline is set to None (default)
+        the whole epoch is used for scaling.
 
     crop_baseline : bool
-        Whether to crop the baseline after scaling is applied.
-
+        Whether to crop the baseline after scaling is applied. Only used if
+        baseline is specified.
     Returns
     -------
     X : ndarray
@@ -71,7 +93,7 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     #X = X_.copy()
 
     if baseline is None:
-        print("No baseline interval specified, sacling based on the whole epoch")
+        print("No baseline interval specified, scaling based on the whole epoch")
         interval = np.arange(X.shape[-1])
     elif isinstance(baseline, tuple):
         print("Scaling to interval {:.1f} - {:.1f}".format(*baseline))
@@ -81,14 +103,15 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
 
     X -= X0m
     X /= X0sd
-    if crop_baseline:
+    if crop_baseline and baseline is not None:
         X = np.delete(X, interval, axis=-1)
     #print("Scaling Done")
     return X
 
 
 def _make_example(X, y, n, target_type='int'):
-    """Construct Example proto object from data / target pairs."""
+    """Construct a serializable example proto object from data and
+    target pairs."""
 
     feature = {}
     feature['X'] = tf.train.Feature(
@@ -118,12 +141,12 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
     ----------
     X_ : list of ndarrays
         (Preprocessed) data matrix.
-        len = `n_epochs`, shape = `(squence_length, n_channels, n_timepoints)`
+        len = `n_epochs`, shape = `(squence_length, n_timepoints, n_channels)`
 
     y_ : list of ndarrays
         Class labels.
         len =  `n_epochs`, shape = `y_shape`
-    
+
     n_ : int
         nubmer of training examples
 
@@ -146,6 +169,7 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
 
 
 def _split_indices(X, y, n_folds=5):
+    # TODO: check if indices are permuted
     """Generate indices for n-fold cross-validation"""
     n = X.shape[0]
     print('n:', n)
@@ -158,8 +182,8 @@ def _split_indices(X, y, n_folds=5):
 
 
 def _split_sets(X, y, folds, ind=-1, sample_counter=0):
-    """Split the data returning a single fold specified by ind as validation
-        and the rest of the data as training set.
+    """Split the data returning a single fold specified by ind as a holdout set
+        and the rest of the data as training/validation sets.
 
     Parameters
     ----------
@@ -178,18 +202,23 @@ def _split_sets(X, y, folds, ind=-1, sample_counter=0):
 
     Returns
     -------
-    X_train, y_train, X_val, y_val : ndarray
+    X_train, y_train, X_test, y_test : ndarray
         Pairs of data / targets split in Training and Validation sets.
+
+    test_fold : np.array
+        Array of indices of data samples in the held out fold
+
+
     """
 
     fold = folds.pop(ind) - sample_counter
-    X_val = X[fold, ...]
-    y_val = y[fold, ...]
+    X_test = X[fold, ...]
+    y_test = y[fold, ...]
     X_train = np.delete(X, fold, axis=0)
     y_train = np.delete(y, fold, axis=0)
     test_fold = fold + sample_counter
     # return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
-    return X_train, y_train, X_val, y_val, test_fold
+    return X_train, y_train, X_test, y_test, test_fold
 
 
 def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
@@ -198,14 +227,13 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     Parameters
     ----------
     inp : list, mne.epochs.Epochs, str
-        List of mne.epochs.Epochs or strings with filenames. If input
-        is a single string or Epochs object, it is first converted into
-        a list.
+        List of mne.epochs.Epochs or strings with filenames.
+        If input is a single string or Epochs object, it is first converted
+        into a list.
 
     picks : ndarray of int, optional
         Indices of channels to pick for processing. If None, all
         channels are used.
-
 
     array_keys : dict, optional
         Dictionary mapping {'X': 'data_matrix', 'y': 'labels'},
@@ -221,7 +249,7 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         targets.shape =  [n_epochs, y_shape]
 
     """
-    if isinstance(inp, mne.epochs.BaseEpochs):
+    if isinstance(inp, (mne.epochs.EpochsFIF, mne.epochs.BaseEpochs)):
         print('processing epochs')
         # if isinstance(picks, dict):
         #     picks = mne.pick_types(inp.info, include=picks)
@@ -241,10 +269,14 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         fname = inp
         if fname[-3:] == 'fif':
             epochs = mne.epochs.read_epochs(fname, preload=True,
-                                          verbose='CRITICAL')
+                                            verbose='CRITICAL')
             print(np.unique(epochs.events[:, 2]))
             events = epochs.events[:, 2]
+            epochs.crop(tmin=-1., tmax=1.)
             data = epochs.get_data()
+            if isinstance(picks, dict):
+                print("Converting picks")
+                picks = mne.pick_types(epochs.info, **picks)
 
         else:
             if fname[-3:] == 'mat':
@@ -256,19 +288,20 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
 
             data = datafile[array_keys['X']]
             events = datafile[array_keys['y']]
-            print('Extracting target variables from {}'.format(array_keys['y']))
+            print('Extracting target variables from {}'
+                  .format(array_keys['y']))
     else:
         print("Dataset not found")
         return None, None
 
     data = data.astype(np.float32)
 
-    # TODO: make sure that X is 3d here
+    # Make sure that X is 3d here
     while data.ndim < 3:
-        #(x, ) -> (1, 1, x)
-        #(x, y) -> (1, x, y)
+        # (x, ) -> (1, 1, x)
+        # (x, y) -> (1, x, y)
         data = np.expand_dims(data, 0)
-    
+
     if isinstance(picks, (np.ndarray, list, tuple)):
         picks = np.asarray(picks)
         if np.any(data.shape[1] <= picks):
@@ -276,64 +309,12 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
                     max(len(picks), max(picks)), data.shape[1]))
         data = data[:, picks, :]
 
-    # if transpose:
-    #     assert isinstance(transpose, (list, tuple)), "Transpose should be list or tuple of str."
-    #     if 'X' in transpose:
-    #         data = np.swapaxes(data, -1, -2)
-    #     if 'y' in transpose:
-    #         if events.ndim >= 2:
-    #             events = np.swapaxes(events, -1, -2)
-    #         else:
-    #             warnings.warn('Targets cannot be transposed.', UserWarning)
-
-    print('input shapes: X:', data.shape, 'targets:', events.shape)
-    assert data.ndim == 3, "Import data panic: output.ndim != 3"
     return data, events
-
-
-def produce_labels(y, return_stats=True):
-    """Produce labels array from e.g. event (unordered) trigger codes.
-
-    Parameters
-    ----------
-    y : ndarray, shape (n_epochs,)
-        Array of trigger codes.
-
-    return_stats : bool
-        Whether to return optional outputs.
-
-    Returns
-    -------
-    inv : ndarray, shape (n_epochs)
-        Ordered class labels.
-
-    total_counts : int, optional
-        Total count of events.
-
-    class_proportions : dict, optional
-        {new_class: proportion of new_class1 in the dataset}.
-
-    orig_classes : dict, optional
-        Mapping {new_class:old_class}.
-    """
-    classes, inds, inv, counts = np.unique(y,
-                                           return_index=True,
-                                           return_inverse=True,
-                                           return_counts=True)
-    total_counts = np.sum(counts)
-    counts = counts/float(total_counts)
-    class_proportions = {clss: cnt for clss, cnt in zip(inv[inds], counts)}
-    orig_classes = {new: old for new, old in zip(inv[inds], classes)}
-    if return_stats:
-        return inv, total_counts, class_proportions, orig_classes
-    else:
-        return inv
-
 
 
 def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                       input_type='trials',
-                      target_type='float',
+                      target_type='int',
                       array_keys={'X': 'X', 'y': 'y'},
                       n_folds=5,
                       scale=False,
@@ -343,7 +324,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                       aug_stride=None,
                       seq_length=None,
                       picks=None,
-                      overwrite=True,
+                      overwrite=False,
                       test_set=False,
                       bp_filter=False,
                       decimate=False,
@@ -394,7 +375,9 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
 
         'int' - for classification,
         'float' - for regression problems.
-        'signal' - not implemented
+        'signal' - regression or classification a continuous (possbily
+                   multichannel) data. Requires "transform_targets" function
+                   to apply to targets
 
     n_folds : int, optional
         Number of folds to split the data for training/validation/testing.
@@ -409,15 +392,19 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
         leave-one-subject-out cross-validation.
         None does not leave a separate test set. Defaults to None.
 
-    segment : bool, int, optional
-        Whether to split the data into smaller segments of specified
-        length.
 
-    augment : bool, optional
-        Whether to apply sliding time window augmentation.
+    segment : bool, int, optional
+        If specified, splits the data into smaller segments of specified
+        number of time points. Defaults to False
 
     aug_stride : int, optional
-        Stride of sliding window augmentation.
+        Sliding window agumentation stride parameter.
+        If specified, sets the stride (in time points) for 'segment'
+        allowing to extract overalapping segments. Has to be <= segment.
+        Only applied within each fold to prevent data leakeage. Only applied
+        if 'segment' is not False. If None, then it is set equal to length of
+        the 'segment' returning non-overlapping segments.
+        Defaults to None.
 
 
     scale : bool, optional
@@ -487,9 +474,10 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
 
     """
     assert input_type in ['trials', 'seq', 'continuous'], "Unknown input type."
-    assert target_type in ['int', 'float'], "Unknown target type."
+    assert target_type in ['int', 'float', 'signal'], "Unknown target type."
     if not os.path.exists(savepath):
         os.mkdir(savepath)
+
     if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
 
         meta = dict(train_paths=[], val_paths=[], test_paths=[],
@@ -502,69 +490,100 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
             n_folds += 1
 
         meta['fs'] = fs
+
         if not isinstance(inputs, list):
             inputs = [inputs]
+
         for inp in inputs:
 
             data, events = import_data(inp, picks=picks, array_keys=array_keys)
-            print(events.shape)
+
             if np.any(data) == None:
                 return
+
             else:
-                
-                if target_type == 'int':
+
+                #if target_type == 'int':
                     # Specific to classification
-                    if combine_events:
-                        events, keep_ind = _combine_labels(events, combine_events)
-    
-                        # TODO!  suggest these move inside _combine_labels
-                        data = data[keep_ind, ...]
-                        events = events[keep_ind]
-    
-    
+#                    if combine_events:
+#                        events, keep_ind = _combine_labels(events, combine_events)
+#
+#                        # TODO!  suggest these move inside _combine_labels
+#                        data = data[keep_ind, ...]
+#                        events = events[keep_ind]
+#
+
                 # Check label dimensions again
                 if input_type == 'continuous':
+                    # if input is a continuous signal ensure that target
+                    # variable has shape (n_epochs, channels, time)
+                    # TODO: replace with "target type?"
                     while events.ndim < 3:
                         events = np.expand_dims(events, 0)
                 else:
+                    # if input is trials, ensure that target variable has shape
+                    # (n_trials, y_shape)
                     if events.ndim < 2:
                         events = np.expand_dims(events, -1)
-                        
-                    
-                if (data.ndim != 3):
-                    warnings.warn('Input misshaped, using import_data.', UserWarning)
-                    return
-                
+
+                if input_type == 'trials':
+                    segment_y = False
+                else:
+                    segment_y = True
+
+                print('Input shapes: X (n, ch, t) : ', data.shape,
+                      'y (n, [signal_channels], y_shape) : ', events.shape,
+                      '\n',
+                      'input_type : ', input_type,
+                      'target_type : ', target_type,
+                      'segment_y : ', segment_y)
+
+#                if (data.ndim != 3):
+#                    warnings.warn('Input misshaped, using import_data.', UserWarning)
+#                    return
+                #Preprocess data and segment labels if needed
+                # TODO define segment_y
+<<<<<<< HEAD
+=======
+
+>>>>>>> 8b5b3d7fb26c2ef9b7ba3ea536e274ca2dad592b
                 X, Y, folds = preprocess(
-                        data, events, sample_counter=meta['train_size'],
-                        input_type=input_type, scale=scale, fs=fs,
-                        n_folds=n_folds, scale_interval=scale_interval,
+                        data, events,
+                        sample_counter=meta['train_size'],
+                        input_type=input_type,
+                        n_folds=n_folds,
+                        scale=scale,
+                        scale_interval=scale_interval,
+                        crop_baseline=crop_baseline,
                         segment=segment, aug_stride=aug_stride,
-                        crop_baseline=crop_baseline, decimate=decimate,
-                        bp_filter=bp_filter, seq_length=seq_length,
-                        transform_targets=transform_targets,
-                        scale_y=scale_y)
-    
+                        seq_length=seq_length,
+                        segment_y=segment_y)
+
+                Y = preprocess_targets(Y, scale_y=scale_y,
+                                       transform_targets=transform_targets)
+
                 if target_type == 'int':
                     Y, n_ev, meta['class_ratio'], meta['orig_classes'] = produce_labels(Y)
                     Y = _onehot(Y)
-    
+
+
                 if test_set == 'holdout':
-                    X, Y, x_test, y_test, test_fold = _split_sets(X, Y, folds=folds,
+                    X, Y, x_test, y_test, test_fold = _split_sets(X, Y,
+                                                                  folds=folds,
                                                                   sample_counter=meta['train_size'])
                     meta['test_size'] += x_test.shape[0]
                     #TODO: remove?
                 _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
-    
+
                 if input_type == 'seq':
                     meta['y_shape'] = Y[0].shape[1:]
                 else:
                     meta['y_shape'] = Y[-1].shape
-    
+
                 n = np.arange(_n) + meta['train_size']
-    
+
                 meta['train_size'] += _n
-                    
+
                 if save_as_numpy == True:
                     train_fold = np.concatenate(folds[1:])
                     val_fold = folds[0]
@@ -576,25 +595,24 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                              y_val=Y[val_fold, ...],
                              #y_test=y_test
                              )
-                    
-                
-                # print("sample_count: {}, folds: {} - {}".format(meta["train_size"],
+
+
                 #                                                 np.min(n), np.max(n)))
                 meta['val_size'] += len(folds[0])
-    
+
                 print('Prepocessed sample shape:', X[0].shape)
                 print('Target shape actual/metadata: ', Y[0].shape, meta['y_shape'])
-    
+
                 print('Saving TFRecord# {}'.format(jj))
-    
+
                 meta['folds'].append(folds)
                 meta['train_paths'].append(''.join([savepath, out_name,
                                                     '_train_', str(jj),
                                                     '.tfrecord']))
-    
+
                 _write_tfrecords(X, Y, n, meta['train_paths'][-1],
                                  target_type=target_type)
-    
+
                 if test_set == 'loso':
                     meta['test_size'] = len(Y)
                     meta['test_paths'].append(''.join([savepath, out_name,
@@ -602,10 +620,10 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                                                        '.tfrecord']))
                     _write_tfrecords(X, Y, n, meta['test_paths'][-1],
                                      target_type=target_type)
-    
+
                 elif test_set == 'holdout':
                     meta['test_fold'].append(test_fold)
-    
+
                     meta['test_paths'].append(''.join([savepath, out_name,
                                                        '_test_', str(jj),
                                                        '.tfrecord']))
@@ -615,11 +633,49 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                 jj += 1
                 with open(savepath+out_name+'_meta.pkl', 'wb') as f:
                     pickle.dump(meta, f)
-    
+
     elif os.path.exists(savepath+out_name+'_meta.pkl'):
         print('Metadata file found, restoring')
         meta = load_meta(savepath, data_id=out_name)
     return meta
+
+def produce_labels(y, return_stats=True):
+    """Produce labels array from e.g. event (unordered) trigger codes.
+
+    Parameters
+    ----------
+    y : ndarray, shape (n_epochs,)
+        Array of trigger codes.
+
+    return_stats : bool
+        Whether to return optional outputs.
+
+    Returns
+    -------
+    inv : ndarray, shape (n_epochs)
+        Ordered class labels.
+
+    total_counts : int, optional
+        Total count of events.
+
+    class_proportions : dict, optional
+        {new_class: proportion of new_class in the dataset}.
+
+    orig_classes : dict, optional
+        Mapping {new_class_label: old_class_label}.
+    """
+    classes, inds, inv, counts = np.unique(y,
+                                           return_index=True,
+                                           return_inverse=True,
+                                           return_counts=True)
+    total_counts = np.sum(counts)
+    counts = counts/float(total_counts)
+    class_proportions = {clss: cnt for clss, cnt in zip(inv[inds], counts)}
+    orig_classes = {new: old for new, old in zip(inv[inds], classes)}
+    if return_stats:
+        return inv, total_counts, class_proportions, orig_classes
+    else:
+        return inv
 
 
 def _combine_labels(labels, new_mapping):
@@ -665,8 +721,10 @@ def _combine_labels(labels, new_mapping):
     return new_labels, keep_ind
 
 
-def _segment(data, segment_length=200, seq_length=None, stride=None,
-             input_type='trials', events=False):
+def _segment(data, segment_length=200,
+             seq_length=None,
+             stride=None,
+             input_type='trials'):
     """Split the data into fixed-length segments.
 
     Parameters
@@ -683,12 +741,20 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
     segment_length : int or False
         Length of segment into which to split the data in time samples.
 
+    stride : int, optional
+        If specified, sets the stride (in time points) for 'segment'
+        allowing to extract overalapping segments. Has to be <= segment.
+        Only applied within each fold to prevent data leakeage. Only applied
+        if 'segment' is not False. If None, then it is set equal to length of
+        the 'segment' returning non-overlapping segments.
+        Defaults to None.
+
     Returns
     -------
-    data : list of ndarrays
-        Data array of shape
-        [x, seq_length, n_channels, segment_length]
-        where x = (n_epochs//seq_length)*(n_times - segment_length + 1)//stride
+    data : ndarray
+        Segmented data array of shape
+        (n, [seq_length,] n_channels, segment_length)
+        where n = (n_epochs//seq_length)*(n_times - segment_length + 1)//stride
         """
     x_out = []
     if input_type == 'trials':
@@ -697,18 +763,15 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
     if not stride:
         stride = segment_length
 
-    #print(len(data), data[0].shape)
     for jj, xx in enumerate(data):
-        #print('xx :', xx.shape)
+
         n_ch, n_t = xx.shape
         last_segment_start = n_t - segment_length
-        #  print('last start:', last_segment_start)
 
-        # print("stride:", stride)
         starts = np.arange(0, last_segment_start+1, stride)
 
         segments = [xx[..., s:s+segment_length] for s in starts]
-        #print("n_segm:", len(segments))
+
         if input_type == 'seq':
             if not seq_length:
                 seq_length = len(segments)
@@ -717,15 +780,10 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
             x_new = np.array(segments)
         else:
             x_new = np.stack(segments, axis=0)
-            if not events:
-                x_new = np.expand_dims(x_new, 1)
-            #print("x_new:", x_new.shape)
-#        if jj == len(data) - 1:
-#            print("n_segm:", seq_length)
-#            print("x_new:", x_new.shape)
+#            if not events:
+#                x_new = np.expand_dims(x_new, 1)
+
         x_out.append(x_new)
-        #print("x_out:", len(x_out))
-    #print(len(x_out), x_out)
     if len(x_out) > 1:
         X = np.concatenate(x_out)
     else:
@@ -736,10 +794,27 @@ def _segment(data, segment_length=200, seq_length=None, stride=None,
 
 def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
     """
-    data - 3d data array (n, ch, t) #(n, t, ch)
-    n_folds - number of folds
-    test_segments - minimum number of different (non-contiguous)
-                    data segments in each fold
+    Parameters
+    ----------
+    data : ndarray
+            3d data array (n, ch, t)
+
+    n_folds : int
+             number of folds
+
+    segments_per_fold : int
+                        minimum number of different (non-contiguous)
+                        data segments in each fold
+    Returns
+    -------
+    data : ndarray
+           3d data array (n, ch, t)
+
+    events : nd.array
+           labels
+
+    folds : list of ndarrays
+            indices for each fold
 
     """
     raw_len = data.shape[-1]
@@ -757,10 +832,7 @@ def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
     #Treat events the same depending on their type
     #case 1: events are signal -> split similarly to the data
     events = np.concatenate([events[:, :, s: s + ind_samples] for s in segments])
-    #events = events[:, mod:]
-    #events = events.reshape([-1, ind_samples, events.shape[-2]])
-    #print(data.shape)
-    #print(events.shape)
+
 
     folds = _split_indices(data, events, n_folds=n_folds)
     #test_start = [ds + np.random.randint(interval - test_samples)
@@ -772,61 +844,73 @@ def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
     return data, events, folds
 
 
-#def partition(data, test_indices):
-#    """Partition continuous data according to ranges defined by `test_indices`.
-#
-#    Parameters
-#    ----------
-#    data : list of ndarray
-#        Data array to be partitioned.
-#
-#    test_indices : list
-#        Contains pairs of values [start, end], indicating where the data
-#        will be partitioned.
-#
-#    Returns
-#    -------
-#    x_train, x_test: lists of ndarrays
-#        The data partitioned into two sets.
-#
-#    Raises
-#    ------
-#        ValueError: If the shape of`test_indices` is incorrect.
-#
-#        AttributeError: If `test_indices` is empty.
-#    """
-#    if any(test_indices):
-#        if np.ndim(test_indices) == 1 and np.max(test_indices) < data.shape[0]:
-#            x_out = [data[test_indices, ...],
-#                     np.delete(data, test_indices, axis=0)][::-1]
-#        elif np.ndim(test_indices) == 2:
-#            bins = sorted(np.ravel(test_indices))
-#            # data is a 3d array
-#            data = np.squeeze(data)
-#            x_out = np.split(data, bins, axis=-1)
-#        else:
-#            raise ValueError('Could not split the data, check test_indices!')
-#
-#        #x_out = [xt - np.median(xt, axis=-1, keepdims=True) for xt in x_out]
-#        x_train = x_out[0::2]
-#        x_test = x_out[1::2]
-#
-#        #print([xt.shape for xt in x_train])
-#        #print([xt.shape for xt in x_test])
-#        return x_train, x_test
-#    else:
-#        raise AttributeError('No test indices provided')
-
-
-def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
-               scale=False, fs=None, scale_interval=None, crop_baseline=False,
-               decimate=False, bp_filter=False, picks=None, segment=False,
-               aug_stride=None, seq_length=None, transform_targets=None,
-               scale_y=False):
-    """Preprocess input data.
+def preprocess_realtime(data, decimate=False, picks=None,
+                        bp_filter=False, fs=None):
+    """
+    Implements minimal prprocessing for convenitent real-time use.
 
     Parameters
     ----------
+    data : np.array, (n_epochs, n_channels, n_times)
+           input data array
+
+    picks : np.array
+            indices of channels to pick
+
+    decimate : int
+                decimation factor for downsampling
+
+    bp_filter : tuple of ints
+                Band-pass filter cutoff frequencies
+
+    fs : int
+         sampling frequency. Only used if bp_filter is used
+
+    Returns
+    -------
+    """
+    if bp_filter:
+        print('Filtering')
+        data = data.astype(np.float64)
+        data = mne.filter.filter_data(data, fs, l_freq=bp_filter[0],
+                                      h_freq=bp_filter[1],
+                                      method='iir', verbose=False)
+
+    if isinstance(picks, np.ndarray):
+        data = data[:, picks, :]
+
+    if decimate:
+        print("Decimating")
+        data = data[..., ::decimate]
+    return data
+
+
+def preprocess(data, events, sample_counter,
+               input_type='trials', n_folds=5,
+               scale=False, scale_interval=None, crop_baseline=False,
+               segment=False, aug_stride=None,
+               seq_length=None,
+               segment_y=False):
+    """Preprocess input data. Applies scaling, segmenting/augmentation,
+     and defines the split into training/validation folds.
+
+    Parameters
+    ----------
+    data : np.array, (n_epochs, n_channels, n_times)
+           input data array
+
+    events : np.array
+            input array of target variables (n_epochs, ...)
+
+    input_type : str {'trials', 'continuous'}
+            See produce_tfrecords.
+
+    n_folds : int
+            Number of folds defining the train/validation/test split.
+
+    sample_counter : int
+            Number of traning examples in the dataset
+
     scale : bool, optional
         Whether to perform scaling to baseline. Defaults to False.
 
@@ -840,36 +924,47 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
         Whether to crop baseline specified by 'scale_interval'
         after scaling (defaults to False).
 
+    segment : bool, int, optional
+        If specified, splits the data into smaller segments of specified
+        number of time points. Defaults to False
+
+    aug_stride : int, optional
+        If specified, sets the stride (in time points) for 'segment'
+        allowing to extract overalapping segments. Has to be <= segment.
+        Only applied within each fold to prevent data leakeage. Only applied
+        if 'segment' is not False. If None, then it is set equal to length of
+        the 'segment' returning non-overlapping segments.
+        Defaults to None.
+
+    seq_length: int or None
+        Length of segment sequence.
+
+    segment_y : bool
+        whether to segment target variable in the same way as data. Only used
+        if segment != False
+
 
     Returns
     -------
-    x_train, x_val: ndarrays
-        Data arrays of dimensions [n_epochs, n_seq, n_ch, n_t]
+    X: np.array
+        Data array of dimensions [n_epochs, n_seq, n_t, n_ch]
 
-    y_train, y_val : ndarrays
-        Label arrays of dimensions [n_epochs, n_seq, n_targets]
+    Y : np.array
+        Label arrays of dimensions [n_epochs, *(y_shape)]
+
+    folds : list of np.arrays
+
     """
     print("Preprocessing:")
-    #print(data.shape, events.shape)
+
+    # TODO: remove scale_y and transform targets?
+<<<<<<< HEAD
+=======
 
 
-    if bp_filter:
-        #assert len(bp_filter) == 2, "Invalid bp_filter values."
-        print('Filtering')
-        data = data.astype(np.float64)
-        data = mne.filter.filter_data(data, fs, l_freq=bp_filter[0],
-                                   h_freq=bp_filter[1],
-                                   method='iir', verbose=False)
-
-    if isinstance(picks, np.ndarray):
-        data = data[:, picks, :]
-
-    if decimate:
-        print("Decimating")
-        data = data[..., ::decimate]
+>>>>>>> 8b5b3d7fb26c2ef9b7ba3ea536e274ca2dad592b
 
     if scale:
-
         data = scale_to_baseline(data, baseline=scale_interval,
                                  crop_baseline=crop_baseline)
 
@@ -878,9 +973,21 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
         data, events, folds = cont_split_indices(data, events,
                                                  n_folds=5,
                                                  segments_per_fold=10)
+<<<<<<< HEAD
         print("Continuous events: ", events.shape)
 
     else:
+=======
+        shuffle = np.random.permutation(np.arange(events.shape[0]))
+        data = data[shuffle]
+        events = events[shuffle]
+        print("Continuous events: ", events.shape)
+
+    else:
+        shuffle = np.random.permutation(np.arange(events.shape[0]))
+        data = data[shuffle]
+        events = events[shuffle]
+>>>>>>> 8b5b3d7fb26c2ef9b7ba3ea536e274ca2dad592b
         folds = _split_indices(data, events, n_folds=n_folds)
 
     print("Splitting into: {} folds x {}".format(len(folds), len(folds[0])))
@@ -892,32 +999,24 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
         segmented_folds = []
         jj = 0
         for fold in folds:
-            print(data[fold,...].shape)
+            #print(data[fold, ...].shape)
             x = _segment(data[fold, ...], segment_length=segment,
                          stride=aug_stride, input_type=input_type,
                          seq_length=seq_length)
 
-
-
             nsegments = x.shape[0]
 
-            if callable(transform_targets):
-                print("Transforming targets")
+            # if segment_y -> segment, else-> replicate
+            if segment_y:
                 y = _segment(events[fold, ...], segment_length=segment,
-                         stride=aug_stride, input_type=input_type,
-                         seq_length=seq_length, events=True)
-                y = transform_targets(y)
-                print("Transformed y: ", y[0].shape)
-                #y_val = transform_targets(y_val)
-            elif x.shape[0] != events[fold, ...].shape[0]:
-                print("Replicating labels for segmented data")
-                #repeat label for all subsegments
-                y = np.repeat(events[fold, ...], nsegments//len(fold),
-                                    axis=0)
+                             stride=aug_stride, input_type=input_type,
+                             seq_length=seq_length)
             else:
-                #unravel whatever
-                y = events[fold, ...].reshape([len(fold), -1])
+                print("Replicating labels for segmented data")
+                y = np.repeat(events[fold, ...], nsegments//len(fold), axis=0)
 
+            if x.ndim == 3:
+                x = np.expand_dims(x, 1)
             X.append(x)
             Y.append(y)
             segmented_folds.append(np.arange(jj, jj + nsegments) + sample_counter)
@@ -927,30 +1026,36 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
 
         folds = segmented_folds
     else:
+        # If not segmented add a singleton "n_seq" dminesion to X
+        if data.ndim == 3:
+            X = np.expand_dims(data, 1)
+        elif data.ndim == 4:
+            X = data
 
-        X = np.expand_dims(data, 1)
-
-        if callable(transform_targets):
-            #print("Transforming targets")
-            # print(type(y_train), y_train[0].shape)
-            Y = transform_targets(events)
-        else:
-            Y = events
+        Y = events
         folds = [f + sample_counter for f in folds]
-    
+    # Finally cast X into shape [n_epochs, n_seq, n_times, n_channels]
     X = np.swapaxes(X, -2, -1)
 
-    if scale_y:
-        Y -= Y.mean(axis=0, keepdims=True)
-        Y /= Y.std(axis=0, keepdims=True)
-
-    print('Preprocessed:', X.shape, Y.shape, 'folds:', len(folds), 'x', len(folds[0]))
-    assert X.shape[0] == Y.shape[0]
+    print('Preprocessed:', X.shape, Y.shape,
+          'folds:', len(folds), 'x', len(folds[0]))
+    assert X.shape[0] == Y.shape[0], "n_epochs in X ({}) does not match n_epochs in Y ({})".format(X.shape[0], Y.shape[0])
 
     return X, Y, folds
 
-# def _process_labels(y, scale=False, decimate=False, normalize=False,
-#                    transpose=False, transform=False, segment=False):
+def preprocess_targets(y, scale_y=False, transform_targets=None):
+
+    if callable(transform_targets):
+        y = transform_targets(y)
+
+    if scale_y:
+            y -= y.mean(axis=0, keepdims=True)
+            y /= y.std(axis=0, keepdims=True)
+    print('Preprocessed targets: ', y.shape)
+
+    return y
+
+
 
 
     #    """Preprocess target variables."""
@@ -959,11 +1064,11 @@ def preprocess(data, events, sample_counter, input_type='trials', n_folds=1,
     # if np.ndim(y_out) == 1:
     #     y_out = np.expand_dims(y_out, -1)
     # print("_process_labels out:", y_out.shape)
-    # return y_out
+    #return y_out
 
 def regression_metrics(y_true, y_pred):
     y_shape = y_true.shape[-1]
-    
+
     cc = np.diag(np.corrcoef(y_true.T, y_pred.T)[:y_shape,-y_shape:])
     r2 =  r2_score(y_true, y_pred)
     cs = cosine_similarity(y_true, y_pred)
@@ -974,15 +1079,21 @@ def regression_metrics(y_true, y_pred):
 def cosine_similarity(y_true, y_pred):
     # y_true -= y_true.mean()
     # y_pred -= y_pred.mean()
+
     return np.dot(y_pred.T, y_true) / (np.sqrt(np.sum(y_pred**2,axis=0)) * np.sqrt(np.sum(y_true**2, axis=0)))
-    
+
 def pve(y_true, y_pred):
     y_true -= y_true.mean(axis=0)
     y_pred -= y_pred.mean(axis=0)
     return np.dot(y_pred.T, y_true) / np.sum(y_pred**2, axis=0)
-    
+
 def r2_score(y_true, y_pred):
     res = np.sum((y_true - y_pred)**2, axis=0)
     tot = np.sum((y_true - np.mean(y_true, axis=0, keepdims=True))**2, axis=0)
     return 1 - res/tot
 
+<<<<<<< HEAD
+=======
+#def reconstruction_pve(X_true, X_pred):
+
+>>>>>>> 8b5b3d7fb26c2ef9b7ba3ea536e274ca2dad592b

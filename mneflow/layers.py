@@ -16,6 +16,9 @@ from tensorflow.keras import constraints as k_con, regularizers as k_reg
 # tf.disable_v2_behavior()
 import numpy as np
 
+bias_const = 0.1
+bias_traiable = True
+
 class BaseLayer(tf.keras.layers.Layer):
     def __init__(self, size, nonlin, specs, **args):
         super(BaseLayer, self).__init__(**args)
@@ -39,16 +42,18 @@ class BaseLayer(tf.keras.layers.Layer):
             reg = None
         return reg
 
-    def _set_constraints(self):
-        if self.scope in self.specs['maxnorm_scope']:
-            constr = k_con.MaxNorm(2.)
-            print('Setting constraint for {}, to MaxNorm'.format(self.scope))
+    def _set_constraints(self, axis=0):
+        if self.scope in self.specs['unitnorm_scope']:
+            constr = k_con.UnitNorm(axis=axis)
+            print('Setting constraint for {}, to UnitNorm'.format(self.scope))
         else:
             constr = None
         return constr
 
 
 class Dense(BaseLayer, tf.keras.layers.Layer):
+
+
     """
     Fully-connected layer
     """
@@ -83,11 +88,12 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
         self.b = self.add_weight(shape=[self.size],
                                  initializer=Constant(0.1),
                                  regularizer=None,
-                                 trainable=True,
+                                 trainable=bias_traiable,
                                  name='fc_bias',
                                  dtype=tf.float32)
 
         print("Built: {} input: {}".format(self.scope, input_shape))
+
 
     def call(self, x, training=None):
         """Dense layer currying, to apply layer to any input tensor `x`"""
@@ -100,10 +106,157 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
                 #print(self.scope, ": output :", tmp.shape)
                 return tmp
 
+# class LFTConvTranspose1(tf.keras.layers.Layer):
+#     def __init__(self, kernel_size, stride, output_padding, filters=None, **kwargs):
+#         super(LFTConvTranspose1, self).__init__(**kwargs)
+#         self.scope='lft_trans'
+#         self.kernel_size = kernel_size #int
+#         self.stride = stride #int
+#         self.output_padding = output_padding #int
+#         self.filters = filters
+#         #self.use_bias = use_bias #bool
+#         #???
+#         self.input_ax_shape = 0
+#         self.lambdas = []
+#         #self.nm = name
+
+#     def deconv_length(self, input_size, stride_size, kernel_size, output_padding=0):
+
+#         #simple 1 dimentional case
+#         # Get the dilated kernel size
+#         #kernel_size = kernel_size + (kernel_size - 1) * (dilation - 1)
+
+#         # Infer length if output padding is None, else compute the exact length
+#         dim_size = input_size * stride_size - kernel_size + output_padding
+#         return dim_size
+
+#     def build(self, input_shape):
+#         self.n_latent = input_shape[-1]
+#         self.input_ax_shape = input_shape[-2]
+
+#         if self.filters is not None:
+#             self.trainable = False
+#             self.filters = tf.transpose(self.filters, [1,2,3,0])
+#             print("Using Pre-determined filters for inverse convolution")
+#         else:
+#             print("Using Trainable filters for inverse convolution")
+#             self.filters = self.add_weight(name=self.scope + "enc_kernel",
+#                                initializer='he_uniform',
+#                                shape=(self.kernel_size,self.n_latent, 1, 1),
+#                                trainable=True)
+#         print("Filters: ", self.filters.shape)
+
+
+#         #self.lambdas = tf.stack(self.lambdas,axis = 0)
+
+#         #self.input_shape = input_shape
+#         self.output_length = self.deconv_length(self.input_ax_shape,
+#                                            self.stride,
+#                                            self.kernel_size,
+#                                            self.output_padding)
+#         self.out_shape = tf.TensorShape([1, input_shape[1],
+#                                          self.output_length, self.n_latent,
+#                                          ])
+#         #self.out_shape[-2] += (self.deconv_length - self.input_ax_shape)
+
+#         super(LFTConvTranspose1, self).build(input_shape)
+#         print("Built Enc deconv:", input_shape, "->", self.out_shape)
+
+#     #@tf.function
+#     def call(self, inputs):
+
+#         out = tf.nn.conv2d_transpose(inputs, self.filters,
+#                                      output_shape=self.out_shape,
+#                                      strides=(self.stride, 1),
+#                                      data_format='NCHW',
+#                                      padding='SAME')
+
+#         #out_trans = tf.transpose(out, perm=[0,3,1,2])
+#         #print(out_trans.shape)
+
+#         return out
+
+
+# class LFTConvTranspose(tf.keras.layers.Layer):
+#     def __init__(self, kernel_size, stride, output_padding, filters=None, **kwargs):
+#         super(LFTConvTranspose, self).__init__(**kwargs)
+#         self.scope='lft_trans'
+#         self.kernel_size = kernel_size #int
+#         self.stride = stride #int
+#         self.output_padding = output_padding #int
+#         self.filters = filters
+#         #self.use_bias = use_bias #bool
+#         #???
+#         self.input_ax_shape = 0
+#         self.lambdas = []
+#         #self.nm = name
+
+#     def deconv_length(self, input_size, stride_size, kernel_size, output_padding=0):
+
+#         #simple 1 dimentional case
+#         # Get the dilated kernel size
+#         #kernel_size = kernel_size + (kernel_size - 1) * (dilation - 1)
+
+#         # Infer length if output padding is None, else compute the exact length
+#         dim_size = input_size * stride_size - kernel_size + output_padding
+#         return dim_size
+
+#     def build(self, input_shape):
+#         self.n_latent = input_shape[-1]
+#         self.input_ax_shape = input_shape[-2]
+
+#         if self.filters is not None:
+#             self.trainable = False
+#             self.lambdas = tf.split(self.filters, self.n_latent, axis=-2)
+#             print("Using Pre-determined filters for inverse convolution")
+#         else:
+#             print("Using Trainable filters for inverse convolution")
+#             for i in range(input_shape[-1]):
+#                self.lambdas.append(self.add_weight(name = self.scope + "_k" + str(i),
+#                                                    initializer='he_uniform',
+#                                                    shape=(1,self.kernel_size,1,1),
+#                                                    trainable=True))
+
+
+#         #self.lambdas = tf.stack(self.lambdas,axis = 0)
+
+#         #self.input_shape = input_shape
+#         self.output_length = self.deconv_length(self.input_ax_shape,
+#                                            self.stride,
+#                                            self.kernel_size,
+#                                            self.output_padding)
+#         self.out_shape = tf.TensorShape([1, input_shape[1],
+#                                          self.output_length, 1])
+#         #self.out_shape[-2] += (self.deconv_length - self.input_ax_shape)
+#         print(self.out_shape)
+#         super(LFTConvTranspose, self).build(input_shape)
+
+#     @tf.function
+#     def call(self, inputs):
+
+#         inputs_channel_wise =   tf.split(inputs, self.n_latent, axis=-1)
+
+#         #TODO: define strides and padding
+#         # channel_wise_conv = tf.map_fn(lambda x:tf.nn.conv2d_transpose(input=x[0],
+#         #                                                               filters=x[1],
+#         #                                                               output_shape=out_shape,
+#         #                                                               strides=(1, self.strides)),
+#         #                               (inputs_channel_wise,self.lambdas),
+#         #                               fn_output_signature=tf.float32)
+
+#         # channel_wise_conv = tf.transpose(tf.squeeze(channel_wise_conv,axis = -1),[0,2,3,1])
+#         channel_wise_conv = tf.concat([tf.nn.conv2d_transpose(inp, filt,
+#                                           output_shape=self.out_shape,
+#                                           strides=(1, self.stride),
+#                                           padding='SAME')
+#                    for inp, filt in zip(inputs_channel_wise, self.lambdas)],
+#                   axis=-1)
+#         print(channel_wise_conv.shape)
+#         return channel_wise_conv
 
 class DeMixing(BaseLayer):
     """
-    Spatial demixing Layer
+    Spatial demixing Layerю
     """
     def __init__(self, scope="dmx", size=None, nonlin=tf.identity, axis=-1,
                  specs={},  **args):
@@ -121,7 +274,7 @@ class DeMixing(BaseLayer):
     def build(self, input_shape):
 
         super(DeMixing, self).build(input_shape)
-        self.constraint = self._set_constraints()
+        self.constraint = self._set_constraints(axis=0)
         self.reg = self._set_regularizer()
 
         self.w = self.add_weight(
@@ -134,9 +287,9 @@ class DeMixing(BaseLayer):
                 dtype=tf.float32)
 
         self.b_in = self.add_weight(shape=([self.size]),
-                                    initializer=Constant(0.1),
+                                    initializer=Constant(bias_const),
                                     regularizer=None,
-                                    trainable=True,
+                                    trainable=bias_traiable,
                                     name='bias',
                                     dtype=tf.float32)
         print("Built: {} input: {}".format(self.scope, input_shape))
@@ -155,7 +308,7 @@ class DeMixing(BaseLayer):
                     input_shape = x.shape
                     self.build(input_shape)
                     #print(self.scope, 'building from call')
-                    
+
 class InvCov(BaseLayer):
     """
     Spatial demixing Layer
@@ -204,11 +357,11 @@ class InvCov(BaseLayer):
         while True:
             with tf.name_scope(self.scope):
                 try:
-                    
+
                     _cov = tf.tensordot(x, x, axes=[[self.axis], [self.axis]],
                                          name='_cov')
                     print("_cov", _cov.shape)
-                    
+
                     cov =  tf.reduce_mean(tf.divide(_cov, self.scaler),axis=0)
                     print("det:", tf.det(cov))
                     invcov = tf.linalg.pinv(cov)
@@ -245,7 +398,7 @@ class LFTConv(BaseLayer):
 
     def build(self, input_shape):
         super(LFTConv, self).build(input_shape)
-        self.constraint = self._set_constraints()
+        self.constraint = self._set_constraints(axis=1)
         self.reg = self._set_regularizer()
         shape = [1, self.filter_length, input_shape[-1], 1]
         self.filters = self.add_weight(shape=shape,
@@ -257,9 +410,9 @@ class LFTConv(BaseLayer):
                                        dtype=tf.float32)
 
         self.b = self.add_weight(shape=([input_shape[-1]]),
-                                 initializer=Constant(0.1),
+                                 initializer=Constant(bias_const),
                                  regularizer=None,
-                                 trainable=True,
+                                 trainable=bias_traiable,
                                  name='bias',
                                  dtype=tf.float32)
         print("Built: {} input: {}".format(self.scope, input_shape))
@@ -275,7 +428,7 @@ class LFTConv(BaseLayer):
                                                   strides=[1, 1, 1, 1],
                                                   data_format='NHWC')
                     conv = self.nonlin(conv + self.b)
-                    
+
                     #print(self.scope, ": output :", conv.shape)
                     return conv
                 except(AttributeError):
@@ -309,7 +462,7 @@ class VARConv(BaseLayer):
     def build(self, input_shape):
         print("input_shape:", input_shape)
         super(VARConv, self).build(input_shape)
-        
+
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
         shape = [1, self.filter_length, input_shape[-1], self.size]
@@ -322,9 +475,9 @@ class VARConv(BaseLayer):
                                        dtype=tf.float32)
 
         self.b = self.add_weight(shape=([input_shape[-1]]),
-                                 initializer=Constant(0.1),
+                                 initializer=Constant(bias_const),
                                  regularizer=None,
-                                 trainable=True,
+                                 trainable=bias_traiable,
                                  name='bias',
                                  dtype=tf.float32)
         print("Built: {} input: {}".format(self.scope, input_shape))
@@ -338,7 +491,7 @@ class VARConv(BaseLayer):
                                         padding=self.padding,
                                         strides=[1, 1, 1, 1],
                                         data_format='NHWC')
-                    
+
                     conv = self.nonlin(conv + self.b)
                     #print(self.scope, ": output :", conv.shape)
                     return conv
@@ -356,6 +509,7 @@ class TempPooling(BaseLayer):
                                           **args)
         self.strides = [1, 1, stride,  1]
         self.kernel = [1, 1, pooling,  1]
+
         self.padding = padding
         self.pool_type = pool_type
 
@@ -381,6 +535,7 @@ class TempPooling(BaseLayer):
     def build(self, input_shape):
         super(TempPooling, self).build(input_shape)
         self.built = True
+
 
     # def get_config(self):
     #     config = super(TempPooling, self).get_config()
@@ -434,7 +589,7 @@ class LSTM(tf.keras.layers.LSTM):
         # print(self.scope, inputs.shape)
         return super(LSTM, self).call(inputs, mask=mask, training=training,
                                         initial_state=initial_state)
-        
+
 
 
 

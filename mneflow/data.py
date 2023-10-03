@@ -42,20 +42,20 @@ class Dataset(object):
             on h_params['folds']. Defaults to True. Can be False if dataset is
             imported for evaluationg performance on the held-out set or
             vizualisations
-            
+
         class_subset : list of int
-            Pick a susbet of the classes. Example in 5-class clalssification 
-            problem class_subset=[0, 2, 4] will filter the dataset to 
+            Pick a susbet of the classes. Example in 5-class clalssification
+            problem class_subset=[0, 2, 4] will filter the dataset to
             discriminate between these classes, without changing the parameters
             of the whole dataset (e.g. y_shape=5)
-        
+
         pick_channels : array of int
             Pick a subset of channels
-            
+
         decim : int
-            Apply decimation in time. Note this feature does not check for 
+            Apply decimation in time. Note this feature does not check for
             aliasing effects.
-            
+
         rebalance_classes : bool
             Apply rejection sampling to oversample underrepresented classes.
             Defaults to False.
@@ -94,12 +94,12 @@ class Dataset(object):
 
     def _build_dataset(self, path, split=True,
                        train_batch=100, test_batch=None,
-                       repeat=True, val_fold_ind=0, holdout=False, 
+                       repeat=True, val_fold_ind=0, holdout=False,
                        rebalance_classes=False):
 
         """Produce a tf.Dataset object and apply preprocessing
         functions if specified.
-        
+
         """
         # import and process parent dataset
         dataset = tf.data.TFRecordDataset(path)
@@ -112,24 +112,24 @@ class Dataset(object):
         if self.class_subset is not None and self.h_params['target_type'] == 'int':
             dataset = dataset.filter(self._select_classes)
             dataset = dataset.map(self._select_class_subset)
-            
+
             subset_ratio = np.sum([v for k,v in self.h_params['class_ratio'].items()
                                    if k in self.class_subset])
             ratio_multiplier = 1./subset_ratio
             print("Using class_subset with {} classes:".format(len(self.class_subset)))
-            print(*[self.h_params['orig_classes'][i] for i in self.class_subset])
+            #print(*[self.h_params['orig_classes'][i] for i in self.class_subset])
             print("Subset ratio {:.2f}, Multiplier {:.2f}".format(subset_ratio,
                                                                   ratio_multiplier
                                                                   ))
-            cp = {k:v*ratio_multiplier for k,v in self.h_params['class_ratio'].items() 
+            cp = {k:v*ratio_multiplier for k,v in self.h_params['class_ratio'].items()
                   if k in self.class_subset}
-            
+
             self.h_params['class_ratio'] = cp
             self.y_shape = (len(self.class_subset),)
 
-            
+
             #print("y_shape:", self.h_params['y_shape'])
-            
+
         if self.decim is not None:
             print('decimating')
 
@@ -169,7 +169,7 @@ class Dataset(object):
 
             train_dataset = dataset.filter(self._cv_train_fold_filter)
             val_dataset =  dataset.filter(self._cv_val_fold_filter)
-            
+
             if rebalance_classes:
                 train_dataset = self._resample(train_dataset)
                 val_dataset = self._resample(val_dataset)
@@ -206,9 +206,9 @@ class Dataset(object):
                 dataset = dataset.shuffle(5).batch(test_batch)
             else:
                 dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
-                
 
-                
+
+
             #dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
             dataset.batch = test_batch
 
@@ -238,7 +238,7 @@ class Dataset(object):
 
     def _select_class_subset(self, example_proto):
         """Pick classes defined in self.class_subset from y"""
-        example_proto['y'] = tf.gather(example_proto['y'], 
+        example_proto['y'] = tf.gather(example_proto['y'],
                                        tf.constant(self.class_subset),
                                        axis=0)
         return example_proto
@@ -325,7 +325,7 @@ class Dataset(object):
             #     print("X")
             # else:
             #     print("+")
-                
+
             return out
         else:
             return tf.constant(True, dtype=tf.bool)
@@ -351,21 +351,21 @@ class Dataset(object):
 
     def _unpack(self, sample):
         return sample['X'], sample['y']#, sample['n']
-    
-           
-    
+
+
+
     def _resample(self, dataset):
         #print("Oversampling")
-        
+
         n_classes = len(self.h_params['class_ratio'].items())
         #print(n_classes)
         target_dist = 1./n_classes*np.ones(n_classes)
         empirical_dist = [v for k, v in self.h_params['class_ratio'].items()]
-        resample_ds = dataset.rejection_resample(class_func, 
-                                                 target_dist=target_dist, 
+        resample_ds = dataset.rejection_resample(class_func,
+                                                 target_dist=target_dist,
                                                  initial_dist=empirical_dist)
         balanced_ds = resample_ds.map(lambda y, xy: xy)
-        new_dist = {k: target_dist[0] 
+        new_dist = {k: target_dist[0]
                     for k in self.h_params['class_ratio'].keys()}
         #print("New class ratio: ", new_dist)
         #self.h_params['class_ratio'] = new_dist
