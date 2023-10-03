@@ -7,3 +7,5 @@ build
 datasets
 dist
 tests
+mneflow.egg-info
+tfr
