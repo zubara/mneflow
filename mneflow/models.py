@@ -846,7 +846,7 @@ class LFCNN(BaseModel):
         specs.setdefault('l2_lambda', 0.)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
-        #specs.setdefault('unitnorm_scope', [])
+        specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
         super(LFCNN, self).__init__(Dataset, specs, meta)
 
@@ -1095,15 +1095,15 @@ class LFCNN(BaseModel):
         return patterns
 
 
-    def patterns_cov_xy_hat(self, X, activations, weights):
+    def patterns_cov_xy_hat(self, X, y, activations, weights):
         Sx_tconv = self.backprop_fc(activations['tconv'],
                                     activations['fc'],
                                     y,
                                     weights['out_weights'])
-        Sx_dmx = self.backprop_dmx(X,
-                                   activations['dmx'],
-                                   Sx_tconv,
-                                   weights['dmx'])
+        Sx_dmx = self.backprop_covxy(X,
+                                    activations['dmx'],
+                                    Sx_tconv,
+                                    weights['dmx'])
         return Sx_tconv, Sx_dmx
 
 
@@ -1145,35 +1145,58 @@ class LFCNN(BaseModel):
         # activation of tconv by each signal component of each sample
         #Sx = np.einsum('il, kl -> ik', y_hat, aw) #shape = [n_batch, ...]
         Sx = np.einsum('il, il, ji -> jil', a_out, w, X)
-        #Sx = np.reshape(Sx, x_shape)
-
-        #assert(np.all(x_shape==list(Sx.shape))), 'Input and output shapes mismatch! \
-        #       Sx:{} X:{}'.format(Sx.shape, x_shape)
-
-        #Use Sx as y to backprop to spatial dimension
-
-
+        Sx = np.squeeze(np.reshape(Sx, x_shape + y_shape[1:]))
         return Sx
 
-    def backprop_dmx(self, X, y_hat, y, w):
-        x_shape = list(X.shape)
-        y_shape = list(y_hat.shape)
-        k = y.shape[-1]
-        y_hat = np.reshape(y_hat, [y_hat.shape[0], -1])
-        #out_shape = x_shape[1:] + y_shape[1:]
-        #print(x_shape, y_shape, w.shape)
-        ddof_xy = np.prod(x_shape[:3]) - 1
-        ddof_yy = np.prod(y_shape[:3]) - 1
+    def backprop_covxy(self, X, Hx, Sx, w):
+        xdmx = np.reshape(Hx, [-1, Hx.shape[-1]])
+        xdmx = xdmx - xdmx.mean(0, keepdims=True)
+        xinp = np.reshape(X, [-1, X.shape[-1]])
+        xinp = xinp - xinp.mean(0, keepdims=True)
+        cov_xy = np.dot(xinp.T, xdmx)
+        aw = cov_xy
+        sx = np.reshape(Sx, [-1, Sx.shape[-2], Sx.shape[-1]])
+        sx = sx - sx.mean(0, keepdims=True)
+        ddof = sx.shape[0] - 1
+        cov_sx = np.einsum('ijk, ilk -> kjl', sx,sx) / ddof
+        prec_yy_hat = np.stack([np.linalg.pinv(s) for s in cov_sx])
+        ww = np.einsum('ij, ljk -> ikl', w, prec_yy_hat)
+        a = np.einsum('ij, ijk -> ik', cov_xy, ww)
 
-        cov_xy = np.einsum('ijkl, ijmn -> lnm', X, y_hat) / ddof_xy #shape = [n_ch, n_latnet, n_bins]
-        cov_yy = np.einsum('ijkl, ijkm -> klm', y_hat, y_hat) / ddof_yy
-        prec_yy = np.array([np.linalg.inv(cvy) for cvy in cov_yy])
-        a_out = np.einsum('jkm, mkl -> jlm', cov_xy, prec_yy)
-        aw = a_out * w[..., None]
-        # activation of tconv by each signal component of each sample
-        Sx = np.einsum('ijkl, clk -> ick', y_hat, aw) #shape = [n_batch, ...]
+        return a
 
-        return Sx
+        # print(cov_xy.shape)
+        # patterns = []
+        # for class_y in range(Sx.shape[-1]):
+        #     sx = np.reshape(Sx, [-1, Sx.shape[-2], Sx.shape[-1]])
+        #     sx -= sx.mean(0, keepdims=True)
+        #     prec_sx = np.linalg.inv(np.dot(sx.T, sx))
+
+        #     aw = np.dot(cov_xy, prec_sx) * w
+        #     #component_activations = np.dot(aw, prec_sx)
+        #     patterns.append(aw.sum(-1))
+
+        # return np.stack(patterns, 1)
+
+    # def backprop_dmx(self, X, y_hat, y, w):
+    #     x_shape = list(X.shape)
+    #     y_shape = list(y_hat.shape)
+    #     k = y.shape[-1]
+    #     y_hat = np.reshape(y_hat, [y_hat.shape[0], -1])
+    #     #out_shape = x_shape[1:] + y_shape[1:]
+    #     #print(x_shape, y_shape, w.shape)
+    #     ddof_xy = np.prod(x_shape[:3]) - 1
+    #     ddof_yy = np.prod(y_shape[:3]) - 1
+
+    #     cov_xy = np.einsum('ijkl, ijmn -> lnm', X, y_hat) / ddof_xy #shape = [n_ch, n_latnet, n_bins]
+    #     cov_yy = np.einsum('ijkl, ijkm -> klm', y_hat, y_hat) / ddof_yy
+    #     prec_yy = np.array([np.linalg.inv(cvy) for cvy in cov_yy])
+    #     a_out = np.einsum('jkm, mkl -> jlm', cov_xy, prec_yy)
+    #     aw = a_out * w[..., None]
+    #     # activation of tconv by each signal component of each sample
+    #     Sx = np.einsum('ijkl, clk -> ick', y_hat, aw) #shape = [n_batch, ...]
+
+    #     return Sx
 
     def patterns_pinv_w(self, y, weights, activations, dcov):
         combined_topos = []
@@ -1404,28 +1427,28 @@ class LFCNN(BaseModel):
         patterns = {}
         patterns['cov_xx'] = self.patterns_cov_xx(y, weights, activations, dcov)
 
-        Sx_tconv, Sx_dmx = self.patterns_cov_xy_hat(X, activations, weights)
+        Sx_tconv, Sx_dmx = self.patterns_cov_xy_hat(X, y, activations, weights)
         Sx_tconv_ccm = []
-        Sx_dmx_ccm = []
+        #Sx_dmx_ccm = []
         Sx_fc_ccm = []
         patterns_cxy = []
         for class_y in range(self.out_dim):
             class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
             Sx_tconv_ccm.append(Sx_tconv[class_ind, ...].mean(0))
-            Sx_dmx_ccm.append(Sx_dmx[class_ind, ...].mean(0, keepdims=True))
+            #Sx_dmx_ccm.append(Sx_dmx[class_ind, ...].mean(0, keepdims=True))
             #a = activations['tconv'].numpy()[class_ind, ...].mean(0)*weights['out_weights'][None, ..., class_y]
             Sx_fc_ccm.append(activations['fc'].numpy()[class_ind, ...].mean(0, keepdims=True))
             # patterns_cxy.append(np.dot(dcov['class_conditional'][class_y],
             #                                Sx_dmx[class_ind, ...].mean(0)))
-            patterns_cxy.append(np.dot(dcov['input_spatial'],
-                                        Sx_dmx[class_ind, ...].mean(0)))
+            #patterns_cxy.append(np.dot(dcov['input_spatial'],
+            #                            Sx_dmx[class_ind, ...].mean(0)))
         ccms = {}
         ccms['tconv'] = np.concatenate(Sx_tconv_ccm, 0)
-        ccms['dmx'] = np.concatenate(Sx_dmx_ccm, 0)
+        #ccms['dmx'] = np.concatenate(Sx_dmx_ccm, 0)
         ccms['fc'] = np.concatenate(Sx_fc_ccm, 0)
 
 
-        patterns['cov_xy'] = np.stack(patterns_cxy, axis=1).mean(-1)
+        patterns['cov_xy'] = Sx_dmx
         patterns['pinv_w'] = self.patterns_pinv_w(y, weights, activations, dcov).mean(-1)
 
         patterns['wfc_mean'] = self.patterns_wfc_mean(y, weights, activations, dcov)
@@ -2975,6 +2998,7 @@ class EEGNet(BaseModel):
         specs.setdefault('nonlin', 'elu')
         specs.setdefault('maxnorm_rate', 0.25)
         specs.setdefault('model_path', './')
+        specs.setdefault('unitnorm_scope', [])
         super(EEGNet, self).__init__(Dataset, specs)
 
     def build_graph(self):
