@@ -259,10 +259,12 @@ class BaseModel():
 
         self.train_params = [n_epochs, eval_step, early_stopping, mode]
         rmss = defaultdict(list)
-        metrics = []
-        losses = []
+        
         self.cv_losses = []
         self.cv_metrics = []
+        self.cv_test_losses = []
+        self.cv_test_metrics = []
+        
 
         if class_weights:
             multiplier = 1. / min(class_weights.values())
@@ -274,10 +276,13 @@ class BaseModel():
         if mode == 'single_fold':
             n_folds = 1
             #self.cv_patterns = 0
-            #self.dataset.train, self.dataset.val = self.dataset._build_dataset()
+            train, val = self.dataset._build_dataset(self.dataset.h_params['train_paths'],
+                                               train_batch=self.dataset.training_batch,
+                                               test_batch=self.dataset.validation_batch,
+                                               split=True, val_fold_ind=0)
 
-            self.t_hist = self.km.fit(self.dataset.train,
-                                   validation_data=self.dataset.val,
+            self.t_hist = self.km.fit(train,
+                                   validation_data=val,
                                    epochs=n_epochs, steps_per_epoch=eval_step,
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
@@ -286,13 +291,16 @@ class BaseModel():
                                    class_weight=class_weights)
 
             #compute validation loss and metric
-            self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
-            losses.append(self.v_loss)
-            metrics.append(self.v_metric)
-            self.cv_losses.append(self.v_loss)
-            self.cv_metrics.append(self.v_metric)
-            #print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
-
+            v_loss, v_metric = self.evaluate(val)
+            self.cv_losses.append(v_loss)
+            self.cv_metrics.append(v_metric)
+            
+            if len(self.dataset.h_params['test_paths']) > 0:
+                t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+                self.cv_test_losses.append(t_loss)
+                self.cv_test_metrics.append(t_metric)
+                print('TEST loss: {:.3f}, metric {:.3f}'.format(t_metric, t_loss))
+                
             #compute specific metrics for classification and regresssion
             y_true, y_pred = self.predict(self.dataset.val)
             if self.dataset.h_params['target_type'] == 'float':
@@ -325,10 +333,16 @@ class BaseModel():
                                    callbacks=[stop_early], verbose=2,
                                    class_weight=class_weights)
 
-
-                loss, metric = self.evaluate(val)
-                self.cv_losses.append(loss)
-                self.cv_metrics.append(metric)
+                v_loss, v_metric = self.evaluate(val)
+                self.cv_losses.append(v_loss)
+                self.cv_metrics.append(v_metric)
+                print("Fold: {} complete".format(jj))
+                print("VALIDATION Loss: {:.4f}, Metric: {:.4f}".format(v_loss, v_metric))
+                if len(self.dataset.h_params['test_paths']) > 0:
+                    t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+                    self.cv_test_losses.append(t_loss)
+                    self.cv_test_metrics.append(t_metric)
+                    print('TEST loss: {:.3f}, metric {:.3f}'.format(t_loss, t_metric))
 
                 y_true, y_pred = self.predict(val)
 
@@ -350,16 +364,6 @@ class BaseModel():
                     self.shuffle_weights()
                 else:
                     "Not shuffling the weights for the last fold"
-
-
-                print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
-
-            self.v_loss = np.mean(self.cv_losses)
-            self.v_metric = np.mean(self.cv_metrics)
-            metrics = self.cv_metrics
-            losses = self.cv_losses
-
-            print("{} with {} folds completed. Loss: {:.4f} +/- {:.4f}. Metric: {:.4f} +/- {:.4f}".format(mode, n_folds, np.mean(losses), np.std(losses), np.mean(metrics), np.std(metrics)))
 
             if self.dataset.h_params['target_type'] == 'float':
                 rms = {k:np.mean(v) for k, v in rmss.items()}
@@ -407,13 +411,13 @@ class BaseModel():
                                                    split=False)
 
                 v_loss, v_metric = self.evaluate(val)
-                loso_loss, loso_metric = self.evaluate(test)
+                t_loss, t_metric = self.evaluate(test)
 
-                print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loso_loss, loso_metric))
+                print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, t_loss, t_metric))
                 self.cv_losses.append(v_loss)
                 self.cv_metrics.append(v_metric)
-                losses.append(loso_loss)
-                metrics.append(loso_metric)
+                self.cv_test_losses.append(t_loss)
+                self.cv_test_metrics.append(t_metric)
 
                 y_true, y_pred = self.predict(val)
                 if self.dataset.h_params['target_type'] == 'float':
@@ -444,16 +448,16 @@ class BaseModel():
             else:
                 rms = None
 
-            self.loso_losses = losses
-            self.loso_metrics = metrics
-            self.update_log(rms, prefix='loso_')
+            #self.loso_losses = losses
+            #self.loso_metrics = metrics
+            #self.update_log(rms, prefix='loso_')
 
         print("""{} with {} fold(s) completed. \n
               Loss: {:.4f} +/- {:.4f}.
               Metric: {:.4f} +/- {:.4f}"""
               .format(mode, n_folds,
-                      np.mean(losses), np.std(losses),
-                      np.mean(metrics), np.std(metrics)))
+                      np.mean(self.cv_losses), np.std(self.cv_losses),
+                      np.mean(self.cv_metrics), np.std(self.cv_metrics)))
         self.update_log(rms=rms, prefix=mode)
         #return self.cv_losses, self.cv_metrics
 
@@ -573,14 +577,15 @@ class BaseModel():
         #     y_true, y_pred = self.predict(self.dataset.val)
         #     log['val_cc'], log['val_r2'], log['val_cs'], log['val_bias'], log['val_pve'] = regression_metrics(y_true, y_pred)
         #     print("Validation set: Corr =", log['val_cc'], " R2 =", log['val_r2'])
-        tr_loss, tr_perf = self.evaluate(self.dataset.train)
-        log['tr_metric'] = tr_perf
+        tr_loss, tr_metric = self.evaluate(self.dataset.train)
+        log['tr_metric'] = tr_metric
         log['tr_loss'] = tr_loss
 
 
-        if len(self.dataset.h_params['test_paths']) > 0 and log['mode'] != 'loso':
-            print('Test performance:')
-            t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+        if len(self.dataset.h_params['test_paths']) > 0:
+            #print('Test performance:')
+            t_loss = np.mean(self.cv_test_losses)
+            t_metric = np.mean(self.cv_test_metrics)
             print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
             if self.dataset.h_params['target_type'] == 'float':
                 y_true, y_pred = self.predict(self.dataset.h_params['test_paths'])
@@ -589,14 +594,8 @@ class BaseModel():
                 log.update({'test_'+k:v for k,v in rms_test.items()})
             log['test_metric'] = t_metric
             log['test_loss'] = t_loss
-            log['test_metrics'] = "NA"
-            log['test_losses'] = "NA"
-
-        elif log['mode'] == 'loso':
-            log['test_metric'] = np.mean(self.loso_metrics)
-            log['test_loss'] = np.mean(self.loso_losses)
-            log['test_metrics'] = self.loso_metrics
-            log['test_losses'] = self.loso_losses
+            log['test_metrics'] = self.cv_test_metrics
+            log['test_losses'] = self.cv_test_losses
 
         else:
             log['test_metric'] = "NA"
@@ -650,10 +649,10 @@ class BaseModel():
             print("Restoring from:" + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
             f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
                         allow_pickle=True)
-            self.cv_patterns = f["cv_patterns"].item()
-            self.specs = f["specs"].item()
-            self.meta = f["meta"].item()
-            self.log = f["log"].item()
+            self.cv_patterns = f["cv_patterns"]#.item()
+            self.specs = f["specs"]#.item()
+            self.meta = f["meta"]#.item()
+            self.log = f["log"]#.item()
             self.cm = f["cm"]
 
     def predict_sample(self, x):
@@ -1421,7 +1420,7 @@ class LFCNN(BaseModel):
 
 
         # compute the effect of removing each latent component on the cost function
-        self.compwise_losses = self.compute_componentwise_loss(X, y)
+        self.compwise_losses = self.compute_componentwise_loss(X, y, weights)
 
         #TODO: class condtitional waveforms -> activations
         #self.waveforms = np.mean(activations['dmx']).T

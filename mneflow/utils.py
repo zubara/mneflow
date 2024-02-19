@@ -543,10 +543,6 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
 #                    return
                 #Preprocess data and segment labels if needed
                 # TODO define segment_y
-<<<<<<< HEAD
-=======
-
->>>>>>> 8b5b3d7fb26c2ef9b7ba3ea536e274ca2dad592b
                 X, Y, folds = preprocess(
                         data, events,
                         sample_counter=meta['train_size'],
@@ -958,11 +954,6 @@ def preprocess(data, events, sample_counter,
     print("Preprocessing:")
 
     # TODO: remove scale_y and transform targets?
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 8b5b3d7fb26c2ef9b7ba3ea536e274ca2dad592b
 
     if scale:
         data = scale_to_baseline(data, baseline=scale_interval,
@@ -973,11 +964,6 @@ def preprocess(data, events, sample_counter,
         data, events, folds = cont_split_indices(data, events,
                                                  n_folds=5,
                                                  segments_per_fold=10)
-<<<<<<< HEAD
-        print("Continuous events: ", events.shape)
-
-    else:
-=======
         shuffle = np.random.permutation(np.arange(events.shape[0]))
         data = data[shuffle]
         events = events[shuffle]
@@ -987,7 +973,6 @@ def preprocess(data, events, sample_counter,
         shuffle = np.random.permutation(np.arange(events.shape[0]))
         data = data[shuffle]
         events = events[shuffle]
->>>>>>> 8b5b3d7fb26c2ef9b7ba3ea536e274ca2dad592b
         folds = _split_indices(data, events, n_folds=n_folds)
 
     print("Splitting into: {} folds x {}".format(len(folds), len(folds[0])))
@@ -1092,8 +1077,3 @@ def r2_score(y_true, y_pred):
     tot = np.sum((y_true - np.mean(y_true, axis=0, keepdims=True))**2, axis=0)
     return 1 - res/tot
 
-<<<<<<< HEAD
-=======
-#def reconstruction_pve(X_true, X_pred):
-
->>>>>>> 8b5b3d7fb26c2ef9b7ba3ea536e274ca2dad592b
