@@ -2,9 +2,10 @@
 *.pyo
 scripts/*
 examples/*.py
-examples/.ipynb_checkpoints/*
-mneflow.egg-info
+examples/.ipynb_checkpoints/
 build
 datasets
 dist
+tests
+mneflow.egg-info
 tfr

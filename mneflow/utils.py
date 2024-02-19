@@ -532,7 +532,6 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                           'target_type : ', target_type,
                           'segment_y : ', segment_y)
 
-
                 X, Y, folds = preprocess(
                         data, events,
                         sample_counter=meta['train_size'],
@@ -949,8 +948,6 @@ def preprocess(data, events, sample_counter,
 
     # TODO: remove scale_y and transform targets?
 
-
-
     if scale:
         data = scale_to_baseline(data, baseline=scale_interval,
                                  crop_baseline=crop_baseline)
@@ -1038,16 +1035,6 @@ def preprocess_targets(y, scale_y=False, transform_targets=None):
     return y
 
 
-
-
-    #    """Preprocess target variables."""
-    # y_out = y[:, 0, -50:].mean(-1, keepdims=True)
-    # #y_out = np.squeeze(np.concatenate(y_out))
-    # if np.ndim(y_out) == 1:
-    #     y_out = np.expand_dims(y_out, -1)
-    # print("_process_labels out:", y_out.shape)
-    #return y_out
-
 def regression_metrics(y_true, y_pred):
     y_shape = y_true.shape[-1]
 
@@ -1073,6 +1060,3 @@ def r2_score(y_true, y_pred):
     res = np.sum((y_true - y_pred)**2, axis=0)
     tot = np.sum((y_true - np.mean(y_true, axis=0, keepdims=True))**2, axis=0)
     return 1 - res/tot
-
-#def reconstruction_pve(X_true, X_pred):
-

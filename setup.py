@@ -29,4 +29,4 @@ if __name__ == '__main__':
                      'Operating System :: MacOS'],
         platforms='any',
         packages=['mneflow'],
-        install_requires=['numpy', 'scipy', 'mne', 'tensorflow', 'matplotlib', 'sklearn'])
+        install_requires=['numpy', 'scipy', 'mne', 'tensorflow', 'matplotlib'])

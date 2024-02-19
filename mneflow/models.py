@@ -24,13 +24,14 @@ from matplotlib import patches as ptch
 from matplotlib import collections
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from mneflow.layers import LFTConv, VARConv, DeMixing, Dense, TempPooling#, LFTConvTranspose1
+from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling, InvCov
 from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
 from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
 from tensorflow.keras.initializers import Constant
 
 from .layers import LSTM
 from tensorflow.keras import regularizers as k_reg, constraints, layers
+import keras.backend as K
 import csv
 import os
 from .data import Dataset
@@ -44,7 +45,7 @@ def uniquify(seq):
 
 
 
-
+# ----- Base model -----
 #@tf.keras.utils.register_keras_serializable(package="mmneflow")
 class BaseModel():
     """Parent class for all MNEflow models.
@@ -101,15 +102,15 @@ class BaseModel():
         #self.cv_patterns = np.zeros([])
 
 
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
+    # @classmethod
+    # def from_config(cls, config):
+    #     return cls(**config)
 
-    def get_config(self):
-        config = {
-            "fc": self.fc
-        }
-        return config
+    # def get_config(self):
+    #     config = {
+    #         "fc": self.fc
+    #     }
+    #     return config
 
 
 
@@ -358,8 +359,7 @@ class BaseModel():
                 if collect_patterns and self.scope == 'lfcnn':
                     self.collect_patterns(fold=jj, n_folds=n_folds,
                                           n_comp=int(collect_patterns))
-                    # self.plot_topos(self.paternnet(implementation=0), sensor_layout='Vectorview-grad')
-                    # self.plot_topos(self.paternnet(implementation=1), sensor_layout='Vectorview-grad')
+
 
                 if jj < n_folds - 1:
                     self.shuffle_weights()
@@ -489,7 +489,6 @@ class BaseModel():
                                validation_steps=self.dataset.validation_steps,
                                callbacks=[stop_early], verbose=2)
 
-
     def shuffle_weights(self):
         print("Re-shuffling weights between folds")
         weights = self.km.get_weights()
@@ -499,6 +498,16 @@ class BaseModel():
         # weights = [np.random.permutation(w) for w in weights]
         self.km.set_weights(weights)
 
+
+    # def reinitialize_weights(self):
+    #     session = K.get_session()
+    #     print("Re-initializing weights")
+    #     for layer in self.km.layers: 
+    #         if hasattr(layer, 'kernel_initializer'):
+    #             layer.kernel.initializer.run(session=session)
+    #         if hasattr(layer, 'bias_initializer'):
+    #             layer.bias.initializer.run(session=session)
+                
 
     def plot_hist(self):
         """Plot loss history during training."""
@@ -627,13 +636,12 @@ class BaseModel():
             #if hasattr(self, 'cv_patterns'):
             print("Saving patterns to: " + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
             np.savez(self.model_path + self.model_name + "\\mneflow_patterns.npz",
-                 #freqs = self.freqs,
-                 cv_patterns=self.cv_patterns,
-                 specs=self.specs,
-                 meta=self.dataset.h_params,
-                 log=self.log,
-                 cm=self.cm,
-                 )
+                     cv_patterns=self.cv_patterns,
+                     specs=self.specs,
+                     meta=self.dataset.h_params,
+                     log=self.log,
+                     cm=self.cm,
+                     )
 
         #Update metadata with specs and new self.dataset options
         #For LFCNN save patterns
@@ -653,15 +661,11 @@ class BaseModel():
             f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
                         allow_pickle=True)
             self.cv_patterns = f["cv_patterns"].item()
-            #self.freqs = f['freqs']
             self.specs = f["specs"].item()
             self.meta = f["meta"].item()
             self.log = f["log"].item()
             self.cm = f["cm"]
-            #except:
-            #    print("Patterns not found")
 
-    #@tf.function
     def predict_sample(self, x):
         n_ch = self.dataset.h_params['n_ch']
         n_t = self.dataset.h_params['n_t']
@@ -677,7 +681,6 @@ class BaseModel():
 
         return out
 
-    #@tf.function
     def predict(self, dataset=None):
         """Returns:
         --------
@@ -712,7 +715,6 @@ class BaseModel():
         #y_true = y_true.numpy()
         return y_true, y_pred
 
-    #@tf.function
     def evaluate(self, dataset=False):
         """
         Returns:
@@ -1039,6 +1041,7 @@ class LFCNN(BaseModel):
         Returns : dcov [y_shape, n_ch, n_ch]
 
         """
+
         dcovs = []
         dcovs_n = []
         for class_y in range(self.out_dim):
@@ -1378,7 +1381,6 @@ class LFCNN(BaseModel):
             raise AttributeError('Specify dataset or data path.')
 
 
-
         X, y = [row for row in ds.take(1)][0]
 
         self.nfft = 128
@@ -1413,8 +1415,6 @@ class LFCNN(BaseModel):
 
         #CCMs are mean activations of each layer for each class
 
-
-
         dcov = {}
         dcov['input_spatial'] = np.einsum('hijk, hijl -> kl', X, X) / ndof
         dcov['class_conditional'], dcov['k-1']  = self._get_class_conditional_spatial_covariance(X, y)
@@ -1430,7 +1430,8 @@ class LFCNN(BaseModel):
             self.true_evoked_data = np.squeeze(evokeds)
 
 
-
+        # compute the effect of removing each latent component on the cost function
+        self.compwise_losses = self.compute_componentwise_loss(X, y)
 
         #TODO: class condtitional waveforms -> activations
         #self.waveforms = np.mean(activations['dmx']).T
@@ -1606,6 +1607,7 @@ class LFCNN(BaseModel):
                 model_weights[-1] = new_bias
                 self.km.set_weights(model_weights)
                 loss = self.km.evaluate(X, y, verbose=0)[0]
+
                 #loss_per_component.append(base_loss - loss)
                 losses[i, jj] = base_loss - loss
             #feature_relevances_loss.append(np.array(loss_per_ccomponent))
@@ -1629,6 +1631,7 @@ class LFCNN(BaseModel):
             rfocs = np.array([spearmanr(y_, f)[0] for f in flat_feats.T])
             corr_to_output.append(rfocs.reshape(activations['tconv'].shape[1:]))
 
+
         # elif self.dataset.h_params['target_type'] == 'int':
         #     y_true = y_true/np.linalg.norm(y_true, ord=1, axis=0)[None, :]
         #     flat_div = np.linalg.norm(flat_feats, 1, axis=0)[None, :]
@@ -1647,8 +1650,6 @@ class LFCNN(BaseModel):
         return corr_to_output
 
     # --- LFCNN plot functions ---
-
-
 
     def plot_evoked_peaks(self, data=None, t=None, class_subset=None,
                           sensor_layout='Vectorview-mag'):
@@ -1775,6 +1776,7 @@ class LFCNN(BaseModel):
             class_ind = np.maximum(np.round(event.xdata, 0).astype(int), 0)
             component_ind = np.maximum(np.round(event.ydata).astype(int), 0)
 
+
             f1, ax = plt.subplots(2,2)
             f1.set_layout_engine('constrained')
             f1.suptitle("Class: {}  Component: {}"
@@ -1807,6 +1809,7 @@ class LFCNN(BaseModel):
             ax[0,1].legend(frameon=False)
             ax[0,1].set_title('Relative power spectra')
 
+
             ax[1,0].stem(tconv_kernels[:, component_ind])
             ax[1,0].set_title('Temporal convolution kernel coefficients')
 
@@ -1814,6 +1817,7 @@ class LFCNN(BaseModel):
             ax[1,1].plot(class_ind, F[component_ind, class_ind], 'rs')
             ax[1,1].set_title('{} per class. Red={}'.format(sorting, class_ind))
             ax[1,1].set_xlabel("Class")
+
 
 
         if sorting == 'weight':
@@ -1878,6 +1882,7 @@ class LFCNN(BaseModel):
             Beginning of the MEG epoch with regard to reference event.
             Defaults to 0.
 
+
         sorting : str
             heuristic for selecting relevant components. See LFCNN._sorting
         """
@@ -1908,6 +1913,7 @@ class LFCNN(BaseModel):
                 #scaled_waveforms =(scaled_waveforms - scaled_waveforms.mean(-1, keepdims=True))  / (2*scaled_waveforms.std(-1, keepdims=True))
             else:
                 #scaling = 3*np.mean(np.std(self.waveforms, -1))
+
                 scaled_waveforms = (waveforms - waveforms.mean(-1, keepdims=True))  / (2*waveforms.std(-1, keepdims=True))
             if bp_filter:
                 scaled_waveforms = scaled_waveforms.astype(np.float64)
@@ -1964,6 +1970,7 @@ class LFCNN(BaseModel):
             ax[0, 1].set_xticklabels(class_names)
             rpss = []
             for i, flt in enumerate(self.filters.T):
+
                 flt -= flt.mean()
                 h = self.freq_responses[i, :]
                 psd = self.psds[i, :]
@@ -1979,6 +1986,7 @@ class LFCNN(BaseModel):
             ax[1, 1].legend()
             plt.show()
             return
+
 
 
     def _sorting(self, patterns_struct, sorting='compwise_loss', n_comp=1):
@@ -2019,6 +2027,7 @@ class LFCNN(BaseModel):
         out_weights = patterns_struct['weights']['out_weights']
         if sorting == 'l2':
             for i in range(self.out_dim):
+
                 self.F = out_weights[..., i].T
 
                 norms = np.linalg.norm(self.F, axis=1, ord=2)
@@ -2029,6 +2038,7 @@ class LFCNN(BaseModel):
 
         elif sorting == 'compwise_loss':
             for i in range(self.out_dim):
+
                 self.F = out_weights[..., i].T
                 pat = np.argsort(patterns_struct['compwise_loss'][:, i])
                 #take n smallest (largest increase in cost function)
@@ -2037,6 +2047,7 @@ class LFCNN(BaseModel):
 
         elif sorting == 'abs_weight':
             for i in range(self.out_dim):
+
                 self.F = np.abs(out_weights[..., i].T)
                 pat, t = np.where(self.F == np.max(self.F))
                 #print('Maximum spearman r:', np.max(self.corr_to_output[..., i].T))
@@ -2053,6 +2064,7 @@ class LFCNN(BaseModel):
                 ts.append(t)
 
         elif sorting == 'output_corr':
+
             self.F = patterns_struct['corr_to_output']
             for i in range(self.out_dim):
 
@@ -2067,6 +2079,7 @@ class LFCNN(BaseModel):
         order = np.array(order)
         ts = np.array(ts)
         return order, ts
+
 
 
     # def combined_pattern(self, subset=None):
@@ -2108,6 +2121,7 @@ class LFCNN(BaseModel):
                               names=None, n_comp=1, plot_true_evoked=False):
         if not names:
             names = ['Class {}'.format(i) for i in range(self.y_shape[-1])]
+
 
 #        cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
 #               for i in range(self.cv_patterns.shape[1])])
@@ -2194,6 +2208,7 @@ class LFCNN(BaseModel):
 #                 normalized_input_rps = psds[:,i] / np.maximum(np.sum(psds[:,i]), 1e-6)
 
 
+
 #                 ax[i].plot(freqs, normalized_input_rps, label='Layer Input')
 #                 ax[i].set_title(names[i])
 #                 ax[i].plot(freqs, normalized_output_rps, label='Extracted Component')
@@ -2225,6 +2240,7 @@ class LFCNN(BaseModel):
 #             f.supxlabel('Frequency, Hz', fontsize=16)
 #         plt.show()
 #                 #ax[i].show()
+
 
 
 
@@ -2337,7 +2353,9 @@ class VARCNN(BaseModel):
         specs.setdefault('l2_lambda', 0)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
+
         specs.setdefault('unitnorm_scope', [])
+
         super(VARCNN, self).__init__(Dataset, specs)
 
     def build_graph(self):
@@ -2608,6 +2626,7 @@ class FBCSP_ShallowNet(BaseModel):
         specs.setdefault('l2_lambda', 3e-2)
         specs.setdefault('l1_scope', [])
         specs.setdefault('l2_scope', ['conv', 'fc'])
+
         specs.setdefault('unitnorm_scope', [])
         specs.setdefault('model_path', './')
         super(FBCSP_ShallowNet, self).__init__(Dataset, specs)
@@ -2736,6 +2755,7 @@ class LFLSTM(BaseModel):
         specs.setdefault('l2_lambda', 0.)
         specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         specs.setdefault('l2_scope', [])
+
         specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
         super(LFLSTM, self).__init__(Dataset, specs)

@@ -1,0 +1,13 @@
+LICENSE.md
+README.md
+setup.py
+mneflow/__init__.py
+mneflow/data.py
+mneflow/layers.py
+mneflow/models.py
+mneflow/utils.py
+mneflow.egg-info/PKG-INFO
+mneflow.egg-info/SOURCES.txt
+mneflow.egg-info/dependency_links.txt
+mneflow.egg-info/requires.txt
+mneflow.egg-info/top_level.txt
