@@ -11,7 +11,64 @@ import numpy as np
 import tensorflow as tf
 import scipy.io as sio
 import mne
+from mneflow import models
 
+   
+
+class MetaData():
+    def __init__(self):
+        self.data = dict()
+        self.preprocessing = dict()
+        self.model_specs = dict()
+        self.train_params = dict()
+        self.patterns = dict()
+        
+    def save(self):
+        return
+        
+    def restore_model(self):
+        
+        if self.model_specs['scope'] == 'lfcnn':
+            model = models.LFCNN(meta=self)
+        elif self.model_specs['scope'] == 'varcnn':
+            model = models.VARCNN(meta=self)
+        elif self.model_specs['scope'] == 'fbcsp-ShallowNet':
+            model = models.FBCSP_ShallowNet(meta=self)
+        elif self.model_specs['scope'] == 'deep4':
+            model = models.Deep4(meta=self)
+        elif self.model_specs['scope'] == 'eegnet8':
+            model = models.EEGNet(meta=self)
+        
+        model_name = "_".join([self.model_specs['scope'],
+                               self.data['data_id']])
+        model.km = tf.keras.models.load_model(self.model_specs['model_path'] + 
+                                              model_name)
+        
+        #model.build()
+        model.cv_patterns = self.patterns
+        #TODO: set weights from self.km.weights
+        #TODO: set val loss, patterns, etc, specs
+        return model
+    
+    def update(self, data=None, preprocessing=None, train_params=None, 
+               model_specs=None, patterns=None):
+        if isinstance(data, dict):
+            self.data.update(data)
+            print("Updating: meta.data")
+        if isinstance(preprocessing, dict):
+            self.preprocessing.update(preprocessing)
+            print("Updating: meta.preprocessing")
+        if isinstance(train_params, dict):
+             self.train_params.update(train_params)
+             print("Updating: meta.train_params")
+        if isinstance(model_specs, dict):
+             self.model_specs.update(model_specs)
+             print("Updating: meta.model_specs")
+        if isinstance(patterns, dict):
+            self.patterns.update(patterns)
+            print("Updating: meta.patterns")
+        return
+        
 
 def _onehot(y, n_classes=False):
     """
@@ -44,24 +101,28 @@ def _onehot(y, n_classes=False):
     return y_onehot
 
 
-def load_meta(fname, data_id=''):
+def load_meta(path, data_id=''):
     # TODO: expand functionality?
     """Load a metadata file.
 
     Parameters
     ----------
-    fname : str
+    path : str
         Path to TFRecord folder
 
     Returns
     -------
-    meta : dict
+    meta : MetaData
         Metadata file
 
     """
-    with open(fname+data_id+'_meta.pkl', 'rb') as f:
+    with open(path+data_id+'_meta.pkl', 'rb') as f:
         meta = pickle.load(f)
     return meta
+
+# def load_model(model_path):
+    
+#     return model 
 
 
 
@@ -296,7 +357,10 @@ def import_data(inp, array_keys={'X': 'X', 'y': 'y'}):
     return data, events
 
 
-def produce_tfrecords(inputs, savepath, out_name, fs=1.,
+def produce_tfrecords(inputs, 
+                      path, 
+                      data_id, 
+                      fs=1.,
                       input_type='trials',
                       target_type='int',
                       array_keys={'X': 'X', 'y': 'y'},
@@ -330,11 +394,11 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
     inputs : mne.Epochs, list of str, tuple of ndarrays
         Input data.
 
-    savepath : str
+    path : str
         A path where the output TFRecord and corresponding metadata
         files will be stored.
 
-    out_name : str
+    data_id : str
         Filename prefix for the output files.
 
     fs : float, optional
@@ -443,7 +507,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
         the information about the dataset required for further
         processing with mneflow.
         Whenever the function is called the copy of metadata is also
-        saved to savepath/meta.pkl so it can be restored at any time.
+        saved to data_path/meta.pkl so it can be restored at any time.
 
 
     Notes
@@ -459,21 +523,26 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
     """
     assert input_type in ['trials', 'seq', 'continuous', 'fconn'], "Unknown input type."
     assert target_type in ['int', 'float', 'signal'], "Unknown target type."
-    if not os.path.exists(savepath):
-        os.mkdir(savepath)
+    
+    if not os.path.exists(path):
+        os.mkdir(path)
+    data_path = os.path.join(path, 'tfrecords')
+    if not os.path.exists(data_path):
+        os.mkdir(data_path)
 
-    if overwrite or not os.path.exists(savepath+out_name+'_meta.pkl'):
-
-        meta = dict(train_paths=[], val_paths=[], test_paths=[],
-                    folds=[], test_fold=[],
-                    data_id=out_name, train_size=0, val_size=0, test_size=0,
-                    savepath=savepath, target_type=target_type,
-                    input_type=input_type)
+    if overwrite or not os.path.exists(os.path.join(path, data_id+'_meta.pkl')):
+        train_size = 0
+        test_size = 0
+        val_size = 0
+        folds = []
+        train_paths=[]
+        test_paths=[]
+        
         jj = 0
         if test_set == 'holdout':
             n_folds += 1
 
-        meta['fs'] = fs
+        #meta['fs'] = fs
 
         if not isinstance(inputs, list):
             inputs = [inputs]
@@ -520,9 +589,9 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                           'target_type : ', target_type,
                           'segment_y : ', segment_y)
 
-                X, Y, folds = preprocess(
+                X, Y, fold_split = preprocess(
                         data, events,
-                        sample_counter=meta['train_size'],
+                        sample_counter=train_size,
                         input_type=input_type,
                         n_folds=n_folds,
                         scale=scale,
@@ -536,85 +605,132 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                                        transform_targets=transform_targets)
 
                 if target_type == 'int':
-                    Y, n_ev, meta['class_ratio'], meta['orig_classes'] = produce_labels(Y)
+                    Y, n_ev, class_ratio, orig_classes = produce_labels(Y)
                     Y = _onehot(Y)
+                else:
+                    class_ratio = dict()
+                    orig_classes = dict()
 
 
                 if test_set == 'holdout':
                     X, Y, x_test, y_test, test_fold = _split_sets(X, Y,
-                                                                  folds=folds,
-                                                                  sample_counter=meta['train_size'])
-                    meta['test_size'] += x_test.shape[0]
+                                                                  folds=fold_split,
+                                                                  sample_counter=train_size)
+                    test_size += x_test.shape[0]
+                else:
+                    test_fold = None
                     #TODO: remove?
 #                if input_type == 'fconn':
 #                    _n, meta['n_ch'], meta['n_t'], meta['n_freq'] = X.shape
 #                else:
-                _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
+                _n, n_seq, n_t, n_ch = X.shape
 
 
                 if input_type == 'seq':
-                    meta['y_shape'] = Y[0].shape[1:]
+                    y_shape = Y[0].shape[1:]
                 else:
-                    meta['y_shape'] = Y[-1].shape
+                    y_shape = Y[-1].shape
 
-                n = np.arange(_n) + meta['train_size']
+                n = np.arange(_n) + train_size
 
-                meta['train_size'] += _n
+                train_size += _n
 
-                if save_as_numpy == True:
-                    train_fold = np.concatenate(folds[1:])
-                    val_fold = folds[0]
-                    np.savez(savepath+out_name,
-                             X_train=np.swapaxes(X[train_fold, ...], -2, -1),
-                             X_val=np.swapaxes(X[val_fold, ...], -2, -1),
-                             #X_test=np.swapaxes(x_test,-2, -1),
-                             y_train=Y[train_fold, ...],
-                             y_val=Y[val_fold, ...],
-                             #y_test=y_test
-                             )
+                # if save_as_numpy == True:
+                #     train_fold = np.concatenate(folds[1:])
+                #     val_fold = folds[0]
+                #     np.savez(data_path+data_id,
+                #              X_train=np.swapaxes(X[train_fold, ...], -2, -1),
+                #              X_val=np.swapaxes(X[val_fold, ...], -2, -1),
+                #              #X_test=np.swapaxes(x_test,-2, -1),
+                #              y_train=Y[train_fold, ...],
+                #              y_val=Y[val_fold, ...],
+                #              #y_test=y_test
+                #              )
 
 
                 #                                                 np.min(n), np.max(n)))
-                meta['val_size'] += len(folds[0])
+                val_size += len(fold_split[0])
 
                 print('Prepocessed sample shape:', X[0].shape)
-                print('Target shape actual/metadata: ', Y[0].shape, meta['y_shape'])
+                print('Target shape actual/metadata: ', Y[0].shape, y_shape)
 
                 print('Saving TFRecord# {}'.format(jj))
 
-                meta['folds'].append(folds)
-                meta['train_paths'].append(''.join([savepath, out_name,
-                                                    '_train_', str(jj),
-                                                    '.tfrecord']))
+                folds.append(fold_split)
+                train_filename = ''.join([data_path, data_id, '_train_', 
+                                          str(jj),
+                                          '.tfrecord'])
+                train_paths.append(train_filename)
 
-                _write_tfrecords(X, Y, n, meta['train_paths'][-1],
+                _write_tfrecords(X, Y, n, train_filename, 
                                  target_type=target_type)
 
                 if test_set == 'loso':
-                    meta['test_size'] = len(Y)
-                    meta['test_paths'].append(''.join([savepath, out_name,
-                                                       '_test_', str(jj),
-                                                       '.tfrecord']))
-                    _write_tfrecords(X, Y, n, meta['test_paths'][-1],
+                    test_size = len(Y)
+                    tfrname = ''.join([data_id, '_test_', str(jj), '.tfrecord'])
+                    test_filename = os.path.join(data_path, tfrname)
+                                        
+                    _write_tfrecords(X, Y, n, test_filename,
                                      target_type=target_type)
 
                 elif test_set == 'holdout':
-                    meta['test_fold'].append(test_fold)
-
-                    meta['test_paths'].append(''.join([savepath, out_name,
-                                                       '_test_', str(jj),
-                                                       '.tfrecord']))
+                    #meta['test_fold'].append(test_fold)
+                    tfrname = ''.join([data_id, '_test_', str(jj), '.tfrecord'])
+                    test_filename = os.path.join(data_path, tfrname)
                     n_test = np.arange(len(test_fold))
-                    _write_tfrecords(x_test, y_test, n_test, meta['test_paths'][-1],
+                    
+                    _write_tfrecords(x_test, y_test, n_test, test_filename,
                                      target_type=target_type)
+                    test_paths.append(test_filename)
                 jj += 1
-                with open(savepath+out_name+'_meta.pkl', 'wb') as f:
-                    pickle.dump(meta, f)
+                #create and save metadata file
+                
+        meta_data = dict(path=path,
+                         data_path=data_path, 
+                         target_type=target_type,
+                         input_type=input_type, 
+                         data_id=data_id,
+                         test_set=test_set,
+                         train_paths=train_paths,
+                         test_paths=test_paths,
+                         folds=folds,
+                         n_folds=n_folds,
+                         test_fold=test_fold,
+                         train_size=train_size,
+                         test_size=test_size,
+                         val_size=val_size,
+                         n_seq=n_seq,
+                         n_t=n_t,
+                         n_ch=n_ch,
+                         y_shape=y_shape,
+                         class_ratio=class_ratio,
+                         orig_classees=orig_classes,
+                         fs=fs)
+        
+        meta_preprocessing = dict(scale=scale,
+                                  scale_interval=scale_interval,
+                                  crop_baseline=crop_baseline,
+                                  segment=segment, aug_stride=aug_stride,
+                                  seq_length=seq_length,
+                                  segment_y=segment_y)
+        
+        meta = MetaData()
+        meta.update(data=meta_data, preprocessing=meta_preprocessing)       
+        
+        with open(path+data_id+'_meta.pkl', 'wb') as f:
+            pickle.dump(meta, f)
 
-    elif os.path.exists(savepath+out_name+'_meta.pkl'):
+    elif os.path.exists(path+data_id+'_meta.pkl'):
         print('Metadata file found, restoring')
-        meta = load_meta(savepath, data_id=out_name)
+        meta = load_meta(path, data_id=data_id)
     return meta
+
+def restore_model(meta):
+    model_name = ''.join(meta.model['model_path'] + meta.model_specs['scope'], 
+                         meta.data['data_id'])
+    
+                         
+    return model
 
 def produce_labels(y, return_stats=True):
     """Produce labels array from e.g. event (unordered) trigger codes.
