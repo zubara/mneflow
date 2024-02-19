@@ -258,10 +258,12 @@ class BaseModel():
 
         self.train_params = [n_epochs, eval_step, early_stopping, mode]
         rmss = defaultdict(list)
-        metrics = []
-        losses = []
+        #metrics = []
+        #losses = []
         self.cv_losses = []
         self.cv_metrics = []
+        self.cv_test_losses = []
+        self.cv_test_metrics = []
 
         if class_weights:
             multiplier = 1. / min(class_weights.values())
@@ -285,11 +287,18 @@ class BaseModel():
                                    class_weight=class_weights)
 
             #compute validation loss and metric
-            self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
-            losses.append(self.v_loss)
-            metrics.append(self.v_metric)
-            self.cv_losses.append(self.v_loss)
-            self.cv_metrics.append(self.v_metric)
+            v_loss, v_metric = self.evaluate(self.dataset.val)
+
+            self.cv_losses.append(v_loss)
+            self.cv_metrics.append(v_metric)
+
+            if len(self.dataset.h_params['test_paths']):
+                    print('Test performance:')
+                    t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+                    print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
+                    self.cv_test_losses.append(t_loss)
+                    self.cv_test_metrics.append(t_metric)
+
             #print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
 
             #compute specific metrics for classification and regresssion
@@ -325,9 +334,15 @@ class BaseModel():
                                    class_weight=class_weights)
 
 
-                loss, metric = self.evaluate(val)
-                self.cv_losses.append(loss)
-                self.cv_metrics.append(metric)
+                v_loss, v_metric = self.evaluate(val)
+                self.cv_losses.append(v_loss)
+                self.cv_metrics.append(v_metric)
+                if len(self.dataset.h_params['test_paths']):
+                    print('Test performance:')
+                    t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+                    print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
+                    self.cv_test_losses.append(t_loss)
+                    self.cv_test_metrics.append(t_metric)
 
                 y_true, y_pred = self.predict(val)
 
@@ -352,10 +367,10 @@ class BaseModel():
                     "Not shuffling the weights for the last fold"
 
 
-                print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
+                print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, v_loss, v_metric))
 
-            self.v_loss = np.mean(self.cv_losses)
-            self.v_metric = np.mean(self.cv_metrics)
+            #self.v_loss = np.mean(self.cv_losses)
+            #self.v_metric = np.mean(self.cv_metrics)
             metrics = self.cv_metrics
             losses = self.cv_losses
 
@@ -412,8 +427,8 @@ class BaseModel():
                 print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loso_loss, loso_metric))
                 self.cv_losses.append(v_loss)
                 self.cv_metrics.append(v_metric)
-                losses.append(loso_loss)
-                metrics.append(loso_metric)
+                self.cv_test_losses.append(loso_loss)
+                self.cv_test_metrics.append(loso_metric)
 
                 y_true, y_pred = self.predict(val)
                 if self.dataset.h_params['target_type'] == 'float':
@@ -444,16 +459,16 @@ class BaseModel():
             else:
                 rms = None
 
-            self.loso_losses = losses
-            self.loso_metrics = metrics
+            #self.loso_losses = losses
+            #self.loso_metrics = metrics
             self.update_log(rms, prefix='loso_')
 
         print("""{} with {} fold(s) completed. \n
               Loss: {:.4f} +/- {:.4f}.
               Metric: {:.4f} +/- {:.4f}"""
               .format(mode, n_folds,
-                      np.mean(losses), np.std(losses),
-                      np.mean(metrics), np.std(metrics)))
+                      np.mean(self.cv_losses), np.std(self.cv_losses),
+                      np.mean(self.cv_metrics), np.std(self.cv_metrics)))
         self.update_log(rms=rms, prefix=mode)
         #return self.cv_losses, self.cv_metrics
 
@@ -569,9 +584,10 @@ class BaseModel():
         log['tr_loss'] = tr_loss
 
 
-        if len(self.dataset.h_params['test_paths']) > 0 and log['mode'] != 'loso':
+        if len(self.dataset.h_params['test_paths']) > 0:
             print('Test performance:')
-            t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+            t_loss = np.mean(self.cv_test_losses)
+            t_metric = np.mean(self.cv_test_metrics)##= self.evaluate(self.dataset.h_params['test_paths'])
             print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
             if self.dataset.h_params['target_type'] == 'float':
                 y_true, y_pred = self.predict(self.dataset.h_params['test_paths'])
@@ -580,14 +596,8 @@ class BaseModel():
                 log.update({'test_'+k:v for k,v in rms_test.items()})
             log['test_metric'] = t_metric
             log['test_loss'] = t_loss
-            log['test_metrics'] = "NA"
-            log['test_losses'] = "NA"
-
-        elif log['mode'] == 'loso':
-            log['test_metric'] = np.mean(self.loso_metrics)
-            log['test_loss'] = np.mean(self.loso_losses)
-            log['test_metrics'] = self.loso_metrics
-            log['test_losses'] = self.loso_losses
+            log['test_metrics'] = self.cv_test_metrics
+            log['test_losses'] = self.cv_test_losses
 
         else:
             log['test_metric'] = "NA"

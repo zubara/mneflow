@@ -221,7 +221,7 @@ def _split_sets(X, y, folds, ind=-1, sample_counter=0):
     return X_train, y_train, X_test, y_test, test_fold
 
 
-def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
+def import_data(inp, array_keys={'X': 'X', 'y': 'y'}):
     """Import epoch data into `X, y` data/target pairs.
 
     Parameters
@@ -230,10 +230,6 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         List of mne.epochs.Epochs or strings with filenames.
         If input is a single string or Epochs object, it is first converted
         into a list.
-
-    picks : ndarray of int, optional
-        Indices of channels to pick for processing. If None, all
-        channels are used.
 
     array_keys : dict, optional
         Dictionary mapping {'X': 'data_matrix', 'y': 'labels'},
@@ -251,14 +247,11 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
     """
     if isinstance(inp, (mne.epochs.EpochsFIF, mne.epochs.BaseEpochs)):
         print('processing epochs')
-        # if isinstance(picks, dict):
-        #     picks = mne.pick_types(inp.info, include=picks)
+
         inp.load_data()
         data = inp.get_data()
         events = inp.events[:, 2]
-        if isinstance(picks, dict):
-            print("Converting picks")
-            picks = mne.pick_types(inp.info, **picks)
+
 
     elif isinstance(inp, tuple) and len(inp) == 2:
         print('importing from tuple')
@@ -274,9 +267,7 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
             events = epochs.events[:, 2]
             epochs.crop(tmin=-1., tmax=1.)
             data = epochs.get_data()
-            if isinstance(picks, dict):
-                print("Converting picks")
-                picks = mne.pick_types(epochs.info, **picks)
+
 
         else:
             if fname[-3:] == 'mat':
@@ -301,13 +292,6 @@ def import_data(inp, picks=None, array_keys={'X': 'X', 'y': 'y'}):
         # (x, ) -> (1, 1, x)
         # (x, y) -> (1, x, y)
         data = np.expand_dims(data, 0)
-
-    if isinstance(picks, (np.ndarray, list, tuple)):
-        picks = np.asarray(picks)
-        if np.any(data.shape[1] <= picks):
-            raise ValueError("Invalid picks {} for n_channels {} ".format(
-                    max(len(picks), max(picks)), data.shape[1]))
-        data = data[:, picks, :]
 
     return data, events
 
@@ -356,7 +340,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
     fs : float, optional
          Sampling frequency, required only if inputs are not mne.Epochs
 
-    input_type : str {'trials', 'continuous', 'seq'}
+    input_type : str {'trials', 'continuous', 'seq', 'fconn'}
         Type of input data.
 
         'trials' - treats each of n inputs as an iid sample, produces dataset
@@ -473,7 +457,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
     >>> meta = mneflow.produce_tfrecords(input_paths, \**import_opts)
 
     """
-    assert input_type in ['trials', 'seq', 'continuous'], "Unknown input type."
+    assert input_type in ['trials', 'seq', 'continuous', 'fconn'], "Unknown input type."
     assert target_type in ['int', 'float', 'signal'], "Unknown target type."
     if not os.path.exists(savepath):
         os.mkdir(savepath)
@@ -496,7 +480,7 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
 
         for inp in inputs:
 
-            data, events = import_data(inp, picks=picks, array_keys=array_keys)
+            data, events = import_data(inp, array_keys=array_keys)
 
             if np.any(data) == None:
                 return
@@ -531,18 +515,23 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                 else:
                     segment_y = True
 
-                print('Input shapes: X (n, ch, t) : ', data.shape,
-                      'y (n, [signal_channels], y_shape) : ', events.shape,
-                      '\n',
-                      'input_type : ', input_type,
-                      'target_type : ', target_type,
-                      'segment_y : ', segment_y)
+                if input_type == 'fconn':
+                    assert data.shape[1] == data.shape[2], "data.shape incompatible with fconn input type"
+                    print('Input shapes: X (n, ch, ch, freq) : ', data.shape,
+                          'y (n, [signal_channels], y_shape) : ', events.shape,
+                          '\n',
+                          'input_type : ', input_type,
+                          'target_type : ', target_type,
+                          'segment_y : ', segment_y)
 
-#                if (data.ndim != 3):
-#                    warnings.warn('Input misshaped, using import_data.', UserWarning)
-#                    return
-                #Preprocess data and segment labels if needed
-                # TODO define segment_y
+                else:
+                    print('Input shapes: X (n, ch, t) : ', data.shape,
+                          'y (n, [signal_channels], y_shape) : ', events.shape,
+                          '\n',
+                          'input_type : ', input_type,
+                          'target_type : ', target_type,
+                          'segment_y : ', segment_y)
+
 
                 X, Y, folds = preprocess(
                         data, events,
@@ -570,7 +559,11 @@ def produce_tfrecords(inputs, savepath, out_name, fs=1.,
                                                                   sample_counter=meta['train_size'])
                     meta['test_size'] += x_test.shape[0]
                     #TODO: remove?
+#                if input_type == 'fconn':
+#                    _n, meta['n_ch'], meta['n_t'], meta['n_freq'] = X.shape
+#                else:
                 _n, meta['n_seq'], meta['n_t'], meta['n_ch'] = X.shape
+
 
                 if input_type == 'seq':
                     meta['y_shape'] = Y[0].shape[1:]
@@ -1023,7 +1016,8 @@ def preprocess(data, events, sample_counter,
         Y = events
         folds = [f + sample_counter for f in folds]
     # Finally cast X into shape [n_epochs, n_seq, n_times, n_channels]
-    X = np.swapaxes(X, -2, -1)
+    if input_type != 'fconn':
+        X = np.swapaxes(X, -2, -1)
 
     print('Preprocessed:', X.shape, Y.shape,
           'folds:', len(folds), 'x', len(folds[0]))

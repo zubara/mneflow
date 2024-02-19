@@ -16,8 +16,8 @@ from tensorflow.keras import constraints as k_con, regularizers as k_reg
 # tf.disable_v2_behavior()
 import numpy as np
 
-bias_const = 0.
-bias_traiable = False
+bias_const = 0.1
+bias_traiable = True
 
 class BaseLayer(tf.keras.layers.Layer):
     def __init__(self, size, nonlin, specs, **args):
@@ -86,7 +86,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
                                  dtype=tf.float32)
 
         self.b = self.add_weight(shape=[self.size],
-                                 initializer=Constant(0.1),
+                                 initializer=Constant(bias_const),
                                  regularizer=None,
                                  trainable=bias_traiable,
                                  name='fc_bias',
@@ -302,6 +302,61 @@ class DeMixing(BaseLayer):
                     demix = tf.tensordot(x, self.w, axes=[[self.axis], [0]],
                                          name='dmx')
                     demix = self.nonlin(demix + self.b_in)
+                    #print(self.scope, ": output :", demix.shape)
+                    return demix
+                except(AttributeError):
+                    input_shape = x.shape
+                    self.build(input_shape)
+                    #print(self.scope, 'building from call')
+
+
+class SquareSymm(BaseLayer):
+    """
+    Spatial demixing Layerю
+    """
+    def __init__(self, scope="ssym", size=None, nonlin=tf.identity, axis=1,
+                 specs={},  **args):
+        self.scope = scope
+        self.axis = axis
+        super(SquareSymm, self).__init__(size=size, nonlin=nonlin, specs=specs,
+             **args)
+
+
+    def build(self, input_shape):
+
+        super(SquareSymm, self).build(input_shape)
+        self.constraint = self._set_constraints(axis=0)
+        self.reg = self._set_regularizer()
+
+        self.w = self.add_weight(
+                shape=(input_shape[self.axis], self.size),
+                initializer='he_uniform',
+                regularizer=self.reg,
+                constraint = self.constraint,
+                trainable=True,
+                name='ssym_weights',
+                dtype=tf.float32)
+
+        self.b_in = self.add_weight(shape=([self.size]),
+                                    initializer=Constant(0.1),
+                                    regularizer=None,
+                                    trainable=True,
+                                    name='bias',
+                                    dtype=tf.float32)
+        print("Built: {} input: {}".format(self.scope, input_shape))
+
+    #@tf.function
+    def call(self, x, training=None):
+        while True:
+            with tf.name_scope(self.scope):
+                try:
+                    d1 = tf.tensordot(x, self.w, axes=[[1], [0]],
+                                         name='smx') #output
+                    d2 = tf.tensordot(d1, self.w, axes=[[1], [0]],
+                                         name='smx')
+
+                    demix = self.nonlin(d2 + self.b_in)
+                    #demix = tf.transpose(demix. [0, 2, 3, 1])
                     #print(self.scope, ": output :", demix.shape)
                     return demix
                 except(AttributeError):
