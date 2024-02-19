@@ -17,17 +17,17 @@ from mneflow.utils import _onehot
 class Dataset(object):
     """TFRecords dataset from TFRecords files using the metadata."""
 
-    def __init__(self, h_params, train_batch=50, test_batch=None, split=True,
+    def __init__(self, meta, train_batch=50, test_batch=None, split=True,
                  class_subset=None, pick_channels=None, decim=None,
-                 rebalance_classes=False):
+                 rebalance_classes=False, **kwargs):
 
         r"""Initialize tf.data.TFRdatasets.
 
         Parameters
         ----------
-        h_params : dict
-            Metadata file, output of mneflow.utils.produce_tfrecords.
-            See mneflow.utils.produce_tfrecords for details.
+        meta : MetaData
+            Instance of MetaData, output of mneflow.utils.produce_tfrecords.
+            See mneflow.utils.produce_tfrecords and mneflow.MetaData for details.
 
         train_batch : int, None, optional
             Training mini-batch size. Defaults to 50. If None equals to the
@@ -61,36 +61,27 @@ class Dataset(object):
             Defaults to False.
 
         """
-        self.h_params = h_params
-        self.channel_subset = pick_channels
-        self.class_subset = class_subset
-        self.decim = decim
+        self.h_params = meta.data
+        self.h_params['channel_subset'] = pick_channels
+        self.h_params['class_subset'] = class_subset
+        self.h_params['decim'] = decim
         self.h_params['train_batch'] = train_batch
+        self.h_params['rebalance_classes'] = rebalance_classes
         self.y_shape = self.h_params['y_shape']
 
-
-        #%%%%%%%%%%%%
-
         self.train, self.val = self._build_dataset(self.h_params['train_paths'],
-                                                   train_batch=train_batch,
+                                                   train_batch=self.h_params['train_batch'],
                                                    test_batch=test_batch,
                                                    split=True, val_fold_ind=0,
-                                                   rebalance_classes=rebalance_classes)
+                                                   rebalance_classes=self.h_params['rebalance_classes'])
         if len(self.h_params['test_paths']) > 0:
             self.test = self._build_dataset(self.h_params['test_paths'],
-                                            train_batch=train_batch,
+                                            train_batch=self.h_params['train_batch'],
                                             test_batch=test_batch,
                                             split=False,
-                                            rebalance_classes=rebalance_classes)
+                                            rebalance_classes=self.h_params['rebalance_classes'])
 
 
-        # #self.val = self._build_dataset(self.h_params['val_paths'],
-        # #                               n_batch=test_batch)
-        # if 'test_paths' in self.h_params.keys():
-        #     if len(self.h_params['test_paths']):
-        #         self.test = self._build_dataset(self.h_params['test_paths'],
-        #                                         n_batch=test_batch)
-        #%%%%%%%%%%%%%
 
     def _build_dataset(self, path, split=True,
                        train_batch=100, test_batch=None,
@@ -106,35 +97,35 @@ class Dataset(object):
 
         dataset = dataset.map(self._parse_function)
 
-        if self.channel_subset is not None:
+        if self.h_params['channel_subset'] is not None:
             dataset = dataset.map(self._select_channels)
 
-        if self.class_subset is not None and self.h_params['target_type'] == 'int':
+        if self.h_params['class_subset'] is not None and self.h_params['target_type'] == 'int':
             dataset = dataset.filter(self._select_classes)
             dataset = dataset.map(self._select_class_subset)
 
             subset_ratio = np.sum([v for k,v in self.h_params['class_ratio'].items()
-                                   if k in self.class_subset])
+                                   if k in self.h_params['class_subset']])
             ratio_multiplier = 1./subset_ratio
-            print("Using class_subset with {} classes:".format(len(self.class_subset)))
-            #print(*[self.h_params['orig_classes'][i] for i in self.class_subset])
+            print("Using class_subset with {} classes:".format(len(self.h_params['class_subset'])))
+            #print(*[self.h_params['orig_classes'][i] for i in self.h_params['class_subset']])
             print("Subset ratio {:.2f}, Multiplier {:.2f}".format(subset_ratio,
                                                                   ratio_multiplier
                                                                   ))
             cp = {k:v*ratio_multiplier for k,v in self.h_params['class_ratio'].items()
-                  if k in self.class_subset}
+                  if k in self.h_params['class_subset']}
 
             self.h_params['class_ratio'] = cp
-            self.y_shape = (len(self.class_subset),)
+            self.y_shape = (len(self.h_params['class_subset']),)
 
 
             #print("y_shape:", self.h_params['y_shape'])
 
-        if self.decim is not None:
+        if self.h_params['decim'] is not None:
             print('decimating')
 
             self.timepoints = tf.constant(
-                    np.arange(0, self.h_params['n_t'], self.decim))
+                    np.arange(0, self.h_params['n_t'], self.h_params['decim']))
 
             self.h_params['n_t'] = len(self.timepoints)
             dataset = dataset.map(self._decimate)
@@ -237,16 +228,16 @@ class Dataset(object):
 
 
     def _select_class_subset(self, example_proto):
-        """Pick classes defined in self.class_subset from y"""
+        """Pick classes defined in self.h_params['class_subset'] from y"""
         example_proto['y'] = tf.gather(example_proto['y'],
-                                       tf.constant(self.class_subset),
+                                       tf.constant(self.h_params['class_subset']),
                                        axis=0)
         return example_proto
 
     def _select_channels(self, example_proto):
         """Pick a subset of channels specified by self.channel_subset."""
         example_proto['X'] = tf.gather(example_proto['X'],
-                                        tf.constant(self.channel_subset),
+                                        tf.constant(self.h_params['channel_subset']),
                                         axis=3)
         return example_proto
 
@@ -285,14 +276,14 @@ class Dataset(object):
         """
         keys_to_features = {}
 
-        if self.h_params['input_type'] in ['trials', 'seq', 'continuous']:
+        if self.h_params['input_type'] == 'seq':
+            y_sh = (self.h_params['n_seq'], *self.h_params['y_shape'])
+        else:
+            y_sh = self.h_params['y_shape']
+
+        if self.h_params['input_type'] in ['trials', 'seq', 'continuous', 'fconn']:
             x_sh = (self.h_params['n_seq'], self.h_params['n_t'],
                     self.h_params['n_ch'])
-            if self.h_params['input_type'] == 'seq':
-                y_sh = (self.h_params['n_seq'], *self.h_params['y_shape'])
-            else:
-                y_sh = self.h_params['y_shape']
-
         else:
             raise ValueError('Invalid input type.')
 
@@ -313,10 +304,10 @@ class Dataset(object):
         return parsed_features
 
     def _select_classes(self, sample):
-        """Pick a subset of classes specified in self.class_subset."""
-        if self.class_subset:
+        """Pick a subset of classes specified in self.h_params['class_subset']."""
+        if self.h_params['class_subset']:
             # TODO: fix subsetting
-            onehot_subset = _onehot(self.class_subset,
+            onehot_subset = _onehot(self.h_params['class_subset'],
                                     n_classes=self.h_params['y_shape'][0])
             #print(onehot_subset)
             subset = tf.constant(onehot_subset, dtype=tf.int64)
@@ -331,7 +322,7 @@ class Dataset(object):
             return tf.constant(True, dtype=tf.bool)
 
     def _cv_train_fold_filter(self, sample):
-        """Pick a subset of classes specified in self.class_subset."""
+        """Pick a subset of classes specified in self.h_params['class_subset']."""
         if np.any(self.train_fold):
             subset = tf.constant(self.train_fold, dtype=tf.int64)
             #print(subset)
@@ -341,7 +332,7 @@ class Dataset(object):
             return tf.constant(True, dtype=tf.bool)
 
     def _cv_val_fold_filter(self, sample):
-        """Pick a subset of classes specified in self.class_subset."""
+        """Pick a subset of classes specified in self.h_params['class_subset']."""
         if np.any(self.val_fold):
             subset = tf.constant(self.val_fold, dtype=tf.int64)
             out = tf.reduce_any(tf.equal(sample['n'], subset))

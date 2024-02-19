@@ -12,6 +12,7 @@ parent class.
 import tensorflow as tf
 
 import numpy as np
+import pickle
 
 
 from mne import channels, evoked, create_info, Info
@@ -46,7 +47,6 @@ def uniquify(seq):
     return un
 
 
-
 # ----- Base model -----
 #@tf.keras.utils.register_keras_serializable(package="mmneflow")
 class BaseModel():
@@ -57,7 +57,7 @@ class BaseModel():
     _set_optimizer methods.
     """
 
-    def __init__(self, dataset=None, specs=dict(), meta=None):
+    def __init__(self, dataset=None, meta=None):
         """
         Parameters
         -----------
@@ -70,16 +70,16 @@ class BaseModel():
             See `Model` subclass definitions for details. Unless otherwise
             specified uses default hyperparameters for each implemented model.
         """
-        self.specs = specs
-
-        self.model_path = specs['model_path']
+        self.specs = meta.model_specs
+        self.meta = meta
+        self.model_path = os.path.join(meta.data['path'], 'models')
+        if not os.path.exists(self.model_path):
+            os.mkdir(self.model_path)            
+        
 
         if not dataset and meta:
             self.dataset = Dataset(meta,
-                                 train_batch=50,
-                                 test_batch=None,
-                                 class_subset=None,
-                                 rebalance_classes=False
+                                 **meta.data
                                  )
         elif dataset:
             self.dataset = dataset
@@ -89,19 +89,21 @@ class BaseModel():
         self.input_shape = (self.dataset.h_params['n_seq'],
                             self.dataset.h_params['n_t'],
                             self.dataset.h_params['n_ch'])
-        self.y_shape = self.dataset.y_shape #Dataset.h_params['y_shape']
+        self.y_shape = self.dataset.y_shape
         self.out_dim = np.prod(self.y_shape)
 
 
         self.inputs = layers.Input(shape=(self.input_shape))
-        self.rate = specs.setdefault('dropout', 0.0)
+        self.rate = self.specs.setdefault('dropout', 0.0)
         #self.l1 = l1
         #self.optimizer = Optimizer
         self.trained = False
         self.y_pred = self.build_graph()
         self.log = dict()
         self.cm = np.zeros([self.y_shape[-1], self.y_shape[-1]])
-        #self.cv_patterns = np.zeros([])
+        self.cv_patterns = defaultdict(dict)
+        if not hasattr(self, 'scope'):
+            self.scope = 'basemodel'
 
 
     # @classmethod
@@ -157,7 +159,7 @@ class BaseModel():
                 metrics = [metrics]
             self.params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
 
-        self.specs.setdefault('model_path', self.dataset.h_params['savepath'])
+        self.specs.setdefault('model_path', self.dataset.h_params['path'])
         self.specs.setdefault('unitnorm_scope', [])
        # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
@@ -208,7 +210,7 @@ class BaseModel():
         return y_pred
 
 
-    def train(self, n_epochs, eval_step=None, min_delta=1e-6,
+    def train(self, n_epochs=10, eval_step=None, min_delta=1e-6,
               early_stopping=3, mode='single_fold', prune_weights=False,
               collect_patterns = False, class_weights = None) :
 
@@ -244,11 +246,7 @@ class BaseModel():
             Whether to apply cutom wegihts fro each class
         """
 
-        stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                      min_delta=min_delta,
-                                                      patience=early_stopping,
-                                                      restore_best_weights=True)
-
+        
         if not eval_step:
             train_size = self.dataset.h_params['train_size']
             eval_step = train_size // self.dataset.h_params['train_batch'] + 1
@@ -258,13 +256,21 @@ class BaseModel():
         #     self.validation_steps = max(1, val_size // val_batch)
         # else:
         #     self.validation_steps = 1
-
-        self.train_params = [n_epochs, eval_step, early_stopping, mode]
+        
+        self.train_params = dict(n_epochs=n_epochs, 
+                                 eval_step=eval_step, 
+                                 early_stopping=early_stopping, 
+                                 mode=mode)
+        self.meta.update(train_params=self.train_params)
+        stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+                                                      min_delta=min_delta,
+                                                      patience=self.meta.train_params['early_stopping'],
+                                                      restore_best_weights=True)
         rmss = defaultdict(list)
-        metrics = []
-        losses = []
         self.cv_losses = []
         self.cv_metrics = []
+        self.cv_test_losses = []
+        self.cv_test_metrics = []
 
         if class_weights:
             multiplier = 1. / min(class_weights.values())
@@ -276,11 +282,15 @@ class BaseModel():
         if mode == 'single_fold':
             n_folds = 1
             #self.cv_patterns = 0
-            #self.dataset.train, self.dataset.val = self.dataset._build_dataset()
+            train, val = self.dataset._build_dataset(self.dataset.h_params['train_paths'],
+                                               train_batch=self.dataset.training_batch,
+                                               test_batch=self.dataset.validation_batch,
+                                               split=True, val_fold_ind=0)
 
-            self.t_hist = self.km.fit(self.dataset.train,
-                                   validation_data=self.dataset.val,
-                                   epochs=n_epochs, steps_per_epoch=eval_step,
+            self.t_hist = self.km.fit(train,
+                                   validation_data=val,
+                                   epochs=self.meta.train_params['n_epochs'], 
+                                   steps_per_epoch=self.meta.train_params['eval_step'],
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
 
@@ -288,12 +298,17 @@ class BaseModel():
                                    class_weight=class_weights)
 
             #compute validation loss and metric
-            self.v_loss, self.v_metric = self.evaluate(self.dataset.val)
-            losses.append(self.v_loss)
-            metrics.append(self.v_metric)
-            self.cv_losses.append(self.v_loss)
-            self.cv_metrics.append(self.v_metric)
-            #print("Training complete: loss: {}, Metric: {}".format(self.v_loss, self.v_metric))
+            v_loss, v_metric = self.evaluate(self.dataset.val)
+
+            self.cv_losses.append(v_loss)
+            self.cv_metrics.append(v_metric)
+
+            if len(self.dataset.h_params['test_paths']):
+                    print('Test performance:')
+                    t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+                    print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
+                    self.cv_test_losses.append(t_loss)
+                    self.cv_test_metrics.append(t_metric)
 
             #compute specific metrics for classification and regresssion
             y_true, y_pred = self.predict(self.dataset.val)
@@ -321,16 +336,22 @@ class BaseModel():
                                                    split=True, val_fold_ind=jj)
                 self.t_hist = self.km.fit(train,
                                    validation_data=val,
-                                   epochs=n_epochs, steps_per_epoch=eval_step,
+                                   epochs=self.meta.train_params['n_epochs'], 
+                                   steps_per_epoch=self.meta.train_params['eval_step'],
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
                                    callbacks=[stop_early], verbose=2,
                                    class_weight=class_weights)
 
-
-                loss, metric = self.evaluate(val)
-                self.cv_losses.append(loss)
-                self.cv_metrics.append(metric)
+                v_loss, v_metric = self.evaluate(val)
+                self.cv_losses.append(v_loss)
+                self.cv_metrics.append(v_metric)
+                if len(self.dataset.h_params['test_paths']):
+                    print('Test performance:')
+                    t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+                    print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
+                    self.cv_test_losses.append(t_loss)
+                    self.cv_test_metrics.append(t_metric)
 
                 y_true, y_pred = self.predict(val)
 
@@ -353,11 +374,8 @@ class BaseModel():
                 else:
                     "Not shuffling the weights for the last fold"
 
+                print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, v_loss, v_metric))
 
-                print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loss, metric))
-
-            self.v_loss = np.mean(self.cv_losses)
-            self.v_metric = np.mean(self.cv_metrics)
             metrics = self.cv_metrics
             losses = self.cv_losses
 
@@ -372,7 +390,6 @@ class BaseModel():
             else:
                 rms = None
 
-            #return self.cv_losses, self.cv_metrics
 
         elif mode == "loso":
             n_folds = len(self.dataset.h_params['train_paths'])
@@ -397,7 +414,8 @@ class BaseModel():
 
                 self.t_hist = self.km.fit(train,
                                    validation_data=val,
-                                   epochs=n_epochs, steps_per_epoch=eval_step,
+                                   epochs=self.meta.train_params['n_epochs'], 
+                                   steps_per_epoch=self.meta.train_params['eval_step'],
                                    shuffle=True,
                                    validation_steps=self.dataset.validation_steps,
                                    callbacks=[stop_early], verbose=2,
@@ -409,13 +427,13 @@ class BaseModel():
                                                    split=False)
 
                 v_loss, v_metric = self.evaluate(val)
-                loso_loss, loso_metric = self.evaluate(test)
+                t_loss, t_metric = self.evaluate(test)
 
-                print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, loso_loss, loso_metric))
+                print("Subj: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, t_loss, t_metric))
                 self.cv_losses.append(v_loss)
                 self.cv_metrics.append(v_metric)
-                losses.append(loso_loss)
-                metrics.append(loso_metric)
+                self.cv_test_losses.append(t_loss)
+                self.cv_test_metrics.append(t_metric)
 
                 y_true, y_pred = self.predict(val)
                 if self.dataset.h_params['target_type'] == 'float':
@@ -446,16 +464,14 @@ class BaseModel():
             else:
                 rms = None
 
-            self.loso_losses = losses
-            self.loso_metrics = metrics
             self.update_log(rms, prefix='loso_')
 
         print("""{} with {} fold(s) completed. \n
               Loss: {:.4f} +/- {:.4f}.
               Metric: {:.4f} +/- {:.4f}"""
               .format(mode, n_folds,
-                      np.mean(losses), np.std(losses),
-                      np.mean(metrics), np.std(metrics)))
+                      np.mean(self.cv_losses), np.std(self.cv_losses),
+                      np.mean(self.cv_metrics), np.std(self.cv_metrics)))
         self.update_log(rms=rms, prefix=mode)
         #return self.cv_losses, self.cv_metrics
 
@@ -471,7 +487,7 @@ class BaseModel():
         print('Pruning weights')
         self.t_hist_p = self.km.fit(self.dataset.train,
                                validation_data=self.dataset.val,
-                               epochs=30, steps_per_epoch=self.train_params[1],
+                               epochs=30, steps_per_epoch=self.meta.train_params['eval_step'],
                                shuffle=True,
                                validation_steps=self.dataset.validation_steps,
                                callbacks=[stop_early], verbose=2)
@@ -506,10 +522,6 @@ class BaseModel():
         plt.xlabel('epoch')
         plt.legend(['train', 'validation'], loc='upper left')
         plt.show()
-        #plt.legend(['t_loss', 'v_loss'])
-        #plt.title(self.scope.upper())
-        #plt.xlabel('Epochs')
-        #plt.show()
 
     def _confusion_matrix(self, y_true, y_pred):
         """Compute unnormalizewd confusion matrix"""
@@ -547,14 +559,7 @@ class BaseModel():
 
         #dataset info
         log['data_id'] = self.dataset.h_params['data_id']
-        log['data_path'] = self.dataset.h_params['savepath']
-        #log['decim'] = str(self.dataset.h_params['decim'])
-
-        # if self.dataset.class_subset:
-        #     log['class_subset'] = '-'.join(
-        #             str(self.dataset.class_subset).split(','))
-        # else:
-        #     log['class_subset'] = 'all'
+        log['data_path'] = self.dataset.h_params['data_path']
 
         log['y_shape'] = np.prod(self.dataset.h_params['y_shape'])
         log['fs'] = str(self.dataset.h_params['fs'])
@@ -563,26 +568,25 @@ class BaseModel():
         log.update(self.specs)
 
         #training paramters
-        log['nepochs'], log['eval_step'], log['early_stopping'], log['mode'] = self.train_params
-
-        #v_loss, v_metric = self.evaluate(self.dataset.val)
-        #self.v_loss, self.v_perf = self.km.evaluate(self.dataset.val, steps=1, verbose=0)
+        log['n_epochs'] = self.train_params['n_epochs']
+        log['eval_step'] = self.train_params['eval_step']
+        log['early_stopping'] = self.train_params['early_stopping']
+        log['mode'] = self.train_params['mode']
+        
         log['v_metric'] = np.mean(self.cv_metrics)
         log['v_loss'] = np.mean(self.cv_losses)
         log['cv_metrics'] = self.cv_metrics
         log['cv_losses'] = self.cv_losses
-        # if self.dataset.h_params['target_type'] == 'float':
-        #     y_true, y_pred = self.predict(self.dataset.val)
-        #     log['val_cc'], log['val_r2'], log['val_cs'], log['val_bias'], log['val_pve'] = regression_metrics(y_true, y_pred)
-        #     print("Validation set: Corr =", log['val_cc'], " R2 =", log['val_r2'])
-        tr_loss, tr_perf = self.evaluate(self.dataset.train)
-        log['tr_metric'] = tr_perf
+        
+        tr_loss, tr_metric = self.evaluate(self.dataset.train)
+        log['tr_metric'] = tr_metric
         log['tr_loss'] = tr_loss
 
 
-        if len(self.dataset.h_params['test_paths']) > 0 and log['mode'] != 'loso':
+        if len(self.dataset.h_params['test_paths']) > 0:
             print('Test performance:')
-            t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
+            t_loss = np.mean(self.cv_test_losses)
+            t_metric = np.mean(self.cv_test_metrics)
             print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
             if self.dataset.h_params['target_type'] == 'float':
                 y_true, y_pred = self.predict(self.dataset.h_params['test_paths'])
@@ -591,14 +595,8 @@ class BaseModel():
                 log.update({'test_'+k:v for k,v in rms_test.items()})
             log['test_metric'] = t_metric
             log['test_loss'] = t_loss
-            log['test_metrics'] = "NA"
-            log['test_losses'] = "NA"
-
-        elif log['mode'] == 'loso':
-            log['test_metric'] = np.mean(self.loso_metrics)
-            log['test_loss'] = np.mean(self.loso_losses)
-            log['test_metrics'] = self.loso_metrics
-            log['test_losses'] = self.loso_losses
+            log['test_metrics'] = self.cv_test_metrics
+            log['test_losses'] = self.cv_test_losses
 
         else:
             log['test_metric'] = "NA"
@@ -619,44 +617,58 @@ class BaseModel():
         """
         Saves the model and (optionally, patterns, confusion matrices)
         """
-        self.model_name = "_".join([self.scope,
-                                    self.dataset.h_params['data_id']])
-        self.km.save(self.model_path + self.model_name)
+        
+        
+        #Update and save meta file
+        self.meta.update(data=self.dataset.h_params,
+                         model_specs=self.specs,
+                         train_params=self.train_params,
+                         patterns=self.cv_patterns)
+        with open(self.meta.data['path'] + self.meta.data['data_id'] + '_meta.pkl', 'wb') as f:
+            pickle.dump(self.meta, f)
+        
+        model_name = "_".join([self.scope,
+                               self.dataset.h_params['data_id']])
+        #self.specs['model_name'] = model_name
 
-        #Save results from multiple folds
-        if hasattr(self, 'cv_patterns'):
-            #if hasattr(self, 'cv_patterns'):
-            print("Saving patterns to: " + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
-            np.savez(self.model_path + self.model_name + "\\mneflow_patterns.npz",
-                     cv_patterns=self.cv_patterns,
-                     specs=self.specs,
-                     meta=self.dataset.h_params,
-                     log=self.log,
-                     cm=self.cm,
-                     )
+        #save the model
+        self.km.save(self.meta.data['path'] + model_name)
+        
+
+        # #Save results from multiple folds
+        # if hasattr(self, 'cv_patterns'):
+        #     #if hasattr(self, 'cv_patterns'):
+        #     print("Saving patterns to: " + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
+        #     np.savez(self.model_path + self.model_name + "\\mneflow_patterns.npz",
+        #              cv_patterns=self.cv_patterns,
+        #              specs=self.specs,
+        #              meta=self.dataset.h_params,
+        #              log=self.log,
+        #              cm=self.cm,
+        #              )
 
         #Update metadata with specs and new self.dataset options
         #For LFCNN save patterns
 
-    def restore(self):
-        #TODO: take path, scope, and data_id as inputs.
-        #TODO: build dataset from metadata
-        #TODO: initialize from specs
+    # def restore(self, meta):
+    #     #TODO: take path, scope, and data_id as inputs.
+    #     #TODO: build dataset from metadata
+    #     #TODO: initialize from specs
 
-        self.model_name = "_".join([self.scope,
-                                    self.dataset.h_params['data_id']])
-        self.km  = tf.keras.models.load_model(self.model_path + self.model_name)
-        #try:
+    #     self.model_name = "_".join([self.scope,
+    #                                 self.dataset.h_params['data_id']])
+    #     self.km  = tf.keras.models.load_model(self.model_path + self.model_name)
+    #     #try:
 
-        if os.path.exists(self.model_path + self.model_name + "\\mneflow_patterns.npz"):
-            print("Restoring from:" + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
-            f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
-                        allow_pickle=True)
-            self.cv_patterns = f["cv_patterns"].item()
-            self.specs = f["specs"].item()
-            self.meta = f["meta"].item()
-            self.log = f["log"].item()
-            self.cm = f["cm"]
+    #     if os.path.exists(self.model_path + self.model_name + "\\mneflow_patterns.npz"):
+    #         print("Restoring from:" + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
+    #         f = np.load(self.model_path + self.model_name + "\\mneflow_patterns.npz",
+    #                     allow_pickle=True)
+    #         self.cv_patterns = f["cv_patterns"]#.item()
+    #         self.specs = f["specs"]#.item()
+    #         self.meta = f["meta"]#.item()
+    #         self.log = f["log"]#.item()
+    #         self.cm = f["cm"]
 
     def predict_sample(self, x):
         n_ch = self.dataset.h_params['n_ch']
@@ -804,7 +816,7 @@ class LFCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, Dataset=None, specs=dict(), meta=None):
+    def __init__(self, dataset=None, meta=None):
         """
 
         Parameters
@@ -839,20 +851,22 @@ class LFCNN(BaseModel):
         Stride of the max pooling layer. Defaults to 1.
         """
         self.scope = 'lfcnn'
-        specs.setdefault('filter_length', 7)
-        specs.setdefault('n_latent', 32)
-        specs.setdefault('pooling', 2)
-        specs.setdefault('stride', 2)
-        specs.setdefault('padding', 'SAME')
-        specs.setdefault('pool_type', 'max')
-        specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1_lambda', 0.)
-        specs.setdefault('l2_lambda', 0.)
-        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
-        specs.setdefault('l2_scope', [])
-        specs.setdefault('unitnorm_scope', [])
+        #specs = meta.model_specs
+        meta.model_specs.setdefault('filter_length', 7)
+        meta.model_specs.setdefault('n_latent', 32)
+        meta.model_specs.setdefault('pooling', 2)
+        meta.model_specs.setdefault('stride', 2)
+        meta.model_specs.setdefault('padding', 'SAME')
+        meta.model_specs.setdefault('pool_type', 'max')
+        meta.model_specs.setdefault('nonlin', tf.nn.relu)
+        meta.model_specs.setdefault('l1_lambda', 0.)
+        meta.model_specs.setdefault('l2_lambda', 0.)
+        meta.model_specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
+        meta.model_specs.setdefault('l2_scope', [])
+        meta.model_specs.setdefault('unitnorm_scope', [])
+        meta.model_specs['scope'] = self.scope
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
-        super(LFCNN, self).__init__(Dataset, specs, meta)
+        super(LFCNN, self).__init__(dataset, meta)
 
 
 
@@ -1423,7 +1437,7 @@ class LFCNN(BaseModel):
 
 
         # compute the effect of removing each latent component on the cost function
-        self.compwise_losses = self.compute_componentwise_loss(X, y)
+        self.compwise_losses = self.compute_componentwise_loss(X, y, weights)
 
         #TODO: class condtitional waveforms -> activations
         #self.waveforms = np.mean(activations['dmx']).T
@@ -1487,7 +1501,7 @@ class LFCNN(BaseModel):
         patterns_struct = self.compute_patterns()
         combined_methods = list(patterns_struct['patterns'].keys())
         methods += combined_methods
-        if not hasattr(self, 'cv_patterns') or fold==0:
+        if len(self.cv_patterns.items()) == 0 or fold==0:
             n_ch = self.dataset.h_params['n_ch']
             self.cv_patterns = defaultdict(dict)
             for method in methods:
@@ -1716,12 +1730,7 @@ class LFCNN(BaseModel):
         None.
 
         """
-        #topos [ch, class, t]
-        #Scale
-        #scalers = np.percentile(topos, [10, 50, 90], axis=0)
-        #topos_new = topos - scalers[1, :][None, :]
-        #topos_new /= 0.5*(scalers[2, :] - scalers[0, :])[None, ...]
-
+ 
         if topos.ndim > 2:
             topos = topos.mean(-1)
         topos_new = topos / topos.std(0, keepdims=True)
@@ -2073,22 +2082,6 @@ class LFCNN(BaseModel):
         return order, ts
 
 
-
-    # def combined_pattern(self, subset=None):
-
-    #     if subset:
-    #         picks = np.argsort(self.pattern_weights)[-subset:]
-    #     else:
-    #         picks = np.arange(self.specs['n_latent'])
-    #     #pattern_weights = np.sum(self.waveforms[:,:,None] * treated_weights, 1)
-    #     combined_topo = np.dot(self.patterns[:, picks], self.pattern_weights[picks])
-
-
-    #     combined_spectra = None#np.dot(self.freq_responses.T, self.pattern_weights)
-    #     combined_psds = None #np.dot(self.psds.T, self.pattern_weights)
-    #     #plt.plot(w, combined_spectra)
-    #     return combined_topo, combined_spectra, combined_psds
-
     def single_component_pattern(self, patterns_struct, sorting='compwise_loss',
                                  n_comp=1):
         order, ts = self._sorting( patterns_struct, sorting, n_comp=n_comp)
@@ -2117,7 +2110,7 @@ class LFCNN(BaseModel):
 
 #        cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
 #               for i in range(self.cv_patterns.shape[1])])
-        if hasattr(self, 'cv_patterns'):
+        if len(self.cv_patterns.items() > 0):
             print("Restoring from:", method )
             topos = np.mean(self.cv_patterns[method]['spatial'],
                                      -1)
@@ -2304,7 +2297,7 @@ class VARCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, Dataset, specs=dict()):
+    def __init__(self, dataset, meta):
         """
         Parameters
         ----------
@@ -2334,21 +2327,20 @@ class VARCNN(BaseModel):
         padding : str {'SAME', 'FULL', 'VALID'}
             Convolution padding. Defaults to 'SAME'.}"""
         self.scope = 'varcnn'
-        specs.setdefault('filter_length', 7)
-        specs.setdefault('n_latent', 32)
-        specs.setdefault('pooling', 2)
-        specs.setdefault('stride', 2)
-        specs.setdefault('padding', 'SAME')
-        specs.setdefault('pool_type', 'max')
-        specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1_lambda', 3e-4)
-        specs.setdefault('l2_lambda', 0)
-        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
-        specs.setdefault('l2_scope', [])
-
-        specs.setdefault('unitnorm_scope', [])
-
-        super(VARCNN, self).__init__(Dataset, specs)
+        meta.model_specs.setdefault('filter_length', 7)
+        meta.model_specs.setdefault('n_latent', 32)
+        meta.model_specs.setdefault('pooling', 2)
+        meta.model_specs.setdefault('stride', 2)
+        meta.model_specs.setdefault('padding', 'SAME')
+        meta.model_specs.setdefault('pool_type', 'max')
+        meta.model_specs.setdefault('nonlin', tf.nn.relu)
+        meta.model_specs.setdefault('l1_lambda', 3e-4)
+        meta.model_specs.setdefault('l2_lambda', 0)
+        meta.model_specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
+        meta.model_specs.setdefault('l2_scope', [])
+        meta.model_specs.setdefault('unitnorm_scope', [])
+        meta.model_specs['scope'] = self.scope
+        super(VARCNN, self).__init__(dataset, meta)
 
     def build_graph(self):
         """Build computational graph using defined placeholder `self.X`
@@ -2431,7 +2423,7 @@ class VARCNNR(BaseModel):
 
         padding : str {'SAME', 'FULL', 'VALID'}
             Convolution padding. Defaults to 'SAME'.}"""
-        self.scope = 'VARcnnr'
+        self.scope = 'varcnnr'
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -2531,7 +2523,7 @@ class LFCNNR(BaseModel):
 
         padding : str {'SAME', 'FULL', 'VALID'}
             Convolution padding. Defaults to 'SAME'.}"""
-        self.scope = 'LFcnnr'
+        self.scope = 'lfcnnr'
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -2735,7 +2727,8 @@ class LFLSTM(BaseModel):
         stride : int
         Stride of the max pooling layer. Defaults to 1.
         """
-        self.scope = 'lfcnn'
+        #self.scope = 'lflstm'
+        self.scope = 'lf-cnn-lstm'
         specs.setdefault('filter_length', 7)
         specs.setdefault('n_latent', 32)
         specs.setdefault('pooling', 2)
@@ -2754,7 +2747,7 @@ class LFLSTM(BaseModel):
 
 
     def build_graph(self):
-        self.scope = 'lf-cnn-lstm'
+        
         self.return_sequence = True
         self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
                             axis=3, specs=self.specs)
