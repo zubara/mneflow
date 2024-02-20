@@ -62,13 +62,18 @@ class Dataset(object):
 
         """
         self.h_params = meta.data
-        self.h_params['channel_subset'] = pick_channels
-        self.h_params['class_subset'] = class_subset
-        self.h_params['decim'] = decim
-        self.h_params['train_batch'] = train_batch
-        self.h_params['rebalance_classes'] = rebalance_classes
-        self.y_shape = self.h_params['y_shape']
+        if pick_channels or not 'channel_subset' in self.h_params.keys():
+            self.h_params['channel_subset'] = pick_channels
+        if class_subset or not 'class_subset' in self.h_params.keys():
+            self.h_params['class_subset'] = class_subset
+        if decim or not 'decim' in self.h_params.keys():
+            self.h_params['decim'] = decim
+        if train_batch or not 'train_batch' in self.h_params.keys():
+            self.h_params['train_batch'] = train_batch
+        if rebalance_classes or not 'rebalance_classes' in self.h_params.keys():
+            self.h_params['rebalance_classes'] = rebalance_classes
 
+        self.y_shape = self.h_params['y_shape']
         self.train, self.val = self._build_dataset(self.h_params['train_paths'],
                                                    train_batch=self.h_params['train_batch'],
                                                    test_batch=test_batch,
@@ -80,6 +85,7 @@ class Dataset(object):
                                             test_batch=test_batch,
                                             split=False,
                                             rebalance_classes=self.h_params['rebalance_classes'])
+        meta.update(data=self.h_params)
 
 
 

@@ -57,7 +57,7 @@ class BaseModel():
     _set_optimizer methods.
     """
 
-    def __init__(self, dataset=None, meta=None):
+    def __init__(self, meta=None, dataset=None):
         """
         Parameters
         -----------
@@ -72,7 +72,7 @@ class BaseModel():
         """
         self.specs = meta.model_specs
         self.meta = meta
-        self.model_path = os.path.join(meta.data['path'], 'models')
+        self.model_path = os.path.join(meta.data['path'], 'models\\')
         if not os.path.exists(self.model_path):
             os.mkdir(self.model_path)            
         
@@ -94,7 +94,7 @@ class BaseModel():
 
 
         self.inputs = layers.Input(shape=(self.input_shape))
-        self.rate = self.specs.setdefault('dropout', 0.0)
+        #self.rate = self.specs.setdefault('dropout', 0.0)
         #self.l1 = l1
         #self.optimizer = Optimizer
         self.trained = False
@@ -159,7 +159,7 @@ class BaseModel():
                 metrics = [metrics]
             self.params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
 
-        self.specs.setdefault('model_path', self.dataset.h_params['path'])
+        self.specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
         self.specs.setdefault('unitnorm_scope', [])
        # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
@@ -551,7 +551,8 @@ class BaseModel():
 
         If the file exists, appends a line to the existing file.
         """
-        appending = os.path.exists(self.model_path + self.scope + '_log.csv')
+        savepath = os.path.join(self.model_path, self.scope + '_log.csv')
+        appending = os.path.exists(savepath)
 
         log = dict()
         if rms:
@@ -606,12 +607,12 @@ class BaseModel():
 
         self.log.update(log)
 
-        with open(self.model_path + self.scope + '_log.csv', 'a+', newline='') as csv_file:
+        with open(savepath, 'a+', newline='') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=self.log.keys())
             if not appending:
                 writer.writeheader()
             writer.writerow(self.log)
-            print("Saving to: ",  self.model_path + self.scope + '_log.csv')
+            print("Saving to: ",  savepath)
 
     def save(self):
         """
@@ -624,15 +625,14 @@ class BaseModel():
                          model_specs=self.specs,
                          train_params=self.train_params,
                          patterns=self.cv_patterns)
-        with open(self.meta.data['path'] + self.meta.data['data_id'] + '_meta.pkl', 'wb') as f:
-            pickle.dump(self.meta, f)
+        self.meta.save()
         
         model_name = "_".join([self.scope,
                                self.dataset.h_params['data_id']])
         #self.specs['model_name'] = model_name
 
         #save the model
-        self.km.save(self.meta.data['path'] + model_name)
+        self.km.save(os.path.join(self.model_path, model_name))
         
 
         # #Save results from multiple folds
@@ -816,7 +816,7 @@ class LFCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, dataset=None, meta=None):
+    def __init__(self, meta, dataset=None):
         """
 
         Parameters
@@ -859,14 +859,14 @@ class LFCNN(BaseModel):
         meta.model_specs.setdefault('padding', 'SAME')
         meta.model_specs.setdefault('pool_type', 'max')
         meta.model_specs.setdefault('nonlin', tf.nn.relu)
-        meta.model_specs.setdefault('l1_lambda', 0.)
+        meta.model_specs.setdefault('l1_lambda', 3e-4)
         meta.model_specs.setdefault('l2_lambda', 0.)
         meta.model_specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
         meta.model_specs.setdefault('l2_scope', [])
         meta.model_specs.setdefault('unitnorm_scope', [])
         meta.model_specs['scope'] = self.scope
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
-        super(LFCNN, self).__init__(dataset, meta)
+        super(LFCNN, self).__init__(meta, dataset)
 
 
 
@@ -2297,7 +2297,7 @@ class VARCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, dataset, meta):
+    def __init__(self, meta, dataset=None):
         """
         Parameters
         ----------
@@ -2340,7 +2340,7 @@ class VARCNN(BaseModel):
         meta.model_specs.setdefault('l2_scope', [])
         meta.model_specs.setdefault('unitnorm_scope', [])
         meta.model_specs['scope'] = self.scope
-        super(VARCNN, self).__init__(dataset, meta)
+        super(VARCNN, self).__init__(meta, dataset)
 
     def build_graph(self):
         """Build computational graph using defined placeholder `self.X`
@@ -2384,207 +2384,6 @@ class VARCNN(BaseModel):
         return y_pred
 
 
-class VARCNNR(BaseModel):
-    """VAR-CNN-R.
-
-    For details see [1].
-
-    References
-    ----------
-        [1] I. Zubarev, et al., Adaptive neural network classifier for
-        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-    """
-    def __init__(self, Dataset, specs=dict()):
-        """
-        Parameters
-        ----------
-        Dataset : mneflow.Dataset
-
-        specs : dict
-                dictionary of model hyperparameters {
-
-        n_latent : int
-            Number of latent components.
-            Defaults to 32.
-
-        nonlin : callable
-            Activation function of the temporal convolution layer.
-            Defaults to tf.nn.relu
-
-        filter_length : int
-            Length of spatio-temporal kernels in the temporal
-            convolution layer. Defaults to 7.
-
-        pooling : int
-            Pooling factor of the max pooling layer. Defaults to 2
-
-        pool_type : str {'avg', 'max'}
-            Type of pooling operation. Defaults to 'max'.
-
-        padding : str {'SAME', 'FULL', 'VALID'}
-            Convolution padding. Defaults to 'SAME'.}"""
-        self.scope = 'varcnnr'
-        specs.setdefault('filter_length', 7)
-        specs.setdefault('n_latent', 32)
-        specs.setdefault('pooling', 2)
-        specs.setdefault('stride', 2)
-        specs.setdefault('padding', 'SAME')
-        specs.setdefault('pool_type', 'max')
-        specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1_lambda', 3e-4)
-        specs.setdefault('l2_lambda', 0)
-        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
-        specs.setdefault('l2_scope', [])
-        specs.setdefault('unitnorm_scope', [])
-        super(VARCNNR, self).__init__(Dataset, specs)
-
-    def build_graph(self):
-        """Build computational graph using defined placeholder `self.X`
-        as input.
-
-        Returns
-        --------
-        y_pred : tf.Tensor
-            Output of the forward pass of the computational graph.
-            Prediction of the target variable.
-        """
-        self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
-                            axis=3, specs=self.specs)(self.inputs)
-
-
-        self.tconv = VARConv(size=self.specs['n_latent'],
-                             nonlin=self.specs['nonlin'],
-                             filter_length=self.specs['filter_length'],
-                             padding=self.specs['padding'],
-                             specs=self.specs
-                             )(self.dmx)
-
-
-        self.pooled = TempPooling(pooling=self.specs['pooling'],
-                                  pool_type=self.specs['pool_type'],
-                                  stride=self.specs['stride'],
-                                  padding=self.specs['padding'],
-                                  )(self.tconv)
-
-
-
-        self.fc1 = Dense(size=self.specs['n_latent']*2,
-                         nonlin=self.specs['nonlin'],
-                         specs=self.specs)(self.pooled)
-
-        dropout = Dropout(self.specs['dropout'],
-                          noise_shape=None)(self.fc1)
-
-
-        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
-                            specs=self.specs)
-
-        y_pred = self.fin_fc(dropout)
-
-        return y_pred
-
-
-class LFCNNR(BaseModel):
-    """LF-CNN-R.
-
-    For details see [1].
-
-    References
-    ----------
-        [1] I. Zubarev, et al., Adaptive neural network classifier for
-        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
-    """
-    def __init__(self, Dataset, specs=dict()):
-        """
-        Parameters
-        ----------
-        Dataset : mneflow.Dataset
-
-        specs : dict
-                dictionary of model hyperparameters {
-
-        n_latent : int
-            Number of latent components.
-            Defaults to 32.
-
-        nonlin : callable
-            Activation function of the temporal convolution layer.
-            Defaults to tf.nn.relu
-
-        filter_length : int
-            Length of spatio-temporal kernels in the temporal
-            convolution layer. Defaults to 7.
-
-        pooling : int
-            Pooling factor of the max pooling layer. Defaults to 2
-
-        pool_type : str {'avg', 'max'}
-            Type of pooling operation. Defaults to 'max'.
-
-        padding : str {'SAME', 'FULL', 'VALID'}
-            Convolution padding. Defaults to 'SAME'.}"""
-        self.scope = 'lfcnnr'
-        specs.setdefault('filter_length', 7)
-        specs.setdefault('n_latent', 32)
-        specs.setdefault('pooling', 2)
-        specs.setdefault('stride', 2)
-        specs.setdefault('padding', 'SAME')
-        specs.setdefault('pool_type', 'max')
-        specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1_lambda', 3e-4)
-        specs.setdefault('l2_lambda', 0)
-        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
-        specs.setdefault('l2_scope', [])
-        specs.setdefault('unitnorm_scope', [])
-        super(LFCNNR, self).__init__(Dataset, specs)
-
-    def build_graph(self):
-        """Build computational graph using defined placeholder `self.X`
-        as input.
-
-        Returns
-        --------
-        y_pred : tf.Tensor
-            Output of the forward pass of the computational graph.
-            Prediction of the target variable.
-        """
-        #self.invcov = InvCov(axis=3)(self.inputs)
-        self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
-                            axis=3, specs=self.specs)(self.inputs)
-
-
-        self.tconv = LFTConv(size=self.specs['n_latent'],
-                             nonlin=self.specs['nonlin'],
-                             filter_length=self.specs['filter_length'],
-                             padding=self.specs['padding'],
-                             specs=self.specs
-                             )(self.dmx)
-
-        self.pooled = TempPooling(pooling=self.specs['pooling'],
-                                  pool_type=self.specs['pool_type'],
-                                  stride=self.specs['stride'],
-                                  padding=self.specs['padding'],
-                                  )(self.tconv)
-
-
-
-        self.fc1 = Dense(size=self.specs['n_latent']*2,
-                         nonlin=self.specs['nonlin'],
-                         specs=self.specs)(self.pooled)
-
-
-        dropout = Dropout(self.specs['dropout'],
-                          noise_shape=None)(self.fc1)
-
-
-        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
-                            specs=self.specs)
-
-        y_pred = self.fin_fc(dropout)
-
-        return y_pred
-
-
 
 class FBCSP_ShallowNet(BaseModel):
     """
@@ -2597,23 +2396,23 @@ class FBCSP_ShallowNet(BaseModel):
        visualization.
        Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
     """
-    def __init__(self, Dataset, specs=dict()):
+    def __init__(self, meta, dataset=None):
         self.scope = 'fbcsp-ShallowNet'
-        specs.setdefault('filter_length', 25)
-        specs.setdefault('n_latent', 40)
-        specs.setdefault('pooling', 75)
-        specs.setdefault('stride', 15)
-        specs.setdefault('pool_type', 'avg')
-        specs.setdefault('padding', 'SAME')
-        specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1_lambda', 3e-4)
-        specs.setdefault('l2_lambda', 3e-2)
-        specs.setdefault('l1_scope', [])
-        specs.setdefault('l2_scope', ['conv', 'fc'])
+        meta.model_specs.setdefault('filter_length', 25)
+        meta.model_specs.setdefault('n_latent', 40)
+        meta.model_specs.setdefault('pooling', 75)
+        meta.model_specs.setdefault('stride', 15)
+        meta.model_specs.setdefault('pool_type', 'avg')
+        meta.model_specs.setdefault('padding', 'SAME')
+        meta.model_specs.setdefault('nonlin', tf.nn.relu)
+        meta.model_specs.setdefault('l1_lambda', 3e-4)
+        meta.model_specs.setdefault('l2_lambda', 3e-2)
+        meta.model_specs.setdefault('l1_scope', [])
+        meta.model_specs.setdefault('l2_scope', ['conv', 'fc'])
 
-        specs.setdefault('unitnorm_scope', [])
-        specs.setdefault('model_path', './')
-        super(FBCSP_ShallowNet, self).__init__(Dataset, specs)
+        meta.model_specs.setdefault('unitnorm_scope', [])
+        #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
+        super(FBCSP_ShallowNet, self).__init__(Dataset, meta.model_specs)
 
     def build_graph(self):
 
@@ -2693,7 +2492,7 @@ class LFLSTM(BaseModel):
         [1]  I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, Dataset, specs=dict()):
+    def __init__(self, meta, dataset=None):
         """
 
         Parameters
@@ -2729,21 +2528,21 @@ class LFLSTM(BaseModel):
         """
         #self.scope = 'lflstm'
         self.scope = 'lf-cnn-lstm'
-        specs.setdefault('filter_length', 7)
-        specs.setdefault('n_latent', 32)
-        specs.setdefault('pooling', 2)
-        specs.setdefault('stride', 2)
-        specs.setdefault('padding', 'SAME')
-        specs.setdefault('pool_type', 'max')
-        specs.setdefault('nonlin', tf.nn.relu)
-        specs.setdefault('l1_lambda', 0.)
-        specs.setdefault('l2_lambda', 0.)
-        specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
-        specs.setdefault('l2_scope', [])
-
-        specs.setdefault('unitnorm_scope', [])
+        meta.model_specs.setdefault('filter_length', 7)
+        meta.model_specs.setdefault('n_latent', 32)
+        meta.model_specs.setdefault('pooling', 2)
+        meta.model_specs.setdefault('stride', 2)
+        meta.model_specs.setdefault('padding', 'SAME')
+        meta.model_specs.setdefault('pool_type', 'max')
+        meta.model_specs.setdefault('nonlin', tf.nn.relu)
+        meta.model_specs.setdefault('l1_lambda', 0.)
+        meta.model_specs.setdefault('l2_lambda', 0.)
+        meta.model_specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
+        meta.model_specs.setdefault('l2_scope', [])
+        meta.model_specs['scope'] = self.scope
+        meta.model_specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
-        super(LFLSTM, self).__init__(Dataset, specs)
+        super(LFLSTM, self).__init__(meta, dataset)
 
 
     def build_graph(self):
@@ -2827,22 +2626,22 @@ class Deep4(BaseModel):
        visualization.
        Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
     """
-    def __init__(self, Dataset, specs=dict()):
+    def __init__(self, meta, dataset=None):
         self.scope = 'deep4'
-        specs.setdefault('filter_length', 10)
-        specs.setdefault('n_latent', 25)
-        specs.setdefault('pooling', 3)
-        specs.setdefault('stride', 3)
-        specs.setdefault('pool_type', 'max')
-        specs.setdefault('padding', 'SAME')
-        specs.setdefault('nonlin', tf.nn.elu)
-        specs.setdefault('l1_lambda', 3e-4)
-        specs.setdefault('l2_lambda', 3e-2)
-        specs.setdefault('l1_scope', [])
-        specs.setdefault('l2_scope', ['conv', 'fc'])
-        specs.setdefault('unitnorm_scope', [])
-        specs.setdefault('model_path', './')
-        super(Deep4, self).__init__(Dataset, specs)
+        meta.model_specs.setdefault('filter_length', 10)
+        meta.model_specs.setdefault('n_latent', 25)
+        meta.model_specs.setdefault('pooling', 3)
+        meta.model_specs.setdefault('stride', 3)
+        meta.model_specs.setdefault('pool_type', 'max')
+        meta.model_specs.setdefault('padding', 'SAME')
+        meta.model_specs.setdefault('nonlin', tf.nn.elu)
+        meta.model_specs.setdefault('l1_lambda', 3e-4)
+        meta.model_specs.setdefault('l2_lambda', 3e-2)
+        meta.model_specs.setdefault('l1_scope', [])
+        meta.model_specs.setdefault('l2_scope', ['conv', 'fc'])
+        meta.model_specs.setdefault('unitnorm_scope', [])
+        #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
+        super(Deep4, self).__init__(meta, dataset)
 
     def build_graph(self):
         self.scope = 'deep4'
@@ -3001,23 +2800,25 @@ class EEGNet(BaseModel):
     [4] Original EEGNet implementation by the authors can be found at
     https://github.com/vlawhern/arl-eegmodels
     """
-    def __init__(self, Dataset, specs=dict()):
-
-        specs.setdefault('filter_length', 64)
-        specs.setdefault('depth_multiplier', 2)
-        specs.setdefault('n_latent', 8)
-        specs.setdefault('pooling', 4)
-        specs.setdefault('stride', 4)
-        specs.setdefault('dropout', 0.1)
-        specs.setdefault('padding', 'same')
-        specs.setdefault('nonlin', 'elu')
-        specs.setdefault('maxnorm_rate', 0.25)
-        specs.setdefault('model_path', './')
-        specs.setdefault('unitnorm_scope', [])
-        super(EEGNet, self).__init__(Dataset, specs)
+    def __init__(self, meta, dataset=None):
+        self.scope = 'eegnet8'
+        meta.model_specs.setdefault('filter_length', 64)
+        meta.model_specs.setdefault('depth_multiplier', 2)
+        meta.model_specs.setdefault('n_latent', 8)
+        meta.model_specs.setdefault('pooling', 4)
+        meta.model_specs.setdefault('stride', 4)
+        meta.model_specs.setdefault('dropout', 0.1)
+        meta.model_specs.setdefault('padding', 'same')
+        meta.model_specs.setdefault('nonlin', 'elu')
+        meta.model_specs.setdefault('maxnorm_rate', 0.25)
+        #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
+        meta.model_specs.setdefault('unitnorm_scope', [])
+        meta.model_specs['scope'] = self.scope
+        super(EEGNet, self).__init__(meta, dataset)
+        
 
     def build_graph(self):
-        self.scope = 'eegnet8'
+
 
         inputs = tf.transpose(self.inputs,[0,3,2,1])
 

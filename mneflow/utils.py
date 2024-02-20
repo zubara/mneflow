@@ -16,6 +16,59 @@ from mneflow import models
    
 
 class MetaData():
+    r"""
+    Class containing all metadata required to run model training, prediction, 
+    and evaluation. Produced by mneflow.produce_tfrecords. 
+    
+    Attributes
+    ----------
+        path : str
+            A path where the output TFRecord and corresponding metadata
+            files will be stored.
+
+        data_id : str
+            Filename prefix for the output files.
+
+        input_type : str {'trials', 'continuous', 'seq', 'fconn'}
+            Type of input data.
+
+            'trials' - treats each of n inputs as an iid sample, produces dataset
+            with dimensions (n, 1, t, ch)
+
+            'seq' - treats each of n inputs as a seqence of shorter segments,
+                    produces dataset with dimensions
+                    (n, seq_length, segment, ch)
+
+            'continuous' - treats inputs as a single continuous sequence,
+                            produces dataset with dimensions
+                            (n*(t-segment)//aug_stride, 1, segment, ch)
+
+        target_type : str {'int', 'float'}
+            Type of target variable.
+
+            'int' - for classification,
+            'float' - for regression problems.
+            'signal' - regression or classification a continuous (possbily
+                       multichannel) data. Requires "transform_targets" function
+                       to apply to targets
+
+        n_folds : int, optional
+            Number of folds to split the data for training/validation/testing.
+            One fold of the n_folds is used as a validation set.
+            If test_set == 'holdout' generates one extra fold
+            used as test set. Defaults to 5
+
+        test_set : str {'holdout', 'loso', None}, optional
+            Defines if a separate holdout test set is required.
+            'holdout' saves 50% of the validation set
+            'loso' saves the whole dataset in original order for
+            leave-one-subject-out cross-validation.
+            None does not leave a separate test set. Defaults to None.
+            
+        fs : float, optional
+             Sampling frequency, required only if inputs are not mne.Epochs
+    """
+    
     def __init__(self):
         self.data = dict()
         self.preprocessing = dict()
@@ -24,9 +77,20 @@ class MetaData():
         self.patterns = dict()
         
     def save(self):
-        return
+        """Saves the metadata to self.data['path'] + self.data['data_id']"""
+        if 'path' in self.data.keys() and 'data_id' in self.data.keys():
+            fname = self.data['data_id'] + '_meta.pkl'
+            with open(os.path.join(self.data['path'], fname), 'wb') as f:
+                pickle.dump(self, f)
+            print("""Saving MetaData as {} \n
+                  to {}""".format(fname, self.data['path']))
+        else:
+            print("""Cannot save MetaData! \n
+                  Please specify meta.data['path'] and meta.data['data_id'']""")
+        
         
     def restore_model(self):
+        """Restored previously saved model from metadata."""
         
         if self.model_specs['scope'] == 'lfcnn':
             model = models.LFCNN(meta=self)
@@ -41,8 +105,8 @@ class MetaData():
         
         model_name = "_".join([self.model_specs['scope'],
                                self.data['data_id']])
-        model.km = tf.keras.models.load_model(self.model_specs['model_path'] + 
-                                              model_name)
+        model.km = tf.keras.models.load_model(os.path.join(self.model_specs['model_path'],
+                                              model_name))
         
         #model.build()
         model.cv_patterns = self.patterns
@@ -52,6 +116,7 @@ class MetaData():
     
     def update(self, data=None, preprocessing=None, train_params=None, 
                model_specs=None, patterns=None):
+        """Updates metadata file"""
         if isinstance(data, dict):
             self.data.update(data)
             print("Updating: meta.data")
@@ -67,6 +132,7 @@ class MetaData():
         if isinstance(patterns, dict):
             self.patterns.update(patterns)
             print("Updating: meta.patterns")
+        #self.save()
         return
         
 
@@ -529,8 +595,9 @@ def produce_tfrecords(inputs,
     data_path = os.path.join(path, 'tfrecords')
     if not os.path.exists(data_path):
         os.mkdir(data_path)
-
-    if overwrite or not os.path.exists(os.path.join(path, data_id+'_meta.pkl')):
+    meta_fname = os.path.join(path, data_id+'_meta.pkl')
+    if not os.path.exists(meta_fname) or  overwrite:
+        #print("(Re)-importing data")
         train_size = 0
         test_size = 0
         val_size = 0
@@ -546,8 +613,13 @@ def produce_tfrecords(inputs,
 
         if not isinstance(inputs, list):
             inputs = [inputs]
-
+        #print("inputs:", inputs, len(inputs), type(inputs))
+        if len(inputs) == 0:
+            print("Cannot process Input: {} of type {}".format(inputs, type(inputs)))
+            return
         for inp in inputs:
+            #print("inp:", inp, len(inp), type(inp))
+            
 
             data, events = import_data(inp, array_keys=array_keys)
 
@@ -685,52 +757,48 @@ def produce_tfrecords(inputs,
                 jj += 1
                 #create and save metadata file
                 
-        meta_data = dict(path=path,
-                         data_path=data_path, 
-                         target_type=target_type,
-                         input_type=input_type, 
-                         data_id=data_id,
-                         test_set=test_set,
-                         train_paths=train_paths,
-                         test_paths=test_paths,
-                         folds=folds,
-                         n_folds=n_folds,
-                         test_fold=test_fold,
-                         train_size=train_size,
-                         test_size=test_size,
-                         val_size=val_size,
-                         n_seq=n_seq,
-                         n_t=n_t,
-                         n_ch=n_ch,
-                         y_shape=y_shape,
-                         class_ratio=class_ratio,
-                         orig_classees=orig_classes,
-                         fs=fs)
-        
-        meta_preprocessing = dict(scale=scale,
-                                  scale_interval=scale_interval,
-                                  crop_baseline=crop_baseline,
-                                  segment=segment, aug_stride=aug_stride,
-                                  seq_length=seq_length,
-                                  segment_y=segment_y)
-        
-        meta = MetaData()
-        meta.update(data=meta_data, preprocessing=meta_preprocessing)       
-        
-        with open(path+data_id+'_meta.pkl', 'wb') as f:
-            pickle.dump(meta, f)
+            meta_data = dict(path=path,
+                             data_path=data_path, 
+                             target_type=target_type,
+                             input_type=input_type, 
+                             data_id=data_id,
+                             test_set=test_set,
+                             train_paths=train_paths,
+                             test_paths=test_paths,
+                             folds=folds,
+                             n_folds=n_folds,
+                             test_fold=test_fold,
+                             train_size=train_size,
+                             test_size=test_size,
+                             val_size=val_size,
+                             n_seq=n_seq,
+                             n_t=n_t,
+                             n_ch=n_ch,
+                             y_shape=y_shape,
+                             class_ratio=class_ratio,
+                             orig_classees=orig_classes,
+                             fs=fs)
+            
+            meta_preprocessing = dict(scale=scale,
+                                      scale_interval=scale_interval,
+                                      crop_baseline=crop_baseline,
+                                      segment=segment, aug_stride=aug_stride,
+                                      seq_length=seq_length,
+                                      segment_y=segment_y)
+            
+            meta = MetaData()
+            meta.update(data=meta_data, preprocessing=meta_preprocessing)       
+            
+            with open(path+data_id+'_meta.pkl', 'wb') as f:
+                pickle.dump(meta, f)
 
-    elif os.path.exists(path+data_id+'_meta.pkl'):
+    elif os.path.exists(meta_fname):
         print('Metadata file found, restoring')
         meta = load_meta(path, data_id=data_id)
+    else:
+        print(os.path.join(path, data_id+'_meta.pkl'), "Does not exit, aborting")
+        return
     return meta
-
-def restore_model(meta):
-    model_name = ''.join(meta.model['model_path'] + meta.model_specs['scope'], 
-                         meta.data['data_id'])
-    
-                         
-    return model
 
 def produce_labels(y, return_stats=True):
     """Produce labels array from e.g. event (unordered) trigger codes.
