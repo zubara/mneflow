@@ -112,7 +112,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
 
 class DeMixing(BaseLayer):
     """
-    Spatial demixing Layerю
+    Spatial demixing Layer
     
     """
     
@@ -154,6 +154,8 @@ class DeMixing(BaseLayer):
 
     #@tf.function
     def call(self, x, training=None):
+        """ 
+        """
         while True:
             with tf.name_scope(self.scope):
                 try:
@@ -165,12 +167,10 @@ class DeMixing(BaseLayer):
                 except(AttributeError):
                     input_shape = x.shape
                     self.build(input_shape)
-                    #print(self.scope, 'building from call')
-
 
 class SquareSymm(BaseLayer):
     """
-    Spatial demixing Layer
+    SquaredSymmetric Layer
     
     """
     def __init__(self, scope='ssym', size=None, nonlin=tf.identity, axis=1,
@@ -206,6 +206,8 @@ class SquareSymm(BaseLayer):
 
     #@tf.function
     def call(self, x, training=None):
+        """ 
+        """
         while True:
             with tf.name_scope(self.scope):
                 try:
@@ -215,14 +217,11 @@ class SquareSymm(BaseLayer):
                                          name='smx')
     
                     demix = self.nonlin(d2 + self.b_in)
-                    #demix = tf.transpose(demix. [0, 2, 3, 1])
-                    #print(self.scope, ": output :", demix.shape)
                     return demix
                 except(AttributeError):
                     input_shape = x.shape
                     self.build(input_shape)
-                    #print(self.scope, 'building from call')
-
+                    
 
 class LFTConv(BaseLayer):
     """
@@ -271,6 +270,8 @@ class LFTConv(BaseLayer):
 
     #@tf.function
     def call(self, x, training=None):
+        """ 
+        """
         while True:
             with tf.name_scope(self.scope):
                 try:
@@ -337,6 +338,8 @@ class VARConv(BaseLayer):
 
     #@tf.function
     def call(self, x, training=None):
+        """ 
+        """
         while True:
             with tf.name_scope(self.scope):
                 try:
