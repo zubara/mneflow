@@ -16,57 +16,66 @@ from mneflow import models
    
 
 class MetaData():
-    r"""
+    """
     Class containing all metadata required to run model training, prediction, 
-    and evaluation. Produced by mneflow.produce_tfrecords. 
+    and evaluation. Produced by mneflow.produce_tfrecords, saved to "path" and 
+    can be restored if you need to rerun training on existing tfrecords.
+    
+    See mneflow.utils.load_meta() docstring.
     
     Attributes
     ----------
-        path : str
-            A path where the output TFRecord and corresponding metadata
-            files will be stored.
-
-        data_id : str
-            Filename prefix for the output files.
-
-        input_type : str {'trials', 'continuous', 'seq', 'fconn'}
-            Type of input data.
-
-            'trials' - treats each of n inputs as an iid sample, produces dataset
-            with dimensions (n, 1, t, ch)
-
-            'seq' - treats each of n inputs as a seqence of shorter segments,
-                    produces dataset with dimensions
-                    (n, seq_length, segment, ch)
-
-            'continuous' - treats inputs as a single continuous sequence,
-                            produces dataset with dimensions
-                            (n*(t-segment)//aug_stride, 1, segment, ch)
-
-        target_type : str {'int', 'float'}
-            Type of target variable.
-
-            'int' - for classification,
-            'float' - for regression problems.
-            'signal' - regression or classification a continuous (possbily
-                       multichannel) data. Requires "transform_targets" function
-                       to apply to targets
-
-        n_folds : int, optional
-            Number of folds to split the data for training/validation/testing.
-            One fold of the n_folds is used as a validation set.
-            If test_set == 'holdout' generates one extra fold
-            used as test set. Defaults to 5
-
-        test_set : str {'holdout', 'loso', None}, optional
-            Defines if a separate holdout test set is required.
-            'holdout' saves 50% of the validation set
-            'loso' saves the whole dataset in original order for
-            leave-one-subject-out cross-validation.
-            None does not leave a separate test set. Defaults to None.
-            
-        fs : float, optional
-             Sampling frequency, required only if inputs are not mne.Epochs
+    path : str
+        A path where the output TFRecord (path + /tfrecrods/) files,
+        models (path + /models/), and the corresponding metadata
+        file (path + data_id + meta.pkl) will be stored.
+    
+    data_id : str
+        Filename prefix for the output files and the metadata file.
+    
+    input_type : str {'trials', 'continuous', 'seq', 'fconn'}
+        Type of input data.
+    
+        'trials' - treats each of n inputs as an iid sample, produces dataset
+        with dimensions (n, 1, t, ch)
+    
+        'seq' - treats each of n inputs as a seqence of shorter segments,
+        produces dataset with dimensions (n, seq_length, segment, ch)
+    
+        'continuous' - treats inputs as a single continuous sequence,
+        produces dataset with dimensions 
+        (n*(t-segment)//aug_stride, 1, segment, ch)
+    
+    target_type : str {'int', 'float'}
+        Type of target variable.
+    
+        'int' - for classification,
+        'float' - for regression problems.
+        'signal' - regression or classification a continuous (possbily
+                   multichannel) data. Requires "transform_targets" function
+                   to apply to target variables.
+    
+    n_folds : int, optional
+        Number of folds to split the data for training/validation/testing.
+        One fold of the n_folds is used as a validation set.
+        If test_set == 'holdout' generates one extra fold
+        used as test set. Defaults to 5
+    
+    test_set : str {'holdout', 'loso', None}, optional
+        Defines if a separate holdout test set is required.
+        'holdout' saves 50% of the validation set
+        'loso' produces an addtional trfrecord so that each input file can 
+        be used as a test test in leave-one-subject-out cross-validation.
+        None does not produce a separate test set. 
+        Defaults to None.
+        
+    fs : float, optional
+         Sampling frequency, required only if inputs are not mne.Epochs
+    
+    Notes
+    -----
+    See mneflow.produce_tfrecords and mneflow.utils.preprocess for more 
+    details and availble options.
     """
     
     def __init__(self):
@@ -447,8 +456,7 @@ def produce_tfrecords(inputs,
                       scale_y=False,
                       save_as_numpy=False):
 
-    r"""
-    Produce TFRecord files from input, apply (optional) preprocessing.
+    r"""Produce TFRecord files from input, apply (optional) preprocessing.
 
     Calling this function will convert the input data into TFRecords
     format that is used to effiently store and run Tensorflow models on
@@ -584,9 +592,7 @@ def produce_tfrecords(inputs,
 
     Examples
     --------
-    >>> meta = mneflow.produce_tfrecords(input_paths, \**import_opts)
-
-    """
+    >>> meta = mneflow.produce_tfrecords(input_paths, \**import_opts)"""
     assert input_type in ['trials', 'seq', 'continuous', 'fconn'], "Unknown input type."
     assert target_type in ['int', 'float', 'signal'], "Unknown target type."
     
@@ -1039,7 +1045,8 @@ def preprocess(data, events, sample_counter,
                segment=False, aug_stride=None,
                seq_length=None,
                segment_y=False):
-    """Preprocess input data. Applies scaling, segmenting/augmentation,
+    """
+    Preprocess input data. Applies scaling, segmenting/augmentation,
      and defines the split into training/validation folds.
 
     Parameters
@@ -1050,7 +1057,7 @@ def preprocess(data, events, sample_counter,
     events : np.array
             input array of target variables (n_epochs, ...)
 
-    input_type : str {'trials', 'continuous'}
+    input_type : str {trials, continuous}
             See produce_tfrecords.
 
     n_folds : int
@@ -1069,7 +1076,7 @@ def preprocess(data, events, sample_counter,
         Only used if scale == True.
 
     crop_baseline : bool, optional
-        Whether to crop baseline specified by 'scale_interval'
+        Whether to crop baseline specified by \'scale_interval\'
         after scaling (defaults to False).
 
     segment : bool, int, optional
@@ -1077,11 +1084,11 @@ def preprocess(data, events, sample_counter,
         number of time points. Defaults to False
 
     aug_stride : int, optional
-        If specified, sets the stride (in time points) for 'segment'
+        If specified, sets the stride (in time points) for \"segment\"
         allowing to extract overalapping segments. Has to be <= segment.
         Only applied within each fold to prevent data leakeage. Only applied
-        if 'segment' is not False. If None, then it is set equal to length of
-        the 'segment' returning non-overlapping segments.
+        if \'segment\' is not False. If None, then it is set equal to length of
+        the \'segment\' returning non-overlapping segments.
         Defaults to None.
 
     seq_length: int or None
@@ -1101,7 +1108,6 @@ def preprocess(data, events, sample_counter,
         Label arrays of dimensions [n_epochs, *(y_shape)]
 
     folds : list of np.arrays
-
     """
     print("Preprocessing:")
 

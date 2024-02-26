@@ -60,7 +60,7 @@ class BaseModel():
     def __init__(self, meta=None, dataset=None):
         """
         Parameters
-        -----------
+        ----------
         Dataset : mneflow.Dataset
             `Dataset` object.
 
@@ -686,8 +686,9 @@ class BaseModel():
         return out
 
     def predict(self, dataset=None):
-        """Returns:
-        --------
+        """
+        Returns
+        -------
         y_true : np.array
                 ground truth labels taken from the dataset
 
@@ -721,8 +722,8 @@ class BaseModel():
 
     def evaluate(self, dataset=False):
         """
-        Returns:
-        --------
+        Returns
+        -------
         losses : list
                 model loss on a specified dataset
 
