@@ -94,9 +94,6 @@ class BaseModel():
 
 
         self.inputs = layers.Input(shape=(self.input_shape))
-        #self.rate = self.specs.setdefault('dropout', 0.0)
-        #self.l1 = l1
-        #self.optimizer = Optimizer
         self.trained = False
         self.y_pred = self.build_graph()
         self.log = dict()
@@ -167,12 +164,10 @@ class BaseModel():
             self.params.setdefault("metrics", tf.keras.metrics.RootMeanSquaredError(name="RMSE"))
 
         elif self.dataset.h_params["target_type"] in ['int']:
-            #self.params.setdefault("loss", tf.nn.softmax_cross_entropy_with_logits)
             self.params.setdefault("loss", [tf.keras.losses.CategoricalCrossentropy(from_logits=True,
                                                                                    name='cce')])
             self.params.setdefault("metrics", [tf.keras.metrics.CategoricalAccuracy(name="cat_ACC")])
 
-        #print(params)
         self.km.compile(optimizer=self.params["optimizer"],
                         loss=self.params["loss"],
                         metrics=self.params["metrics"])
@@ -180,10 +175,6 @@ class BaseModel():
 
         print('Input shape:', self.input_shape)
         print('y_pred:', self.y_pred.shape)
-
-#       TODO: saver
-#        self.saver = tf.train.Saver(max_to_keep=1)
-
         print('Initialization complete!')
 
     def build_graph(self):
@@ -199,14 +190,10 @@ class BaseModel():
             Prediction of the target variable.
         """
 
-
-
         flat = Flatten()(self.inputs)
         self.fc = Dense(size=self.out_dim, nonlin=tf.identity,
                         specs=self.specs)
         y_pred = self.fc(flat)
-        #y_pred = fc_1
-        #print("Built graph: y_shape", y_pred.shape)
         return y_pred
 
 
@@ -250,12 +237,6 @@ class BaseModel():
         if not eval_step:
             train_size = self.dataset.h_params['train_size']
             eval_step = train_size // self.dataset.h_params['train_batch'] + 1
-
-        # if val_batch:
-        #     val_size = self.dataset.h_params['val_size']
-        #     self.validation_steps = max(1, val_size // val_batch)
-        # else:
-        #     self.validation_steps = 1
         
         self.train_params = dict(n_epochs=n_epochs, 
                                  eval_step=eval_step, 
@@ -281,7 +262,6 @@ class BaseModel():
         print("Class weights: ", class_weights)
         if mode == 'single_fold':
             n_folds = 1
-            #self.cv_patterns = 0
             train, val = self.dataset._build_dataset(self.dataset.h_params['train_paths'],
                                                train_batch=self.dataset.training_batch,
                                                test_batch=self.dataset.validation_batch,
@@ -496,9 +476,6 @@ class BaseModel():
         print("Re-shuffling weights between folds")
         weights = self.km.get_weights()
         weights = [np.random.permutation(w.flat).reshape(w.shape) for w in weights]
-        #weights = [np.random.randn(*w.shape) for w in weights]
-        # Faster, but less random: only permutes along the first dimension
-        # weights = [np.random.permutation(w) for w in weights]
         self.km.set_weights(weights)
 
 
@@ -514,7 +491,6 @@ class BaseModel():
 
     def plot_hist(self):
         """Plot loss history during training."""
-        # "Loss"
         plt.plot(self.t_hist.history['loss'])
         plt.plot(self.t_hist.history['val_loss'])
         plt.title('model loss')
@@ -528,23 +504,6 @@ class BaseModel():
         y_p = _onehot(np.argmax(y_pred,1), n_classes=self.y_shape[-1])
         cm = np.dot(y_p.T, y_true)
         return cm
-
-#    def load(self):
-#        """Loads a pretrained model.
-#
-#        To load a specific model the model object should be initialized
-#        using the corresponding metadata and computational graph.
-#        """
-#        self.saver.restore(self.sess,
-#                           ''.join([self.model_path, self.scope, '-',
-#                                    self.dataset.h_params['data_id']]))
-#
-#        self.v_acc = self.sess.run([self.accuracy],
-#                                   feed_dict={self.handle: self.val_handle,
-#                                              self.rate: 0.})
-#        self.trained = True
-
-
 
     def update_log(self, rms=None, prefix=''):
         """Logs experiment to self.model_path + self.scope + '_log.csv'.
@@ -585,10 +544,8 @@ class BaseModel():
 
 
         if len(self.dataset.h_params['test_paths']) > 0:
-            print('Test performance:')
             t_loss = np.mean(self.cv_test_losses)
             t_metric = np.mean(self.cv_test_metrics)
-            print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
             if self.dataset.h_params['target_type'] == 'float':
                 y_true, y_pred = self.predict(self.dataset.h_params['test_paths'])
                 rms_test = regression_metrics(y_true, y_pred)
@@ -604,7 +561,6 @@ class BaseModel():
             log['test_loss'] = "NA"
             log['test_metrics'] = "NA"
             log['test_losses'] = "NA"
-
         self.log.update(log)
 
         with open(savepath, 'a+', newline='') as csv_file:
@@ -612,7 +568,7 @@ class BaseModel():
             if not appending:
                 writer.writeheader()
             writer.writerow(self.log)
-            print("Saving to: ",  savepath)
+            print("Saving updated log to: ",  savepath)
 
     def save(self):
         """
