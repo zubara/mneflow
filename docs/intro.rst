@@ -9,7 +9,7 @@ Installation
 
 Dependencies
 ============
-* tensorflow > 2.1.0
+* tensorflow > 2.12.0
 * mne > 0.19
 
 
