@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MNEflow API &mdash; MNEflow 0.2.0 documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <title>MNEflow API &mdash; MNEflow 0.5.1 documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="_static/js/html5shiv.min.js"></script>
@@ -44,9 +44,10 @@
 <li class="toctree-l1"><a class="reference internal" href="intro.html#references">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="models.html">Implemented models</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">MNEflow API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#mneflow-utils-metadata-class">mneflow.utils.MetaData class</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#mneflow-models-basemodel-class">mneflow.models.BaseModel class</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#mneflow-dataset">mneflow.Dataset</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#module-mneflow.utils">mneflow.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mneflow-utils">mneflow.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#module-mneflow.layers">mneflow.layers</a></li>
 </ul>
 </li>
@@ -79,11 +80,148 @@
              
   <div class="section" id="mneflow-api">
 <h1>MNEflow API<a class="headerlink" href="#mneflow-api" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="mneflow-utils-metadata-class">
+<h2>mneflow.utils.MetaData class<a class="headerlink" href="#mneflow-utils-metadata-class" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="mneflow.utils.MetaData">
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">MetaData</code><a class="headerlink" href="#mneflow.utils.MetaData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class containing all metadata required to run model training, prediction,
+and evaluation. Produced by mneflow.produce_tfrecords, saved to “path” and
+can be restored if you need to rerun training on existing tfrecords.</p>
+<p>See mneflow.utils.load_meta() docstring.</p>
+<dl class="py attribute">
+<dt id="mneflow.utils.MetaData.path">
+<code class="sig-name descname">path</code><a class="headerlink" href="#mneflow.utils.MetaData.path" title="Permalink to this definition">¶</a></dt>
+<dd><p>A path where the output TFRecord (path + /tfrecrods/) files,
+models (path + /models/), and the corresponding metadata
+file (path + data_id + meta.pkl) will be stored.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="mneflow.utils.MetaData.data_id">
+<code class="sig-name descname">data_id</code><a class="headerlink" href="#mneflow.utils.MetaData.data_id" title="Permalink to this definition">¶</a></dt>
+<dd><p>Filename prefix for the output files and the metadata file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="mneflow.utils.MetaData.input_type">
+<code class="sig-name descname">input_type</code><a class="headerlink" href="#mneflow.utils.MetaData.input_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>Type of input data.</p>
+<p>‘trials’ - treats each of n inputs as an iid sample, produces dataset
+with dimensions (n, 1, t, ch)</p>
+<p>‘seq’ - treats each of n inputs as a seqence of shorter segments,
+produces dataset with dimensions (n, seq_length, segment, ch)</p>
+<p>‘continuous’ - treats inputs as a single continuous sequence,
+produces dataset with dimensions
+(n*(t-segment)//aug_stride, 1, segment, ch)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str {‘trials’, ‘continuous’, ‘seq’, ‘fconn’}</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="mneflow.utils.MetaData.target_type">
+<code class="sig-name descname">target_type</code><a class="headerlink" href="#mneflow.utils.MetaData.target_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>Type of target variable.</p>
+<p>‘int’ - for classification,
+‘float’ - for regression problems.
+‘signal’ - regression or classification a continuous (possbily multichannel)
+data. Requires “transform_targets” function to be applied to target variables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str {‘int’, ‘float’}</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="mneflow.utils.MetaData.n_folds">
+<code class="sig-name descname">n_folds</code><a class="headerlink" href="#mneflow.utils.MetaData.n_folds" title="Permalink to this definition">¶</a></dt>
+<dd><p>Number of folds to split the data for training/validation/testing.
+One fold of the n_folds is used as a validation set.
+If test_set == ‘holdout’ generates one extra fold
+used as test set. Defaults to 5</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>int, optional</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="mneflow.utils.MetaData.test_set">
+<code class="sig-name descname">test_set</code><a class="headerlink" href="#mneflow.utils.MetaData.test_set" title="Permalink to this definition">¶</a></dt>
+<dd><p>Defines if a separate holdout test set is required.
+‘holdout’ saves 50% of the validation set
+‘loso’ produces an addtional trfrecord so that each input file can
+be used as a test test in leave-one-subject-out cross-validation.
+None does not produce a separate test set.
+Defaults to None.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str {‘holdout’, ‘loso’, None}, optional</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="mneflow.utils.MetaData.fs">
+<code class="sig-name descname">fs</code><a class="headerlink" href="#mneflow.utils.MetaData.fs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sampling frequency, required only if inputs are not mne.Epochs</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>float, optional</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Notes</p>
+<p>See mneflow.produce_tfrecords and mneflow.utils.preprocess for more
+details and availble options.</p>
+<dl class="py method">
+<dt id="mneflow.utils.MetaData.__init__">
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.MetaData.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.utils.MetaData.restore_model">
+<code class="sig-name descname">restore_model</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.MetaData.restore_model" title="Permalink to this definition">¶</a></dt>
+<dd><p>Restored previously saved model from metadata.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.utils.MetaData.save">
+<code class="sig-name descname">save</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.MetaData.save" title="Permalink to this definition">¶</a></dt>
+<dd><p>Saves the metadata to self.data[‘path’] + self.data[‘data_id’]</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.utils.MetaData.update">
+<code class="sig-name descname">update</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">preprocessing</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">train_params</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">model_specs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">patterns</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.MetaData.update" title="Permalink to this definition">¶</a></dt>
+<dd><p>Updates metadata file</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
 <div class="section" id="mneflow-models-basemodel-class">
 <h2>mneflow.models.BaseModel class<a class="headerlink" href="#mneflow-models-basemodel-class" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
 <dt id="mneflow.models.BaseModel">
-<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">BaseModel</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.models.</code><code class="sig-name descname">BaseModel</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">meta</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">dataset</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Parent class for all MNEflow models.</p>
 <p>Provides fast and memory-efficient data handling and simplified API.
@@ -91,7 +229,7 @@ Custom models can be built by overriding _build_graph and
 _set_optimizer methods.</p>
 <dl class="py method">
 <dt id="mneflow.models.BaseModel.__init__">
-<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">Dataset</span></em>, <em class="sig-param"><span class="n">specs</span><span class="o">=</span><span class="default_value">{}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">meta</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">dataset</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
@@ -116,11 +254,12 @@ specified uses default hyperparameters for each implemented model.</p></li>
 <li><p><strong>loss</strong> (<em>str</em><em>, </em><em>tf.keras.losses.Loss</em>) – Defaults to MSE in target_type is “float” and
 “softmax_crossentropy” if “target_type” is int</p></li>
 <li><p><strong>metrics</strong> (<em>str</em><em>, </em><em>tf.keras.metrics.Metric</em>) – <dl class="simple">
-<dt>Defaults to MAE in target_type is “float” and</dt><dd><p>”categorical_accuracy” if “target_type” is int</p>
+<dt>Defaults to RMSE in target_type is “float” and</dt><dd><p>”categorical_accuracy” if “target_type” is int</p>
 </dd>
 </dl>
 </p></li>
 <li><p><strong>learn_rate</strong> (<em>float</em>) – Learning rate, defaults to 3e-4</p></li>
+<li><p><strong>mapping</strong> (<em>str</em>) – </p></li>
 </ul>
 </dd>
 </dl>
@@ -146,7 +285,23 @@ Prediction of the target variable.</p>
 <dl class="py method">
 <dt id="mneflow.models.BaseModel.evaluate">
 <code class="sig-name descname">evaluate</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">dataset</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.evaluate" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p><strong>losses</strong> (<em>list</em>) – model loss on a specified dataset</p></li>
+<li><p><strong>metrics</strong> (<em>np.array</em>) – metrics evaluated on a specified dataset</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.BaseModel.plot_confusion_matrix">
+<code class="sig-name descname">plot_confusion_matrix</code><span class="sig-paren">(</span><em class="sig-param">cm=None</em>, <em class="sig-param">classes=None</em>, <em class="sig-param">normalize=False</em>, <em class="sig-param">title=None</em>, <em class="sig-param">cmap=&lt;matplotlib.colors.LinearSegmentedColormap object&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.plot_confusion_matrix" title="Permalink to this definition">¶</a></dt>
+<dd><p>This function prints and plots the confusion matrix.
+Normalization can be applied by setting <cite>normalize=True</cite>.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt id="mneflow.models.BaseModel.plot_hist">
@@ -157,23 +312,32 @@ Prediction of the target variable.</p>
 <dl class="py method">
 <dt id="mneflow.models.BaseModel.predict">
 <code class="sig-name descname">predict</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">dataset</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.predict" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="simple">
-<dt>y_true<span class="classifier">np.array</span></dt><dd><p>ground truth labels taken from the dataset</p>
-</dd>
-<dt>y_pred<span class="classifier">np.array</span></dt><dd><p>model predictions</p>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p><strong>y_true</strong> (<em>np.array</em>) – ground truth labels taken from the dataset</p></li>
+<li><p><strong>y_pred</strong> (<em>np.array</em>) – model predictions</p></li>
+</ul>
+</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
-<dt id="mneflow.models.BaseModel.restore">
-<code class="sig-name descname">restore</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.restore" title="Permalink to this definition">¶</a></dt>
+<dt id="mneflow.models.BaseModel.predict_sample">
+<code class="sig-name descname">predict_sample</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">x</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.predict_sample" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.models.BaseModel.prune_weights">
+<code class="sig-name descname">prune_weights</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">increase_regularization</span><span class="o">=</span><span class="default_value">3.0</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.prune_weights" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
 <dt id="mneflow.models.BaseModel.save">
 <code class="sig-name descname">save</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.save" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Saves the model and (optionally, patterns, confusion matrices)</p>
+</dd></dl>
 
 <dl class="py method">
 <dt id="mneflow.models.BaseModel.shuffle_weights">
@@ -182,7 +346,7 @@ Prediction of the target variable.</p>
 
 <dl class="py method">
 <dt id="mneflow.models.BaseModel.train">
-<code class="sig-name descname">train</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">n_epochs</span></em>, <em class="sig-param"><span class="n">eval_step</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">min_delta</span><span class="o">=</span><span class="default_value">1e-06</span></em>, <em class="sig-param"><span class="n">early_stopping</span><span class="o">=</span><span class="default_value">3</span></em>, <em class="sig-param"><span class="n">mode</span><span class="o">=</span><span class="default_value">'single_fold'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.train" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">train</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">n_epochs</span><span class="o">=</span><span class="default_value">10</span></em>, <em class="sig-param"><span class="n">eval_step</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">min_delta</span><span class="o">=</span><span class="default_value">1e-06</span></em>, <em class="sig-param"><span class="n">early_stopping</span><span class="o">=</span><span class="default_value">3</span></em>, <em class="sig-param"><span class="n">mode</span><span class="o">=</span><span class="default_value">'single_fold'</span></em>, <em class="sig-param"><span class="n">prune_weights</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">collect_patterns</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">class_weights</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.train" title="Permalink to this definition">¶</a></dt>
 <dd><p>Train a model</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -196,6 +360,8 @@ rise before training stops.</p></li>
 <li><p><strong>min_delta</strong> (<em>float</em><em>, </em><em>optional</em>) – Convergence threshold for validation cost during training.
 Defaults to 1e-6.</p></li>
 <li><p><strong>mode</strong> (<em>str</em><em>, </em><em>optional</em>) – can be ‘single_fold’, ‘cv’, ‘loso’. Defaults to ‘single_fold’</p></li>
+<li><p><strong>collect_patterns</strong> (<em>bool</em>) – Whether to compute and store patterns after training each fold.</p></li>
+<li><p><strong>class_weights</strong> (<em>None</em><em>, </em><em>dict</em>) – Whether to apply cutom wegihts fro each class</p></li>
 </ul>
 </dd>
 </dl>
@@ -203,7 +369,7 @@ Defaults to 1e-6.</p></li>
 
 <dl class="py method">
 <dt id="mneflow.models.BaseModel.update_log">
-<code class="sig-name descname">update_log</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.update_log" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">update_log</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">rms</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">prefix</span><span class="o">=</span><span class="default_value">''</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.models.BaseModel.update_log" title="Permalink to this definition">¶</a></dt>
 <dd><p>Logs experiment to self.model_path + self.scope + ‘_log.csv’.</p>
 <p>If the file exists, appends a line to the existing file.</p>
 </dd></dl>
@@ -215,19 +381,19 @@ Defaults to 1e-6.</p></li>
 <h2>mneflow.Dataset<a class="headerlink" href="#mneflow-dataset" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
 <dt id="mneflow.data.Dataset">
-<em class="property">class </em><code class="sig-prename descclassname">mneflow.data.</code><code class="sig-name descname">Dataset</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">h_params</span></em>, <em class="sig-param"><span class="n">train_batch</span><span class="o">=</span><span class="default_value">200</span></em>, <em class="sig-param"><span class="n">test_batch</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">split</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.data.</code><code class="sig-name descname">Dataset</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">meta</span></em>, <em class="sig-param"><span class="n">train_batch</span><span class="o">=</span><span class="default_value">50</span></em>, <em class="sig-param"><span class="n">test_batch</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">split</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">class_subset</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">pick_channels</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">decim</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">rebalance_classes</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>TFRecords dataset from TFRecords files using the metadata.</p>
 <dl class="py method">
 <dt id="mneflow.data.Dataset.__init__">
-<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">h_params</span></em>, <em class="sig-param"><span class="n">train_batch</span><span class="o">=</span><span class="default_value">200</span></em>, <em class="sig-param"><span class="n">test_batch</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">split</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">meta</span></em>, <em class="sig-param"><span class="n">train_batch</span><span class="o">=</span><span class="default_value">50</span></em>, <em class="sig-param"><span class="n">test_batch</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">split</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">class_subset</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">pick_channels</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">decim</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">rebalance_classes</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Initialize tf.data.TFRdatasets.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>h_params</strong> (<em>dict</em>) – Metadata file, output of mneflow.utils.produce_tfrecords.
-See mneflow.utils.produce_tfrecords for details.</p></li>
-<li><p><strong>train_batch</strong> (<em>int</em><em>, </em><em>None</em><em>, </em><em>optional</em>) – Training mini-batch size. Defaults to 200. If None equals to the
+<li><p><strong>meta</strong> (<a class="reference internal" href="#mneflow.utils.MetaData" title="mneflow.utils.MetaData"><em>MetaData</em></a>) – Instance of MetaData, output of mneflow.utils.produce_tfrecords.
+See mneflow.utils.produce_tfrecords and mneflow.MetaData for details.</p></li>
+<li><p><strong>train_batch</strong> (<em>int</em><em>, </em><em>None</em><em>, </em><em>optional</em>) – Training mini-batch size. Defaults to 50. If None equals to the
 whole training set size</p></li>
 <li><p><strong>test_batch</strong> (<em>int</em><em>, </em><em>None</em><em>, </em><em>optional</em>) – Training mini-batch size. Defaults to None. If None equals to the
 whole test/validation set size</p></li>
@@ -235,109 +401,254 @@ whole test/validation set size</p></li>
 on h_params[‘folds’]. Defaults to True. Can be False if dataset is
 imported for evaluationg performance on the held-out set or
 vizualisations</p></li>
+<li><p><strong>class_subset</strong> (<em>list of int</em>) – Pick a susbet of the classes. Example in 5-class clalssification
+problem class_subset=[0, 2, 4] will filter the dataset to
+discriminate between these classes, without changing the parameters
+of the whole dataset (e.g. y_shape=5)</p></li>
+<li><p><strong>pick_channels</strong> (<em>array of int</em>) – Pick a subset of channels</p></li>
+<li><p><strong>decim</strong> (<em>int</em>) – Apply decimation in time. Note this feature does not check for
+aliasing effects.</p></li>
+<li><p><strong>rebalance_classes</strong> (<em>bool</em>) – Apply rejection sampling to oversample underrepresented classes.
+Defaults to False.</p></li>
 </ul>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.data.Dataset.class_weights">
+<code class="sig-name descname">class_weights</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.data.Dataset.class_weights" title="Permalink to this definition">¶</a></dt>
+<dd><p>Weights take class proportions into account.</p>
 </dd></dl>
 
 </dd></dl>
 
 </div>
-<div class="section" id="module-mneflow.utils">
-<span id="mneflow-utils"></span><h2>mneflow.utils<a class="headerlink" href="#module-mneflow.utils" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="mneflow-utils">
+<h2>mneflow.utils<a class="headerlink" href="#mneflow-utils" title="Permalink to this headline">¶</a></h2>
 <p>Specifies utility functions.</p>
 <p>&#64;author: Ivan Zubarev, <a class="reference external" href="mailto:ivan&#46;zubarev&#37;&#52;&#48;aalto&#46;fi">ivan<span>&#46;</span>zubarev<span>&#64;</span>aalto<span>&#46;</span>fi</a></p>
-<dl class="py function">
-<dt id="mneflow.utils.cont_split_indices">
-<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">cont_split_indices</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">X</span></em>, <em class="sig-param"><span class="n">test_size</span><span class="o">=</span><span class="default_value">0.1</span></em>, <em class="sig-param"><span class="n">test_segments</span><span class="o">=</span><span class="default_value">5</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.cont_split_indices" title="Permalink to this definition">¶</a></dt>
-<dd><p>X - 3d data array.</p>
+<dl class="py class">
+<dt>
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">MetaData</code></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Class containing all metadata required to run model training, prediction,
+and evaluation. Produced by mneflow.produce_tfrecords, saved to “path” and
+can be restored if you need to rerun training on existing tfrecords.</p>
+<p>See mneflow.utils.load_meta() docstring.</p>
+<dl class="py attribute">
+<dt>
+<code class="sig-name descname">path</code></dt>
+<dd><p>A path where the output TFRecord (path + /tfrecrods/) files,
+models (path + /models/), and the corresponding metadata
+file (path + data_id + meta.pkl) will be stored.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt>
+<code class="sig-name descname">data_id</code></dt>
+<dd><p>Filename prefix for the output files and the metadata file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt>
+<code class="sig-name descname">input_type</code></dt>
+<dd><p>Type of input data.</p>
+<p>‘trials’ - treats each of n inputs as an iid sample, produces dataset
+with dimensions (n, 1, t, ch)</p>
+<p>‘seq’ - treats each of n inputs as a seqence of shorter segments,
+produces dataset with dimensions (n, seq_length, segment, ch)</p>
+<p>‘continuous’ - treats inputs as a single continuous sequence,
+produces dataset with dimensions
+(n*(t-segment)//aug_stride, 1, segment, ch)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str {‘trials’, ‘continuous’, ‘seq’, ‘fconn’}</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt>
+<code class="sig-name descname">target_type</code></dt>
+<dd><p>Type of target variable.</p>
+<p>‘int’ - for classification,
+‘float’ - for regression problems.
+‘signal’ - regression or classification a continuous (possbily multichannel)
+data. Requires “transform_targets” function to be applied to target variables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str {‘int’, ‘float’}</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt>
+<code class="sig-name descname">n_folds</code></dt>
+<dd><p>Number of folds to split the data for training/validation/testing.
+One fold of the n_folds is used as a validation set.
+If test_set == ‘holdout’ generates one extra fold
+used as test set. Defaults to 5</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>int, optional</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt>
+<code class="sig-name descname">test_set</code></dt>
+<dd><p>Defines if a separate holdout test set is required.
+‘holdout’ saves 50% of the validation set
+‘loso’ produces an addtional trfrecord so that each input file can
+be used as a test test in leave-one-subject-out cross-validation.
+None does not produce a separate test set.
+Defaults to None.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str {‘holdout’, ‘loso’, None}, optional</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt>
+<code class="sig-name descname">fs</code></dt>
+<dd><p>Sampling frequency, required only if inputs are not mne.Epochs</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>float, optional</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Notes</p>
+<p>See mneflow.produce_tfrecords and mneflow.utils.preprocess for more
+details and availble options.</p>
+<dl class="py method">
+<dt>
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><span class="sig-paren">)</span></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt>
+<code class="sig-name descname">restore_model</code><span class="sig-paren">(</span><span class="sig-paren">)</span></dt>
+<dd><p>Restored previously saved model from metadata.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt>
+<code class="sig-name descname">save</code><span class="sig-paren">(</span><span class="sig-paren">)</span></dt>
+<dd><p>Saves the metadata to self.data[‘path’] + self.data[‘data_id’]</p>
+</dd></dl>
+
+<dl class="py method">
+<dt>
+<code class="sig-name descname">update</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">preprocessing</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">train_params</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">model_specs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">patterns</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span></dt>
+<dd><p>Updates metadata file</p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py function">
-<dt id="mneflow.utils.import_data">
-<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">import_data</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">inp</span></em>, <em class="sig-param"><span class="n">picks</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">array_keys</span><span class="o">=</span><span class="default_value">{'X': 'X', 'y': 'y'}</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.import_data" title="Permalink to this definition">¶</a></dt>
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">cont_split_indices</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data</span></em>, <em class="sig-param"><span class="n">events</span></em>, <em class="sig-param"><span class="n">n_folds</span><span class="o">=</span><span class="default_value">5</span></em>, <em class="sig-param"><span class="n">segments_per_fold</span><span class="o">=</span><span class="default_value">10</span></em><span class="sig-paren">)</span></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>ndarray</em>) – 3d data array (n, ch, t)</p></li>
+<li><p><strong>n_folds</strong> (<em>int</em>) – number of folds</p></li>
+<li><p><strong>segments_per_fold</strong> (<em>int</em>) – minimum number of different (non-contiguous)
+data segments in each fold</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>data</strong> (<em>ndarray</em>) – 3d data array (n, ch, t)</p></li>
+<li><p><strong>events</strong> (<em>nd.array</em>) – labels</p></li>
+<li><p><strong>folds</strong> (<em>list of ndarrays</em>) – indices for each fold</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">cosine_similarity</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">y_true</span></em>, <em class="sig-param"><span class="n">y_pred</span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">import_data</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">inp</span></em>, <em class="sig-param"><span class="n">array_keys</span><span class="o">=</span><span class="default_value">{'X': 'X', 'y': 'y'}</span></em><span class="sig-paren">)</span></dt>
 <dd><p>Import epoch data into <cite>X, y</cite> data/target pairs.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>inp</strong> (<em>list</em><em>, </em><em>mne.epochs.Epochs</em><em>, </em><em>str</em>) – List of mne.epochs.Epochs or strings with filenames. If input
-is a single string or Epochs object, it is first converted into
-a list.</p></li>
-<li><p><strong>picks</strong> (<em>ndarray of int</em><em>, </em><em>optional</em>) – Indices of channels to pick for processing. If None, all
-channels are used.</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="simple">
-<dt>array_keys<span class="classifier">dict, optional</span></dt><dd><p>Dictionary mapping {‘X’: ‘data_matrix’, ‘y’: ‘labels’},
+<li><p><strong>inp</strong> (<em>list</em><em>, </em><em>mne.epochs.Epochs</em><em>, </em><em>str</em>) – List of mne.epochs.Epochs or strings with filenames.
+If input is a single string or Epochs object, it is first converted
+into a list.</p></li>
+<li><p><strong>array_keys</strong> (<em>dict</em><em>, </em><em>optional</em>) – Dictionary mapping {‘X’: ‘data_matrix’, ‘y’: ‘labels’},
 where ‘data_matrix’ and ‘labels’ are names of the corresponding
 variables, if the input is paths to .mat or .npz files.
-Defaults to {‘X’: ‘X’, ‘y’: ‘y’}</p>
+Defaults to {‘X’: ‘X’, ‘y’: ‘y’}</p></li>
+</ul>
 </dd>
-</dl>
-<dl class="field-list simple">
-<dt class="field-odd">Returns</dt>
-<dd class="field-odd"><p><p><strong>data, targets</strong> – data.shape =  [n_epochs, channels, times]</p>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><p><strong>data, targets</strong> – data.shape =  [n_epochs, channels, times]</p>
 <p>targets.shape =  [n_epochs, y_shape]</p>
 </p>
 </dd>
-<dt class="field-even">Return type</dt>
-<dd class="field-even"><p>ndarray</p>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt id="mneflow.utils.load_meta">
-<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">load_meta</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fname</span></em>, <em class="sig-param"><span class="n">data_id</span><span class="o">=</span><span class="default_value">''</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.load_meta" title="Permalink to this definition">¶</a></dt>
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">load_meta</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">path</span></em>, <em class="sig-param"><span class="n">data_id</span><span class="o">=</span><span class="default_value">''</span></em><span class="sig-paren">)</span></dt>
 <dd><p>Load a metadata file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>fname</strong> (<em>str</em>) – Path to TFRecord folder</p>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path to TFRecord folder</p>
 </dd>
 <dt class="field-even">Returns</dt>
 <dd class="field-even"><p><strong>meta</strong> – Metadata file</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>dict</p>
+<dd class="field-odd"><p><a class="reference internal" href="#mneflow.utils.MetaData" title="mneflow.utils.MetaData">MetaData</a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt id="mneflow.utils.partition">
-<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">partition</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data</span></em>, <em class="sig-param"><span class="n">test_indices</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.partition" title="Permalink to this definition">¶</a></dt>
-<dd><p>Partition continuous data according to ranges defined by <cite>test_indices</cite>.</p>
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">preprocess</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data</span></em>, <em class="sig-param"><span class="n">events</span></em>, <em class="sig-param"><span class="n">sample_counter</span></em>, <em class="sig-param"><span class="n">input_type</span><span class="o">=</span><span class="default_value">'trials'</span></em>, <em class="sig-param"><span class="n">n_folds</span><span class="o">=</span><span class="default_value">5</span></em>, <em class="sig-param"><span class="n">scale</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">scale_interval</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">crop_baseline</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">segment</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">aug_stride</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">seq_length</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">segment_y</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span></dt>
+<dd><p>Preprocess input data.
+Applies scaling, segmenting/augmentation,
+and defines the split into training/validation folds.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>data</strong> (<em>list of ndarray</em>) – Data array to be partitioned.</p></li>
-<li><p><strong>test_indices</strong> (<em>list</em>) – Contains pairs of values [start, end], indicating where the data
-will be partitioned.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p><strong>x_train, x_test</strong> – The data partitioned into two sets.</p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>lists of ndarrays</p>
-</dd>
-<dt class="field-even">Raises</dt>
-<dd class="field-even"><ul class="simple">
-<li><p><strong>ValueError</strong> – If the shape of`test_indices` is incorrect.:</p></li>
-<li><p><strong>AttributeError</strong> – If <cite>test_indices</cite> is empty.:</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt id="mneflow.utils.preprocess">
-<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">preprocess</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data</span></em>, <em class="sig-param"><span class="n">events</span></em>, <em class="sig-param"><span class="n">sample_counter</span></em>, <em class="sig-param"><span class="n">input_type</span><span class="o">=</span><span class="default_value">'trials'</span></em>, <em class="sig-param"><span class="n">n_folds</span><span class="o">=</span><span class="default_value">1</span></em>, <em class="sig-param"><span class="n">scale</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">fs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">scale_interval</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">crop_baseline</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">decimate</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">bp_filter</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">picks</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">segment</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">aug_stride</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">seq_length</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">transform_targets</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.preprocess" title="Permalink to this definition">¶</a></dt>
-<dd><p>Preprocess input data.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>np.array</em><em>, </em><em>(</em><em>n_epochs</em><em>, </em><em>n_channels</em><em>, </em><em>n_times</em><em>)</em>) – input data array</p></li>
+<li><p><strong>events</strong> (<em>np.array</em>) – input array of target variables (n_epochs, …)</p></li>
+<li><p><strong>input_type</strong> (<em>str {trials</em><em>, </em><em>continuous}</em>) – See produce_tfrecords.</p></li>
+<li><p><strong>n_folds</strong> (<em>int</em>) – Number of folds defining the train/validation/test split.</p></li>
+<li><p><strong>sample_counter</strong> (<em>int</em>) – Number of traning examples in the dataset</p></li>
 <li><p><strong>scale</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to perform scaling to baseline. Defaults to False.</p></li>
 <li><p><strong>scale_interval</strong> (<em>NoneType</em><em>, </em><em>tuple of ints</em><em> or </em><em>floats</em><em>,  </em><em>optional</em>) – Baseline definition. If None (default) scaling is
 performed based on all timepoints of the epoch.
@@ -345,12 +656,24 @@ If tuple, than baseline is data[tuple[0] : tuple[1]].
 Only used if scale == True.</p></li>
 <li><p><strong>crop_baseline</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to crop baseline specified by ‘scale_interval’
 after scaling (defaults to False).</p></li>
+<li><p><strong>segment</strong> (<em>bool</em><em>, </em><em>int</em><em>, </em><em>optional</em>) – If specified, splits the data into smaller segments of specified
+number of time points. Defaults to False</p></li>
+<li><p><strong>aug_stride</strong> (<em>int</em><em>, </em><em>optional</em>) – If specified, sets the stride (in time points) for ‘segment’
+allowing to extract overalapping segments. Has to be &lt;= segment.
+Only applied within each fold to prevent data leakeage. Only applied
+if ‘segment’ is not False. If None, then it is set equal to length of
+the ‘segment’ returning non-overlapping segments.
+Defaults to None.</p></li>
+<li><p><strong>seq_length</strong> (<em>int</em><em> or </em><em>None</em>) – Length of segment sequence.</p></li>
+<li><p><strong>segment_y</strong> (<em>bool</em>) – whether to segment target variable in the same way as data. Only used
+if segment != False</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
 <dd class="field-even"><p><ul class="simple">
-<li><p><strong>x_train, x_val</strong> (<em>ndarrays</em>) – Data arrays of dimensions [n_epochs, n_seq, n_ch, n_t]</p></li>
-<li><p><strong>y_train, y_val</strong> (<em>ndarrays</em>) – Label arrays of dimensions [n_epochs, n_seq, n_targets]</p></li>
+<li><p><strong>X</strong> (<em>np.array</em>) – Data array of dimensions [n_epochs, n_seq, n_t, n_ch]</p></li>
+<li><p><strong>Y</strong> (<em>np.array</em>) – Label arrays of dimensions [n_epochs, <a href="#id1"><span class="problematic" id="id2">*</span></a>(y_shape)]</p></li>
+<li><p><strong>folds</strong> (<em>list of np.arrays</em>)</p></li>
 </ul>
 </p>
 </dd>
@@ -358,8 +681,30 @@ after scaling (defaults to False).</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt id="mneflow.utils.produce_labels">
-<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">produce_labels</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">y</span></em>, <em class="sig-param"><span class="n">return_stats</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.produce_labels" title="Permalink to this definition">¶</a></dt>
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">preprocess_realtime</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data</span></em>, <em class="sig-param"><span class="n">decimate</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">picks</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">bp_filter</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">fs</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span></dt>
+<dd><p>Implements minimal prprocessing for convenitent real-time use.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>np.array</em><em>, </em><em>(</em><em>n_epochs</em><em>, </em><em>n_channels</em><em>, </em><em>n_times</em><em>)</em>) – input data array</p></li>
+<li><p><strong>picks</strong> (<em>np.array</em>) – indices of channels to pick</p></li>
+<li><p><strong>decimate</strong> (<em>int</em>) – decimation factor for downsampling</p></li>
+<li><p><strong>bp_filter</strong> (<em>tuple of ints</em>) – Band-pass filter cutoff frequencies</p></li>
+<li><p><strong>fs</strong> (<em>int</em>) – sampling frequency. Only used if bp_filter is used</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">preprocess_targets</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">y</span></em>, <em class="sig-param"><span class="n">scale_y</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">transform_targets</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">produce_labels</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">y</span></em>, <em class="sig-param"><span class="n">return_stats</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span></dt>
 <dd><p>Produce labels array from e.g. event (unordered) trigger codes.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -372,8 +717,8 @@ after scaling (defaults to False).</p></li>
 <dd class="field-even"><p><ul class="simple">
 <li><p><strong>inv</strong> (<em>ndarray, shape (n_epochs)</em>) – Ordered class labels.</p></li>
 <li><p><strong>total_counts</strong> (<em>int, optional</em>) – Total count of events.</p></li>
-<li><p><strong>class_proportions</strong> (<em>dict, optional</em>) – {new_class: proportion of new_class1 in the dataset}.</p></li>
-<li><p><strong>orig_classes</strong> (<em>dict, optional</em>) – Mapping {new_class:old_class}.</p></li>
+<li><p><strong>class_proportions</strong> (<em>dict, optional</em>) – {new_class: proportion of new_class in the dataset}.</p></li>
+<li><p><strong>orig_classes</strong> (<em>dict, optional</em>) – Mapping {new_class_label: old_class_label}.</p></li>
 </ul>
 </p>
 </dd>
@@ -381,8 +726,8 @@ after scaling (defaults to False).</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt id="mneflow.utils.produce_tfrecords">
-<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">produce_tfrecords</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">inputs</span></em>, <em class="sig-param"><span class="n">savepath</span></em>, <em class="sig-param"><span class="n">out_name</span></em>, <em class="sig-param"><span class="n">fs</span><span class="o">=</span><span class="default_value">1.0</span></em>, <em class="sig-param"><span class="n">input_type</span><span class="o">=</span><span class="default_value">'trials'</span></em>, <em class="sig-param"><span class="n">target_type</span><span class="o">=</span><span class="default_value">'float'</span></em>, <em class="sig-param"><span class="n">array_keys</span><span class="o">=</span><span class="default_value">{'X': 'X', 'y': 'y'}</span></em>, <em class="sig-param"><span class="n">n_folds</span><span class="o">=</span><span class="default_value">5</span></em>, <em class="sig-param"><span class="n">scale</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">scale_interval</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">crop_baseline</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">segment</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">aug_stride</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">seq_length</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">picks</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">overwrite</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">test_set</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">bp_filter</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">decimate</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">combine_events</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">transform_targets</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.produce_tfrecords" title="Permalink to this definition">¶</a></dt>
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">produce_tfrecords</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">inputs</span></em>, <em class="sig-param"><span class="n">path</span></em>, <em class="sig-param"><span class="n">data_id</span></em>, <em class="sig-param"><span class="n">fs</span><span class="o">=</span><span class="default_value">1.0</span></em>, <em class="sig-param"><span class="n">input_type</span><span class="o">=</span><span class="default_value">'trials'</span></em>, <em class="sig-param"><span class="n">target_type</span><span class="o">=</span><span class="default_value">'int'</span></em>, <em class="sig-param"><span class="n">array_keys</span><span class="o">=</span><span class="default_value">{'X': 'X', 'y': 'y'}</span></em>, <em class="sig-param"><span class="n">n_folds</span><span class="o">=</span><span class="default_value">5</span></em>, <em class="sig-param"><span class="n">scale</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">scale_interval</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">crop_baseline</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">segment</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">aug_stride</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">seq_length</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">picks</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">overwrite</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">test_set</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">bp_filter</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">decimate</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">combine_events</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">transform_targets</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">scale_y</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">save_as_numpy</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span></dt>
 <dd><p>Produce TFRecord files from input, apply (optional) preprocessing.</p>
 <p>Calling this function will convert the input data into TFRecords
 format that is used to effiently store and run Tensorflow models on
@@ -391,13 +736,25 @@ the data.</p>
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>inputs</strong> (<em>mne.Epochs</em><em>, </em><em>list of str</em><em>, </em><em>tuple of ndarrays</em>) – Input data.</p></li>
-<li><p><strong>savepath</strong> (<em>str</em>) – A path where the output TFRecord and corresponding metadata
+<li><p><strong>path</strong> (<em>str</em>) – A path where the output TFRecord and corresponding metadata
 files will be stored.</p></li>
-<li><p><strong>out_name</strong> (<em>str</em>) – Filename prefix for the output files.</p></li>
+<li><p><strong>data_id</strong> (<em>str</em>) – Filename prefix for the output files.</p></li>
 <li><p><strong>fs</strong> (<em>float</em><em>, </em><em>optional</em>) – Sampling frequency, required only if inputs are not mne.Epochs</p></li>
-<li><p><strong>input_type</strong> (<em>str {'trials'</em><em>, </em><em>'continuous'</em><em>, </em><em>'seq'}</em>) – Type of input data.</p></li>
-<li><p><strong>target_type</strong> (<em>str {'int'</em><em>, </em><em>'float'}</em>) – Type of target variable.
-‘int’ - for classification, ‘float’ for regression problems.</p></li>
+<li><p><strong>input_type</strong> (<em>str {'trials'</em><em>, </em><em>'continuous'</em><em>, </em><em>'seq'</em><em>, </em><em>'fconn'}</em>) – <p>Type of input data.</p>
+<p>’trials’ - treats each of n inputs as an iid sample, produces dataset
+with dimensions (n, 1, t, ch)</p>
+<p>’seq’ - treats each of n inputs as a seqence of shorter segments,
+produces dataset with dimensions (n, seq_length, segment, ch)</p>
+<p>’continuous’ - treats inputs as a single continuous sequence,
+produces dataset with dimensions (n*(t-segment)//aug_stride, 1, segment, ch)</p>
+</p></li>
+<li><p><strong>target_type</strong> (<em>str {'int'</em><em>, </em><em>'float'}</em>) – <p>Type of target variable.</p>
+<p>’int’ - for classification,
+‘float’ - for regression problems.
+‘signal’ - regression or classification a continuous (possbily multichannel)
+data. Requires “transform_targets” function to be applied to target
+variables</p>
+</p></li>
 <li><p><strong>n_folds</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of folds to split the data for training/validation/testing.
 One fold of the n_folds is used as a validation set.
 If test_set == ‘holdout’ generates one extra fold
@@ -407,14 +764,21 @@ used as test set. Defaults to 5</p></li>
 ‘loso’ saves the whole dataset in original order for
 leave-one-subject-out cross-validation.
 None does not leave a separate test set. Defaults to None.</p></li>
-<li><p><strong>segment</strong> (<em>bool</em><em>, </em><em>int</em><em>, </em><em>optional</em>) – Whether to spit the data into smaller segments of specified
-length.</p></li>
-<li><p><strong>augment</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to apply sliding window augmentation.</p></li>
-<li><p><strong>aug_stride</strong> (<em>int</em><em>, </em><em>optional</em>) – Stride of sliding window augmentation.</p></li>
 </ul>
 </dd>
 </dl>
 <dl class="simple">
+<dt>segment<span class="classifier">bool, int, optional</span></dt><dd><p>If specified, splits the data into smaller segments of specified
+number of time points. Defaults to False</p>
+</dd>
+<dt>aug_stride<span class="classifier">int, optional</span></dt><dd><p>Sliding window agumentation stride parameter.
+If specified, sets the stride (in time points) for ‘segment’
+allowing to extract overalapping segments. Has to be &lt;= segment.
+Only applied within each fold to prevent data leakeage. Only applied
+if ‘segment’ is not False. If None, then it is set equal to length of
+the ‘segment’ returning non-overlapping segments.
+Defaults to None.</p>
+</dd>
 <dt>scale<span class="classifier">bool, optional</span></dt><dd><p>Whether to perform scaling to baseline. Defaults to False.</p>
 </dd>
 </dl>
@@ -459,7 +823,7 @@ specified path.</p>
 the information about the dataset required for further
 processing with mneflow.
 Whenever the function is called the copy of metadata is also
-saved to savepath/meta.pkl so it can be restored at any time.</p>
+saved to data_path/meta.pkl so it can be restored at any time.</p>
 </dd>
 <dt class="field-even">Return type</dt>
 <dd class="field-even"><p>dict</p>
@@ -476,20 +840,34 @@ use of the corresponding mne functions is preferred.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt id="mneflow.utils.scale_to_baseline">
-<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">scale_to_baseline</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">X</span></em>, <em class="sig-param"><span class="n">baseline</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">crop_baseline</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.utils.scale_to_baseline" title="Permalink to this definition">¶</a></dt>
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">pve</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">y_true</span></em>, <em class="sig-param"><span class="n">y_pred</span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">r2_score</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">y_true</span></em>, <em class="sig-param"><span class="n">y_pred</span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">regression_metrics</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">y_true</span></em>, <em class="sig-param"><span class="n">y_pred</span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt>
+<code class="sig-prename descclassname">mneflow.utils.</code><code class="sig-name descname">scale_to_baseline</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">X</span></em>, <em class="sig-param"><span class="n">baseline</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">crop_baseline</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span></dt>
 <dd><p>Perform global scaling based on a specified baseline.</p>
-<p>Subtracts the mean and divides by the standard deviation of the
-amplitude of all channels during the baseline interval. If input
-contains 306 channels, performs separate scaling for magnetometers
-and gradiometers.</p>
+<p>Subtracts the mean of each channel and divides by the standard deviation of
+all channels during the specified baseline interval.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>X</strong> (<em>ndarray</em>) – Data array with dimensions [n_epochs, n_channels, time].</p></li>
-<li><p><strong>baseline</strong> (<em>tuple of int</em><em>, </em><em>None</em>) – Baseline definition (in samples). If baseline == None the whole
-epoch is used for scaling.</p></li>
-<li><p><strong>crop_baseline</strong> (<em>bool</em>) – Whether to crop the baseline after scaling is applied.</p></li>
+<li><p><strong>baseline</strong> (<em>tuple of int</em><em>, </em><em>None</em>) – Baseline definition (in samples). If baseline is set to None (default)
+the whole epoch is used for scaling.</p></li>
+<li><p><strong>crop_baseline</strong> (<em>bool</em>) – Whether to crop the baseline after scaling is applied. Only used if
+baseline is specified.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -547,81 +925,7 @@ layer instantiation and layer call.</p>
 <dl class="py method">
 <dt id="mneflow.layers.DeMixing.call">
 <code class="sig-name descname">call</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">x</span></em>, <em class="sig-param"><span class="n">training</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.DeMixing.call" title="Permalink to this definition">¶</a></dt>
-<dd><p>This is where the layer’s logic lives.</p>
-<p>Note here that <cite>call()</cite> method in <cite>tf.keras</cite> is little bit different
-from <cite>keras</cite> API. In <cite>keras</cite> API, you can pass support masking for
-layers as additional arguments. Whereas <cite>tf.keras</cite> has <cite>compute_mask()</cite>
-method to support masking.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inputs</strong> – <p>Input tensor, or dict/list/tuple of input tensors.
-The first positional <cite>inputs</cite> argument is subject to special rules:
-- <cite>inputs</cite> must be explicitly passed. A layer cannot have zero</p>
-<blockquote>
-<div><p>arguments, and <cite>inputs</cite> cannot be provided via the default value
-of a keyword argument.</p>
-</div></blockquote>
-<ul>
-<li><p>NumPy array or Python scalar values in <cite>inputs</cite> get cast as tensors.</p></li>
-<li><p>Keras mask metadata is only collected from <cite>inputs</cite>.</p></li>
-<li><p>Layers are built (<cite>build(input_shape)</cite> method)
-using shape info from <cite>inputs</cite> only.</p></li>
-<li><p><cite>input_spec</cite> compatibility is only checked against <cite>inputs</cite>.</p></li>
-<li><p>Mixed precision input casting is only applied to <cite>inputs</cite>.
-If a layer has tensor arguments in <cite>*args</cite> or <cite>**kwargs</cite>, their
-casting behavior in mixed precision should be handled manually.</p></li>
-<li><p>The SavedModel input specification is generated using <cite>inputs</cite> only.</p></li>
-<li><p>Integration with various ecosystem packages like TFMOT, TFLite,
-TF.js, etc is only supported for <cite>inputs</cite> and not for tensors in
-positional and keyword arguments.</p></li>
-</ul>
-</p></li>
-<li><p><strong>*args</strong> – Additional positional arguments. May contain tensors, although
-this is not recommended, for the reasons above.</p></li>
-<li><p><strong>**kwargs</strong> – <p>Additional keyword arguments. May contain tensors, although
-this is not recommended, for the reasons above.
-The following optional keyword arguments are reserved:
-- <cite>training</cite>: Boolean scalar tensor of Python boolean indicating</p>
-<blockquote>
-<div><p>whether the <cite>call</cite> is meant for training or inference.</p>
-</div></blockquote>
-<ul>
-<li><p><cite>mask</cite>: Boolean input mask. If the layer’s <cite>call()</cite> method takes a
-<cite>mask</cite> argument, its default value will be set to the mask generated
-for <cite>inputs</cite> by the previous layer (if <cite>input</cite> did come from a layer
-that generated a corresponding mask, i.e. if it came from a Keras
-layer with masking support).</p></li>
-</ul>
-</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>A tensor or list/tuple of tensors.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="mneflow.layers.DeMixing.get_config">
-<code class="sig-name descname">get_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.DeMixing.get_config" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the config of the layer.</p>
-<p>A layer config is a Python dictionary (serializable)
-containing the configuration of a layer.
-The same layer can be reinstantiated later
-(without its trained weights) from this configuration.</p>
-<p>The config of a layer does not include connectivity
-information, nor the layer class name. These are handled
-by <cite>Network</cite> (one layer of abstraction above).</p>
-<p>Note that <cite>get_config()</cite> does not guarantee to return a fresh copy of dict
-every time it is called. The callers should make a copy of the returned dict
-if they want to modify it.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns</dt>
-<dd class="field-odd"><p>Python dictionary.</p>
-</dd>
-</dl>
-</dd></dl>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -658,27 +962,6 @@ layer instantiation and layer call.</p>
 <dd><p>Dense layer currying, to apply layer to any input tensor <cite>x</cite></p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="mneflow.layers.Dense.get_config">
-<code class="sig-name descname">get_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.Dense.get_config" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the config of the layer.</p>
-<p>A layer config is a Python dictionary (serializable)
-containing the configuration of a layer.
-The same layer can be reinstantiated later
-(without its trained weights) from this configuration.</p>
-<p>The config of a layer does not include connectivity
-information, nor the layer class name. These are handled
-by <cite>Network</cite> (one layer of abstraction above).</p>
-<p>Note that <cite>get_config()</cite> does not guarantee to return a fresh copy of dict
-every time it is called. The callers should make a copy of the returned dict
-if they want to modify it.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns</dt>
-<dd class="field-odd"><p>Python dictionary.</p>
-</dd>
-</dl>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -711,81 +994,69 @@ layer instantiation and layer call.</p>
 <dl class="py method">
 <dt id="mneflow.layers.LFTConv.call">
 <code class="sig-name descname">call</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">x</span></em>, <em class="sig-param"><span class="n">training</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LFTConv.call" title="Permalink to this definition">¶</a></dt>
-<dd><p>This is where the layer’s logic lives.</p>
-<p>Note here that <cite>call()</cite> method in <cite>tf.keras</cite> is little bit different
-from <cite>keras</cite> API. In <cite>keras</cite> API, you can pass support masking for
-layers as additional arguments. Whereas <cite>tf.keras</cite> has <cite>compute_mask()</cite>
-method to support masking.</p>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt id="mneflow.layers.LSTM">
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">LSTM</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">*</span><span class="n">args</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LSTM" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">keras.layers.recurrent_v2.LSTM</span></code></p>
+<dl class="py method">
+<dt id="mneflow.layers.LSTM.__init__">
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">scope</span><span class="o">=</span><span class="default_value">'lstm'</span></em>, <em class="sig-param"><span class="n">size</span><span class="o">=</span><span class="default_value">32</span></em>, <em class="sig-param"><span class="n">nonlin</span><span class="o">=</span><span class="default_value">'tanh'</span></em>, <em class="sig-param"><span class="n">dropout</span><span class="o">=</span><span class="default_value">0.0</span></em>, <em class="sig-param"><span class="n">recurrent_activation</span><span class="o">=</span><span class="default_value">'tanh'</span></em>, <em class="sig-param"><span class="n">recurrent_dropout</span><span class="o">=</span><span class="default_value">0.0</span></em>, <em class="sig-param"><span class="n">use_bias</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">unit_forget_bias</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">kernel_regularizer</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">bias_regularizer</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">return_sequences</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">stateful</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">unroll</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">args</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LSTM.__init__" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.layers.LSTM.build">
+<code class="sig-name descname">build</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">input_shape</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LSTM.build" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates the variables of the layer (optional, for subclass implementers).</p>
+<p>This is a method that implementers of subclasses of <cite>Layer</cite> or <cite>Model</cite>
+can override if they need a state-creation step in-between
+layer instantiation and layer call.</p>
+<p>This is typically used to create the weights of <cite>Layer</cite> subclasses.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inputs</strong> – <p>Input tensor, or dict/list/tuple of input tensors.
-The first positional <cite>inputs</cite> argument is subject to special rules:
-- <cite>inputs</cite> must be explicitly passed. A layer cannot have zero</p>
-<blockquote>
-<div><p>arguments, and <cite>inputs</cite> cannot be provided via the default value
-of a keyword argument.</p>
-</div></blockquote>
-<ul>
-<li><p>NumPy array or Python scalar values in <cite>inputs</cite> get cast as tensors.</p></li>
-<li><p>Keras mask metadata is only collected from <cite>inputs</cite>.</p></li>
-<li><p>Layers are built (<cite>build(input_shape)</cite> method)
-using shape info from <cite>inputs</cite> only.</p></li>
-<li><p><cite>input_spec</cite> compatibility is only checked against <cite>inputs</cite>.</p></li>
-<li><p>Mixed precision input casting is only applied to <cite>inputs</cite>.
-If a layer has tensor arguments in <cite>*args</cite> or <cite>**kwargs</cite>, their
-casting behavior in mixed precision should be handled manually.</p></li>
-<li><p>The SavedModel input specification is generated using <cite>inputs</cite> only.</p></li>
-<li><p>Integration with various ecosystem packages like TFMOT, TFLite,
-TF.js, etc is only supported for <cite>inputs</cite> and not for tensors in
-positional and keyword arguments.</p></li>
-</ul>
-</p></li>
-<li><p><strong>*args</strong> – Additional positional arguments. May contain tensors, although
-this is not recommended, for the reasons above.</p></li>
-<li><p><strong>**kwargs</strong> – <p>Additional keyword arguments. May contain tensors, although
-this is not recommended, for the reasons above.
-The following optional keyword arguments are reserved:
-- <cite>training</cite>: Boolean scalar tensor of Python boolean indicating</p>
-<blockquote>
-<div><p>whether the <cite>call</cite> is meant for training or inference.</p>
-</div></blockquote>
-<ul>
-<li><p><cite>mask</cite>: Boolean input mask. If the layer’s <cite>call()</cite> method takes a
-<cite>mask</cite> argument, its default value will be set to the mask generated
-for <cite>inputs</cite> by the previous layer (if <cite>input</cite> did come from a layer
-that generated a corresponding mask, i.e. if it came from a Keras
-layer with masking support).</p></li>
-</ul>
-</p></li>
-</ul>
+<dd class="field-odd"><p><strong>input_shape</strong> – Instance of <cite>TensorShape</cite>, or list of instances of
+<cite>TensorShape</cite> if the layer expects a list of inputs
+(one instance per input).</p>
 </dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>A tensor or list/tuple of tensors.</p>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt id="mneflow.layers.SquareSymm">
+<em class="property">class </em><code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">SquareSymm</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">*</span><span class="n">args</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.SquareSymm" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#mneflow.layers.BaseLayer" title="mneflow.layers.BaseLayer"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.layers.BaseLayer</span></code></a></p>
+<p>SquaredSymmetric Layer</p>
+<dl class="py method">
+<dt id="mneflow.layers.SquareSymm.__init__">
+<code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">scope='ssym'</em>, <em class="sig-param">size=None</em>, <em class="sig-param">nonlin=&lt;function identity&gt;</em>, <em class="sig-param">axis=1</em>, <em class="sig-param">specs={}</em>, <em class="sig-param">**args</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.SquareSymm.__init__" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt id="mneflow.layers.SquareSymm.build">
+<code class="sig-name descname">build</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">input_shape</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.SquareSymm.build" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates the variables of the layer (optional, for subclass implementers).</p>
+<p>This is a method that implementers of subclasses of <cite>Layer</cite> or <cite>Model</cite>
+can override if they need a state-creation step in-between
+layer instantiation and layer call.</p>
+<p>This is typically used to create the weights of <cite>Layer</cite> subclasses.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>input_shape</strong> – Instance of <cite>TensorShape</cite>, or list of instances of
+<cite>TensorShape</cite> if the layer expects a list of inputs
+(one instance per input).</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
-<dt id="mneflow.layers.LFTConv.get_config">
-<code class="sig-name descname">get_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.LFTConv.get_config" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the config of the layer.</p>
-<p>A layer config is a Python dictionary (serializable)
-containing the configuration of a layer.
-The same layer can be reinstantiated later
-(without its trained weights) from this configuration.</p>
-<p>The config of a layer does not include connectivity
-information, nor the layer class name. These are handled
-by <cite>Network</cite> (one layer of abstraction above).</p>
-<p>Note that <cite>get_config()</cite> does not guarantee to return a fresh copy of dict
-every time it is called. The callers should make a copy of the returned dict
-if they want to modify it.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns</dt>
-<dd class="field-odd"><p>Python dictionary.</p>
-</dd>
-</dl>
-</dd></dl>
+<dt id="mneflow.layers.SquareSymm.call">
+<code class="sig-name descname">call</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">x</span></em>, <em class="sig-param"><span class="n">training</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.SquareSymm.call" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -818,81 +1089,7 @@ layer instantiation and layer call.</p>
 <dl class="py method">
 <dt id="mneflow.layers.TempPooling.call">
 <code class="sig-name descname">call</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">x</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.TempPooling.call" title="Permalink to this definition">¶</a></dt>
-<dd><p>This is where the layer’s logic lives.</p>
-<p>Note here that <cite>call()</cite> method in <cite>tf.keras</cite> is little bit different
-from <cite>keras</cite> API. In <cite>keras</cite> API, you can pass support masking for
-layers as additional arguments. Whereas <cite>tf.keras</cite> has <cite>compute_mask()</cite>
-method to support masking.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inputs</strong> – <p>Input tensor, or dict/list/tuple of input tensors.
-The first positional <cite>inputs</cite> argument is subject to special rules:
-- <cite>inputs</cite> must be explicitly passed. A layer cannot have zero</p>
-<blockquote>
-<div><p>arguments, and <cite>inputs</cite> cannot be provided via the default value
-of a keyword argument.</p>
-</div></blockquote>
-<ul>
-<li><p>NumPy array or Python scalar values in <cite>inputs</cite> get cast as tensors.</p></li>
-<li><p>Keras mask metadata is only collected from <cite>inputs</cite>.</p></li>
-<li><p>Layers are built (<cite>build(input_shape)</cite> method)
-using shape info from <cite>inputs</cite> only.</p></li>
-<li><p><cite>input_spec</cite> compatibility is only checked against <cite>inputs</cite>.</p></li>
-<li><p>Mixed precision input casting is only applied to <cite>inputs</cite>.
-If a layer has tensor arguments in <cite>*args</cite> or <cite>**kwargs</cite>, their
-casting behavior in mixed precision should be handled manually.</p></li>
-<li><p>The SavedModel input specification is generated using <cite>inputs</cite> only.</p></li>
-<li><p>Integration with various ecosystem packages like TFMOT, TFLite,
-TF.js, etc is only supported for <cite>inputs</cite> and not for tensors in
-positional and keyword arguments.</p></li>
-</ul>
-</p></li>
-<li><p><strong>*args</strong> – Additional positional arguments. May contain tensors, although
-this is not recommended, for the reasons above.</p></li>
-<li><p><strong>**kwargs</strong> – <p>Additional keyword arguments. May contain tensors, although
-this is not recommended, for the reasons above.
-The following optional keyword arguments are reserved:
-- <cite>training</cite>: Boolean scalar tensor of Python boolean indicating</p>
-<blockquote>
-<div><p>whether the <cite>call</cite> is meant for training or inference.</p>
-</div></blockquote>
-<ul>
-<li><p><cite>mask</cite>: Boolean input mask. If the layer’s <cite>call()</cite> method takes a
-<cite>mask</cite> argument, its default value will be set to the mask generated
-for <cite>inputs</cite> by the previous layer (if <cite>input</cite> did come from a layer
-that generated a corresponding mask, i.e. if it came from a Keras
-layer with masking support).</p></li>
-</ul>
-</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>A tensor or list/tuple of tensors.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="mneflow.layers.TempPooling.get_config">
-<code class="sig-name descname">get_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.TempPooling.get_config" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the config of the layer.</p>
-<p>A layer config is a Python dictionary (serializable)
-containing the configuration of a layer.
-The same layer can be reinstantiated later
-(without its trained weights) from this configuration.</p>
-<p>The config of a layer does not include connectivity
-information, nor the layer class name. These are handled
-by <cite>Network</cite> (one layer of abstraction above).</p>
-<p>Note that <cite>get_config()</cite> does not guarantee to return a fresh copy of dict
-every time it is called. The callers should make a copy of the returned dict
-if they want to modify it.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns</dt>
-<dd class="field-odd"><p>Python dictionary.</p>
-</dd>
-</dl>
-</dd></dl>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -900,7 +1097,7 @@ if they want to modify it.</p>
 <dt id="mneflow.layers.VARConv">
 <em class="property">class </em><code class="sig-prename descclassname">mneflow.layers.</code><code class="sig-name descname">VARConv</code><span class="sig-paren">(</span><em class="sig-param"><span class="o">*</span><span class="n">args</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#mneflow.layers.BaseLayer" title="mneflow.layers.BaseLayer"><code class="xref py py-class docutils literal notranslate"><span class="pre">mneflow.layers.BaseLayer</span></code></a></p>
-<p>Stackable temporal convolutional layer, interpreatble (LF)</p>
+<p>Stackable temporal convolutional layer</p>
 <dl class="py method">
 <dt id="mneflow.layers.VARConv.__init__">
 <code class="sig-name descname">__init__</code><span class="sig-paren">(</span><em class="sig-param">scope='tconv'</em>, <em class="sig-param">size=32</em>, <em class="sig-param">nonlin=&lt;function relu&gt;</em>, <em class="sig-param">filter_length=7</em>, <em class="sig-param">pooling=2</em>, <em class="sig-param">padding='SAME'</em>, <em class="sig-param">specs={}</em>, <em class="sig-param">**args</em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv.__init__" title="Permalink to this definition">¶</a></dt>
@@ -926,81 +1123,7 @@ layer instantiation and layer call.</p>
 <dl class="py method">
 <dt id="mneflow.layers.VARConv.call">
 <code class="sig-name descname">call</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">x</span></em>, <em class="sig-param"><span class="n">training</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv.call" title="Permalink to this definition">¶</a></dt>
-<dd><p>This is where the layer’s logic lives.</p>
-<p>Note here that <cite>call()</cite> method in <cite>tf.keras</cite> is little bit different
-from <cite>keras</cite> API. In <cite>keras</cite> API, you can pass support masking for
-layers as additional arguments. Whereas <cite>tf.keras</cite> has <cite>compute_mask()</cite>
-method to support masking.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>inputs</strong> – <p>Input tensor, or dict/list/tuple of input tensors.
-The first positional <cite>inputs</cite> argument is subject to special rules:
-- <cite>inputs</cite> must be explicitly passed. A layer cannot have zero</p>
-<blockquote>
-<div><p>arguments, and <cite>inputs</cite> cannot be provided via the default value
-of a keyword argument.</p>
-</div></blockquote>
-<ul>
-<li><p>NumPy array or Python scalar values in <cite>inputs</cite> get cast as tensors.</p></li>
-<li><p>Keras mask metadata is only collected from <cite>inputs</cite>.</p></li>
-<li><p>Layers are built (<cite>build(input_shape)</cite> method)
-using shape info from <cite>inputs</cite> only.</p></li>
-<li><p><cite>input_spec</cite> compatibility is only checked against <cite>inputs</cite>.</p></li>
-<li><p>Mixed precision input casting is only applied to <cite>inputs</cite>.
-If a layer has tensor arguments in <cite>*args</cite> or <cite>**kwargs</cite>, their
-casting behavior in mixed precision should be handled manually.</p></li>
-<li><p>The SavedModel input specification is generated using <cite>inputs</cite> only.</p></li>
-<li><p>Integration with various ecosystem packages like TFMOT, TFLite,
-TF.js, etc is only supported for <cite>inputs</cite> and not for tensors in
-positional and keyword arguments.</p></li>
-</ul>
-</p></li>
-<li><p><strong>*args</strong> – Additional positional arguments. May contain tensors, although
-this is not recommended, for the reasons above.</p></li>
-<li><p><strong>**kwargs</strong> – <p>Additional keyword arguments. May contain tensors, although
-this is not recommended, for the reasons above.
-The following optional keyword arguments are reserved:
-- <cite>training</cite>: Boolean scalar tensor of Python boolean indicating</p>
-<blockquote>
-<div><p>whether the <cite>call</cite> is meant for training or inference.</p>
-</div></blockquote>
-<ul>
-<li><p><cite>mask</cite>: Boolean input mask. If the layer’s <cite>call()</cite> method takes a
-<cite>mask</cite> argument, its default value will be set to the mask generated
-for <cite>inputs</cite> by the previous layer (if <cite>input</cite> did come from a layer
-that generated a corresponding mask, i.e. if it came from a Keras
-layer with masking support).</p></li>
-</ul>
-</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>A tensor or list/tuple of tensors.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="mneflow.layers.VARConv.get_config">
-<code class="sig-name descname">get_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#mneflow.layers.VARConv.get_config" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the config of the layer.</p>
-<p>A layer config is a Python dictionary (serializable)
-containing the configuration of a layer.
-The same layer can be reinstantiated later
-(without its trained weights) from this configuration.</p>
-<p>The config of a layer does not include connectivity
-information, nor the layer class name. These are handled
-by <cite>Network</cite> (one layer of abstraction above).</p>
-<p>Note that <cite>get_config()</cite> does not guarantee to return a fresh copy of dict
-every time it is called. The callers should make a copy of the returned dict
-if they want to modify it.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns</dt>
-<dd class="field-odd"><p>Python dictionary.</p>
-</dd>
-</dl>
-</dd></dl>
+<dd></dd></dl>
 
 </dd></dl>
 

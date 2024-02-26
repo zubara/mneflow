@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Index &mdash; MNEflow 0.2.0 documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <title>Index &mdash; MNEflow 0.5.1 documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
   <!--[if lt IE 9]>
     <script src="_static/js/html5shiv.min.js"></script>
@@ -82,6 +82,7 @@
  | <a href="#I"><strong>I</strong></a>
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
+ | <a href="#N"><strong>N</strong></a>
  | <a href="#P"><strong>P</strong></a>
  | <a href="#R"><strong>R</strong></a>
  | <a href="#S"><strong>S</strong></a>
@@ -104,6 +105,10 @@
 </li>
         <li><a href="mneflow_api.html#mneflow.layers.LFTConv.__init__">(mneflow.layers.LFTConv method)</a>
 </li>
+        <li><a href="mneflow_api.html#mneflow.layers.LSTM.__init__">(mneflow.layers.LSTM method)</a>
+</li>
+        <li><a href="mneflow_api.html#mneflow.layers.SquareSymm.__init__">(mneflow.layers.SquareSymm method)</a>
+</li>
         <li><a href="mneflow_api.html#mneflow.layers.TempPooling.__init__">(mneflow.layers.TempPooling method)</a>
 </li>
         <li><a href="mneflow_api.html#mneflow.layers.VARConv.__init__">(mneflow.layers.VARConv method)</a>
@@ -120,6 +125,8 @@
 </li>
         <li><a href="models.html#mneflow.models.VARCNN.__init__">(mneflow.models.VARCNN method)</a>
 </li>
+        <li><a href="mneflow_api.html#mneflow.utils.MetaData.__init__">(mneflow.utils.MetaData method)</a>
+</li>
       </ul></li>
   </ul></td>
 </tr></table>
@@ -127,6 +134,10 @@
 <h2 id="B">B</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="models.html#mneflow.models.LFCNN.backprop_covxy">backprop_covxy() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.backprop_fc">backprop_fc() (mneflow.models.LFCNN method)</a>
+</li>
       <li><a href="mneflow_api.html#mneflow.layers.BaseLayer">BaseLayer (class in mneflow.layers)</a>
 </li>
       <li><a href="mneflow_api.html#mneflow.models.BaseModel">BaseModel (class in mneflow.models)</a>
@@ -138,6 +149,10 @@
 </li>
         <li><a href="mneflow_api.html#mneflow.layers.LFTConv.build">(mneflow.layers.LFTConv method)</a>
 </li>
+        <li><a href="mneflow_api.html#mneflow.layers.LSTM.build">(mneflow.layers.LSTM method)</a>
+</li>
+        <li><a href="mneflow_api.html#mneflow.layers.SquareSymm.build">(mneflow.layers.SquareSymm method)</a>
+</li>
         <li><a href="mneflow_api.html#mneflow.layers.TempPooling.build">(mneflow.layers.TempPooling method)</a>
 </li>
         <li><a href="mneflow_api.html#mneflow.layers.VARConv.build">(mneflow.layers.VARConv method)</a>
@@ -147,6 +162,8 @@
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="models.html#mneflow.models.LFCNN.build_encoder">build_encoder() (mneflow.models.LFCNN method)</a>
+</li>
       <li><a href="mneflow_api.html#mneflow.models.BaseModel.build_graph">build_graph() (mneflow.models.BaseModel method)</a>
 
       <ul>
@@ -174,6 +191,8 @@
 </li>
         <li><a href="mneflow_api.html#mneflow.layers.LFTConv.call">(mneflow.layers.LFTConv method)</a>
 </li>
+        <li><a href="mneflow_api.html#mneflow.layers.SquareSymm.call">(mneflow.layers.SquareSymm method)</a>
+</li>
         <li><a href="mneflow_api.html#mneflow.layers.TempPooling.call">(mneflow.layers.TempPooling method)</a>
 </li>
         <li><a href="mneflow_api.html#mneflow.layers.VARConv.call">(mneflow.layers.VARConv method)</a>
@@ -181,9 +200,15 @@
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="models.html#mneflow.models.LFCNN.compute_patterns">compute_patterns() (mneflow.models.LFCNN method)</a>
+      <li><a href="mneflow_api.html#mneflow.data.Dataset.class_weights">class_weights() (mneflow.data.Dataset method)</a>
 </li>
-      <li><a href="mneflow_api.html#mneflow.utils.cont_split_indices">cont_split_indices() (in module mneflow.utils)</a>
+      <li><a href="models.html#mneflow.models.LFCNN.collect_patterns">collect_patterns() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.compute_componentwise_loss">compute_componentwise_loss() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.compute_enc_patterns">compute_enc_patterns() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.compute_patterns">compute_patterns() (mneflow.models.LFCNN method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -191,12 +216,14 @@
 <h2 id="D">D</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="mneflow_api.html#mneflow.data.Dataset">Dataset (class in mneflow.data)</a>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.data_id">data_id (mneflow.utils.MetaData attribute)</a>
 </li>
-      <li><a href="models.html#mneflow.models.Deep4">Deep4 (class in mneflow.models)</a>
+      <li><a href="mneflow_api.html#mneflow.data.Dataset">Dataset (class in mneflow.data)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="models.html#mneflow.models.Deep4">Deep4 (class in mneflow.models)</a>
+</li>
       <li><a href="mneflow_api.html#mneflow.layers.DeMixing">DeMixing (class in mneflow.layers)</a>
 </li>
       <li><a href="mneflow_api.html#mneflow.layers.Dense">Dense (class in mneflow.layers)</a>
@@ -213,6 +240,8 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="mneflow_api.html#mneflow.models.BaseModel.evaluate">evaluate() (mneflow.models.BaseModel method)</a>
 </li>
+      <li><a href="models.html#mneflow.models.LFCNN.explore_components">explore_components() (mneflow.models.LFCNN method)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -222,28 +251,24 @@
       <li><a href="models.html#mneflow.models.FBCSP_ShallowNet">FBCSP_ShallowNet (class in mneflow.models)</a>
 </li>
   </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.fs">fs (mneflow.utils.MetaData attribute)</a>
+</li>
+  </ul></td>
 </tr></table>
 
 <h2 id="G">G</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="models.html#mneflow.models.LFCNN.get_component_relevances">get_component_relevances() (mneflow.models.LFCNN method)</a>
+      <li><a href="models.html#mneflow.models.LFCNN.get_config">get_config() (mneflow.models.LFCNN method)</a>
 </li>
-      <li><a href="mneflow_api.html#mneflow.layers.DeMixing.get_config">get_config() (mneflow.layers.DeMixing method)</a>
-
-      <ul>
-        <li><a href="mneflow_api.html#mneflow.layers.Dense.get_config">(mneflow.layers.Dense method)</a>
+      <li><a href="models.html#mneflow.models.LFCNN.get_output_correlations">get_output_correlations() (mneflow.models.LFCNN method)</a>
 </li>
-        <li><a href="mneflow_api.html#mneflow.layers.LFTConv.get_config">(mneflow.layers.LFTConv method)</a>
-</li>
-        <li><a href="mneflow_api.html#mneflow.layers.TempPooling.get_config">(mneflow.layers.TempPooling method)</a>
-</li>
-        <li><a href="mneflow_api.html#mneflow.layers.VARConv.get_config">(mneflow.layers.VARConv method)</a>
-</li>
-      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="models.html#mneflow.models.LFCNN.get_output_correlations">get_output_correlations() (mneflow.models.LFCNN method)</a>
+      <li><a href="models.html#mneflow.models.LFCNN.get_spectra">get_spectra() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.get_weights">get_weights() (mneflow.models.LFCNN method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -251,7 +276,7 @@
 <h2 id="I">I</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="mneflow_api.html#mneflow.utils.import_data">import_data() (in module mneflow.utils)</a>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.input_type">input_type (mneflow.utils.MetaData attribute)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -265,7 +290,7 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="mneflow_api.html#mneflow.layers.LFTConv">LFTConv (class in mneflow.layers)</a>
 </li>
-      <li><a href="mneflow_api.html#mneflow.utils.load_meta">load_meta() (in module mneflow.utils)</a>
+      <li><a href="mneflow_api.html#mneflow.layers.LSTM">LSTM (class in mneflow.layers)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -273,18 +298,15 @@
 <h2 id="M">M</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="models.html#mneflow.models.LFCNN.make_fake_evoked">make_fake_evoked() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData">MetaData (class in mneflow.utils)</a>
+</li>
       <li>
     mneflow.layers
 
       <ul>
         <li><a href="mneflow_api.html#module-mneflow.layers">module</a>
-</li>
-      </ul></li>
-      <li>
-    mneflow.utils
-
-      <ul>
-        <li><a href="mneflow_api.html#module-mneflow.utils">module</a>
 </li>
       </ul></li>
   </ul></td>
@@ -295,36 +317,50 @@
       <ul>
         <li><a href="mneflow_api.html#module-mneflow.layers">mneflow.layers</a>
 </li>
-        <li><a href="mneflow_api.html#module-mneflow.utils">mneflow.utils</a>
-</li>
       </ul></li>
+  </ul></td>
+</tr></table>
+
+<h2 id="N">N</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.n_folds">n_folds (mneflow.utils.MetaData attribute)</a>
+</li>
   </ul></td>
 </tr></table>
 
 <h2 id="P">P</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="mneflow_api.html#mneflow.utils.partition">partition() (in module mneflow.utils)</a>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.path">path (mneflow.utils.MetaData attribute)</a>
 </li>
-      <li><a href="mneflow_api.html#mneflow.models.BaseModel.plot_hist">plot_hist() (mneflow.models.BaseModel method)</a>
+      <li><a href="models.html#mneflow.models.LFCNN.patterns_cov_xx">patterns_cov_xx() (mneflow.models.LFCNN method)</a>
 </li>
-      <li><a href="models.html#mneflow.models.LFCNN.plot_out_weights">plot_out_weights() (mneflow.models.LFCNN method)</a>
+      <li><a href="models.html#mneflow.models.LFCNN.patterns_cov_xy_hat">patterns_cov_xy_hat() (mneflow.models.LFCNN method)</a>
 </li>
-      <li><a href="models.html#mneflow.models.LFCNN.plot_patterns">plot_patterns() (mneflow.models.LFCNN method)</a>
+      <li><a href="models.html#mneflow.models.LFCNN.patterns_pinv_w">patterns_pinv_w() (mneflow.models.LFCNN method)</a>
 </li>
-      <li><a href="models.html#mneflow.models.LFCNN.plot_spectra">plot_spectra() (mneflow.models.LFCNN method)</a>
+      <li><a href="models.html#mneflow.models.LFCNN.patterns_wfc_mean">patterns_wfc_mean() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.plot_combined_pattern">plot_combined_pattern() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="mneflow_api.html#mneflow.models.BaseModel.plot_confusion_matrix">plot_confusion_matrix() (mneflow.models.BaseModel method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="models.html#mneflow.models.LFCNN.plot_evoked_peaks">plot_evoked_peaks() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="mneflow_api.html#mneflow.models.BaseModel.plot_hist">plot_hist() (mneflow.models.BaseModel method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.plot_topos">plot_topos() (mneflow.models.LFCNN method)</a>
+</li>
       <li><a href="models.html#mneflow.models.LFCNN.plot_waveforms">plot_waveforms() (mneflow.models.LFCNN method)</a>
 </li>
       <li><a href="mneflow_api.html#mneflow.models.BaseModel.predict">predict() (mneflow.models.BaseModel method)</a>
 </li>
-      <li><a href="mneflow_api.html#mneflow.utils.preprocess">preprocess() (in module mneflow.utils)</a>
+      <li><a href="mneflow_api.html#mneflow.models.BaseModel.predict_sample">predict_sample() (mneflow.models.BaseModel method)</a>
 </li>
-      <li><a href="mneflow_api.html#mneflow.utils.produce_labels">produce_labels() (in module mneflow.utils)</a>
-</li>
-      <li><a href="mneflow_api.html#mneflow.utils.produce_tfrecords">produce_tfrecords() (in module mneflow.utils)</a>
+      <li><a href="mneflow_api.html#mneflow.models.BaseModel.prune_weights">prune_weights() (mneflow.models.BaseModel method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -332,7 +368,7 @@
 <h2 id="R">R</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="mneflow_api.html#mneflow.models.BaseModel.restore">restore() (mneflow.models.BaseModel method)</a>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.restore_model">restore_model() (mneflow.utils.MetaData method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -341,12 +377,18 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="mneflow_api.html#mneflow.models.BaseModel.save">save() (mneflow.models.BaseModel method)</a>
+
+      <ul>
+        <li><a href="mneflow_api.html#mneflow.utils.MetaData.save">(mneflow.utils.MetaData method)</a>
 </li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="mneflow_api.html#mneflow.utils.scale_to_baseline">scale_to_baseline() (in module mneflow.utils)</a>
-</li>
       <li><a href="mneflow_api.html#mneflow.models.BaseModel.shuffle_weights">shuffle_weights() (mneflow.models.BaseModel method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.single_component_pattern">single_component_pattern() (mneflow.models.LFCNN method)</a>
+</li>
+      <li><a href="mneflow_api.html#mneflow.layers.SquareSymm">SquareSymm (class in mneflow.layers)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -354,17 +396,27 @@
 <h2 id="T">T</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.target_type">target_type (mneflow.utils.MetaData attribute)</a>
+</li>
       <li><a href="mneflow_api.html#mneflow.layers.TempPooling">TempPooling (class in mneflow.layers)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.test_set">test_set (mneflow.utils.MetaData attribute)</a>
+</li>
       <li><a href="mneflow_api.html#mneflow.models.BaseModel.train">train() (mneflow.models.BaseModel method)</a>
+</li>
+      <li><a href="models.html#mneflow.models.LFCNN.train_encoder">train_encoder() (mneflow.models.LFCNN method)</a>
 </li>
   </ul></td>
 </tr></table>
 
 <h2 id="U">U</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="mneflow_api.html#mneflow.utils.MetaData.update">update() (mneflow.utils.MetaData method)</a>
+</li>
+  </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="mneflow_api.html#mneflow.models.BaseModel.update_log">update_log() (mneflow.models.BaseModel method)</a>
 </li>

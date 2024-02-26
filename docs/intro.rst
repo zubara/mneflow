@@ -10,14 +10,14 @@ Installation
 Dependencies
 ============
 * tensorflow > 2.1.0
-* mne < 0.19
+* mne > 0.19
 
 
 Examples
 ========
 * Data Import and `basic MNEflow pipeline <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb>`_.
-* `Regression, adjusting hyperparameters, and corss-validation <https://github.com/zubara/mneflow/blob/master/examples/regression_example.ipynb>`_.
-* `Custom network design <https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb>`_.
+* `How to build your own custom network <https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb>`_.
+* `Loading and saving mneflow models <https://github.com/zubara/mneflow/blob/master/examples/save_load.ipynb>`_.
 
 
 

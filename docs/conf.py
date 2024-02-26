@@ -22,7 +22,7 @@ copyright = '2019, Ivan Zubarev'
 author = 'Ivan Zubarev'
 
 # The full version, including alpha/beta/rc tags
-release = '0.2.0'
+release = '0.5.1'
 
 def skip(app, what, name, obj, would_skip, options):
     if name == "__init__":

@@ -1,6 +1,14 @@
 MNEflow API
 ===========
 
+mneflow.utils.MetaData class
+******************************
+
+.. autoclass:: mneflow.utils.MetaData
+    :members:
+    :undoc-members:
+
+
 mneflow.models.BaseModel class
 ******************************
 
@@ -24,6 +32,7 @@ mneflow.utils
     :members:
     :undoc-members:
     :show-inheritance:
+    :noindex: mneflow.utils.MetaData
 
 
 mneflow.layers

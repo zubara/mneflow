@@ -1,6 +1,7 @@
 *.pyc
 *.pyo
 scripts/*
+docs/_build/*
 examples/*.py
 examples/.ipynb_checkpoints/
 build
