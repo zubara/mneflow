@@ -25,11 +25,11 @@ class BaseLayer(tf.keras.layers.Layer):
         self.size = size
         self.nonlin = nonlin
         self.specs = specs
-        # self.specs.setdefault("l1_lambda", 0.)
-        # self.specs.setdefault("l2_lambda", 0.)
-        # self.specs.setdefault("l1_scope", [])
-        # self.specs.setdefault("l2_scope", [])
-        # self.specs.setdefault("maxnorm_scope", [])
+        # self.specs.setdefault('l1_lambda', 0.)
+        # self.specs.setdefault('l2_lambda', 0.)
+        # self.specs.setdefault('l1_scope', [])
+        # self.specs.setdefault('l2_scope', [])
+        # self.specs.setdefault('maxnorm_scope', [])
 
     def _set_regularizer(self):
         if self.scope in self.specs['l1_scope'] or 'weights' in self.specs['l1_scope']:
@@ -58,7 +58,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
     Fully-connected layer
     
     """
-    def __init__(self, scope="fc", size=None, nonlin=tf.identity, specs={},
+    def __init__(self, scope='fc', size=None, nonlin=tf.identity, specs={},
                  **args):
         self.scope = scope
         super(Dense, self).__init__(size=size, nonlin=nonlin, specs=specs,
@@ -97,7 +97,9 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
 
 
     def call(self, x, training=None):
-        """Dense layer currying, to apply layer to any input tensor `x`"""
+        """
+        Dense layer currying, to apply layer to any input tensor `x`
+        """
         while True:
             with tf.name_scope(self.scope):
                 if len(x.shape) > 2:  # flatten if input is not 2d array
@@ -171,7 +173,7 @@ class SquareSymm(BaseLayer):
     Spatial demixing Layer
     
     """
-    def __init__(self, scope="ssym", size=None, nonlin=tf.identity, axis=1,
+    def __init__(self, scope='ssym', size=None, nonlin=tf.identity, axis=1,
                  specs={},  **args):
         self.scope = scope
         self.axis = axis
@@ -211,7 +213,7 @@ class SquareSymm(BaseLayer):
                                          name='smx') #output
                     d2 = tf.tensordot(d1, self.w, axes=[[1], [0]],
                                          name='smx')
-
+    
                     demix = self.nonlin(d2 + self.b_in)
                     #demix = tf.transpose(demix. [0, 2, 3, 1])
                     #print(self.scope, ": output :", demix.shape)
@@ -228,7 +230,7 @@ class LFTConv(BaseLayer):
     
     """
     
-    def __init__(self, scope="tconv", size=32,  nonlin=tf.nn.relu,
+    def __init__(self, scope='tconv', size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
@@ -287,9 +289,11 @@ class LFTConv(BaseLayer):
 
 
 class VARConv(BaseLayer):
-    """Stackable temporal convolutional layer"""
+    """
+    Stackable temporal convolutional layer
+    """
     
-    def __init__(self, scope="tconv", size=32,  nonlin=tf.nn.relu,
+    def __init__(self, scope='tconv', size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
                  **args):
         self.scope = scope
@@ -351,7 +355,7 @@ class VARConv(BaseLayer):
 
 
 class TempPooling(BaseLayer):
-    def __init__(self, scope="pool", stride=2, pooling=2, specs={},
+    def __init__(self, scope='pool', stride=2, pooling=2, specs={},
                  padding='SAME', pool_type='max', **args):
         self.scope = '_'.join([pool_type, scope])
         super(TempPooling, self).__init__(size=None, nonlin=None, specs=specs,
@@ -397,7 +401,7 @@ class TempPooling(BaseLayer):
 
 
 class LSTM(tf.keras.layers.LSTM):
-    def __init__(self, scope="lstm", size=32, nonlin='tanh', dropout=0.0,
+    def __init__(self, scope='lstm', size=32, nonlin='tanh', dropout=0.0,
                  recurrent_activation='tanh', recurrent_dropout=0.0,
                  use_bias=True, unit_forget_bias=True,
                  kernel_regularizer=None, bias_regularizer=None,

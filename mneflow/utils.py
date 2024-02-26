@@ -51,9 +51,8 @@ class MetaData():
     
         'int' - for classification,
         'float' - for regression problems.
-        'signal' - regression or classification a continuous (possbily
-                   multichannel) data. Requires "transform_targets" function
-                   to apply to target variables.
+        'signal' - regression or classification a continuous (possbily multichannel) 
+        data. Requires "transform_targets" function to be applied to target variables.
     
     n_folds : int, optional
         Number of folds to split the data for training/validation/testing.
@@ -456,7 +455,7 @@ def produce_tfrecords(inputs,
                       scale_y=False,
                       save_as_numpy=False):
 
-    r"""Produce TFRecord files from input, apply (optional) preprocessing.
+    """Produce TFRecord files from input, apply (optional) preprocessing.
 
     Calling this function will convert the input data into TFRecords
     format that is used to effiently store and run Tensorflow models on
@@ -485,21 +484,19 @@ def produce_tfrecords(inputs,
         with dimensions (n, 1, t, ch)
 
         'seq' - treats each of n inputs as a seqence of shorter segments,
-                produces dataset with dimensions
-                (n, seq_length, segment, ch)
+        produces dataset with dimensions (n, seq_length, segment, ch)
 
         'continuous' - treats inputs as a single continuous sequence,
-                        produces dataset with dimensions
-                        (n*(t-segment)//aug_stride, 1, segment, ch)
+        produces dataset with dimensions (n*(t-segment)//aug_stride, 1, segment, ch)
 
     target_type : str {'int', 'float'}
         Type of target variable.
 
         'int' - for classification,
         'float' - for regression problems.
-        'signal' - regression or classification a continuous (possbily
-                   multichannel) data. Requires "transform_targets" function
-                   to apply to targets
+        'signal' - regression or classification a continuous (possbily multichannel) 
+        data. Requires "transform_targets" function to be applied to target 
+        variables
 
     n_folds : int, optional
         Number of folds to split the data for training/validation/testing.
@@ -592,7 +589,9 @@ def produce_tfrecords(inputs,
 
     Examples
     --------
-    >>> meta = mneflow.produce_tfrecords(input_paths, \**import_opts)"""
+    >>> meta = mneflow.produce_tfrecords(input_paths, \**import_opts)
+    """
+    
     assert input_type in ['trials', 'seq', 'continuous', 'fconn'], "Unknown input type."
     assert target_type in ['int', 'float', 'signal'], "Unknown target type."
     
