@@ -1045,8 +1045,9 @@ def preprocess(data, events, sample_counter,
                seq_length=None,
                segment_y=False):
     """
-    Preprocess input data. Applies scaling, segmenting/augmentation,
-     and defines the split into training/validation folds.
+    Preprocess input data. 
+    Applies scaling, segmenting/augmentation,
+    and defines the split into training/validation folds.
 
     Parameters
     ----------
