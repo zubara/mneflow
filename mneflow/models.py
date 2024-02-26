@@ -26,7 +26,7 @@ from matplotlib import patches as ptch
 from matplotlib import collections
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling, InvCov
+from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling
 from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
 from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
 from tensorflow.keras.initializers import Constant

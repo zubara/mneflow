@@ -287,10 +287,7 @@ class LFTConv(BaseLayer):
 
 
 class VARConv(BaseLayer):
-    """
-    Stackable temporal convolutional layer, interpreatble (LF)
-    
-    """
+    """Stackable temporal convolutional layer"""
     
     def __init__(self, scope="tconv", size=32,  nonlin=tf.nn.relu,
                  filter_length=7, pooling=2, padding='SAME', specs={},
