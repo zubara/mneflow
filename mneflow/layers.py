@@ -371,6 +371,8 @@ class TempPooling(BaseLayer):
 
     #@tf.function
     def call(self, x):
+        """
+        """
         if self.pool_type == 'avg':
             pooled = tf.nn.avg_pool2d(
                                 x,
