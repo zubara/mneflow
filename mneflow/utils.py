@@ -1083,11 +1083,11 @@ def preprocess(data, events, sample_counter,
         number of time points. Defaults to False
 
     aug_stride : int, optional
-        If specified, sets the stride (in time points) for \"segment\"
+        If specified, sets the stride (in time points) for 'segment'
         allowing to extract overalapping segments. Has to be <= segment.
         Only applied within each fold to prevent data leakeage. Only applied
-        if \'segment\' is not False. If None, then it is set equal to length of
-        the \'segment\' returning non-overlapping segments.
+        if 'segment' is not False. If None, then it is set equal to length of
+        the 'segment' returning non-overlapping segments.
         Defaults to None.
 
     seq_length: int or None
