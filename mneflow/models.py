@@ -71,6 +71,9 @@ class BaseModel():
             specified uses default hyperparameters for each implemented model.
         """
         self.specs = meta.model_specs
+        meta.model_specs['model_path'] = os.path.join(meta.data['path'], 
+                                                      'models')  
+        
         self.meta = meta
         self.model_path = os.path.join(meta.data['path'], 'models\\')
         if not os.path.exists(self.model_path):
@@ -101,6 +104,7 @@ class BaseModel():
         self.cv_patterns = defaultdict(dict)
         if not hasattr(self, 'scope'):
             self.scope = 'basemodel'
+
 
 
     # @classmethod
@@ -156,8 +160,8 @@ class BaseModel():
                 metrics = [metrics]
             self.params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
 
-        self.specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
-        self.specs.setdefault('unitnorm_scope', [])
+        #
+        #self.specs.setdefault('unitnorm_scope', [])
        # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
             self.params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
@@ -284,9 +288,10 @@ class BaseModel():
             self.cv_metrics.append(v_metric)
 
             if len(self.dataset.h_params['test_paths']):
-                    print('Test performance:')
                     t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
-                    print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
+                    # print("""Test performance:
+                    #       Loss: {:.4f} 
+                    #       Metric: {:.4f}""".format(t_loss, t_metric))
                     self.cv_test_losses.append(t_loss)
                     self.cv_test_metrics.append(t_metric)
 
@@ -327,9 +332,10 @@ class BaseModel():
                 self.cv_losses.append(v_loss)
                 self.cv_metrics.append(v_metric)
                 if len(self.dataset.h_params['test_paths']):
-                    print('Test performance:')
                     t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
-                    print("Updating log: test loss: {:.4f} test metric: {:.4f}".format(t_loss, t_metric))
+                    print("""Test performance:
+                          Loss: {:.4f} 
+                          Metric: {:.4f}""".format(t_loss, t_metric))
                     self.cv_test_losses.append(t_loss)
                     self.cv_test_metrics.append(t_metric)
 
@@ -354,7 +360,9 @@ class BaseModel():
                 else:
                     "Not shuffling the weights for the last fold"
 
-                print("Fold: {} Loss: {:.4f}, Metric: {:.4f}".format(jj, v_loss, v_metric))
+                print("""Fold: {} Validation performance:\n
+                      Loss: {:.4f}, 
+                      Metric: {:.4f}""".format(jj, v_loss, v_metric))
 
             metrics = self.cv_metrics
             losses = self.cv_losses
@@ -447,12 +455,23 @@ class BaseModel():
             self.update_log(rms, prefix='loso_')
 
         print("""{} with {} fold(s) completed. \n
+              Validation Performance: 
               Loss: {:.4f} +/- {:.4f}.
               Metric: {:.4f} +/- {:.4f}"""
               .format(mode, n_folds,
                       np.mean(self.cv_losses), np.std(self.cv_losses),
                       np.mean(self.cv_metrics), np.std(self.cv_metrics)))
-        self.update_log(rms=rms, prefix=mode)
+        
+        if len(self.dataset.h_params['test_paths']) > 0:
+            print("""\n
+              Test Performance: 
+              Loss: {:.4f} +/- {:.4f}.
+              Metric: {:.4f} +/- {:.4f}"""
+              .format(np.mean(self.cv_test_losses), 
+                      np.std(self.cv_test_losses),
+                      np.mean(self.cv_test_metrics), 
+                      np.std(self.cv_test_metrics)))
+        self.update_log(rms=rms, prefix=mode)    
         #return self.cv_losses, self.cv_metrics
 
 
@@ -2369,7 +2388,7 @@ class FBCSP_ShallowNet(BaseModel):
 
         meta.model_specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
-        super(FBCSP_ShallowNet, self).__init__(Dataset, meta.model_specs)
+        super(FBCSP_ShallowNet, self).__init__(meta, dataset)
 
     def build_graph(self):
 
@@ -2387,7 +2406,7 @@ class FBCSP_ShallowNet(BaseModel):
                         kernel_initializer="he_uniform",
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
-                        kernel_regularizer=k_reg.l2(self.specs['l2'])
+                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda'])
                         #kernel_constraint="maxnorm"
                         )
 
@@ -2403,7 +2422,7 @@ class FBCSP_ShallowNet(BaseModel):
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
                         #data_format="channels_first",
-                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda']))
 
 
         sconv1_out = sconv1(tconv1_out)
@@ -2416,8 +2435,8 @@ class FBCSP_ShallowNet(BaseModel):
                                   )(sconv1_out)
 
         print('pool1: ', pool1.shape)
-        fc_out = Dense(size=self.out_dim,
-                       nonlin=tf.identity)
+        fc_out = Dense(size=self.out_dim, nonlin=tf.identity,
+                            specs=self.specs)
         y_pred = fc_out(tf.keras.backend.log(pool1))
         return y_pred
 #
@@ -2494,7 +2513,7 @@ class LFLSTM(BaseModel):
         meta.model_specs.setdefault('nonlin', tf.nn.relu)
         meta.model_specs.setdefault('l1_lambda', 0.)
         meta.model_specs.setdefault('l2_lambda', 0.)
-        meta.model_specs.setdefault('l1_scope', ['fc', 'demix', 'lf_conv'])
+        meta.model_specs.setdefault('l1_scope', [])
         meta.model_specs.setdefault('l2_scope', [])
         meta.model_specs['scope'] = self.scope
         meta.model_specs.setdefault('unitnorm_scope', [])
@@ -2562,9 +2581,9 @@ class LFLSTM(BaseModel):
             self.fin_fc = DeMixing(size=self.out_dim,
                                    nonlin=tf.identity, axis=2)
         else:
-            self.fin_fc = Dense(size=self.out_dim,
-                                    nonlin=tf.identity)
-
+            self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+                                specs=self.specs)
+            
         y_pred = self.fin_fc(self.lstm_out)
         print("fin fc out:", y_pred.shape)
         return y_pred
@@ -2592,10 +2611,10 @@ class Deep4(BaseModel):
         meta.model_specs.setdefault('pool_type', 'max')
         meta.model_specs.setdefault('padding', 'SAME')
         meta.model_specs.setdefault('nonlin', tf.nn.elu)
-        meta.model_specs.setdefault('l1_lambda', 3e-4)
-        meta.model_specs.setdefault('l2_lambda', 3e-2)
+        meta.model_specs.setdefault('l1_lambda', 0)
+        meta.model_specs.setdefault('l2_lambda', 0)
         meta.model_specs.setdefault('l1_scope', [])
-        meta.model_specs.setdefault('l2_scope', ['conv', 'fc'])
+        meta.model_specs.setdefault('l2_scope', [])
         meta.model_specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
         super(Deep4, self).__init__(meta, dataset)
@@ -2614,7 +2633,7 @@ class Deep4(BaseModel):
                         kernel_initializer="he_uniform",
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
-                        kernel_regularizer=k_reg.l2(self.specs['l2'])
+                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda'])
                         #kernel_constraint="maxnorm"
                         )
         tconv1_out = tconv1(inputs)
@@ -2629,7 +2648,7 @@ class Deep4(BaseModel):
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
                         #data_format="channels_first",
-                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda']))
         sconv1_out = sconv1(tconv1_out)
         print('sconv1:',  sconv1_out.shape)
 
@@ -2652,7 +2671,7 @@ class Deep4(BaseModel):
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
                         #data_format="channels_first",
-                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda']))
 
 
         tsconv2_out = tsconv2(pool1)
@@ -2678,7 +2697,7 @@ class Deep4(BaseModel):
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
                         #data_format="channels_first",
-                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda']))
 
 
         tsconv3_out = tsconv3(pool2)
@@ -2703,7 +2722,7 @@ class Deep4(BaseModel):
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
                         #data_format="channels_first",
-                        kernel_regularizer=k_reg.l2(self.specs['l2']))
+                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda']))
 
 
         tsconv4_out = tsconv4(pool3)
@@ -2718,7 +2737,8 @@ class Deep4(BaseModel):
         print('pool4: ', pool4.shape)
 
 
-        fc_out = Dense(size=self.out_dim, nonlin=tf.identity)
+        fc_out = Dense(size=self.out_dim, nonlin=tf.identity,
+                            specs=self.specs)
         y_pred = fc_out(pool4)
         return y_pred
 #
@@ -2759,6 +2779,7 @@ class EEGNet(BaseModel):
     """
     def __init__(self, meta, dataset=None):
         self.scope = 'eegnet8'
+        meta.model_specs.setdefault('unitnorm_scope', [])
         meta.model_specs.setdefault('filter_length', 64)
         meta.model_specs.setdefault('depth_multiplier', 2)
         meta.model_specs.setdefault('n_latent', 8)
@@ -2767,9 +2788,6 @@ class EEGNet(BaseModel):
         meta.model_specs.setdefault('dropout', 0.1)
         meta.model_specs.setdefault('padding', 'same')
         meta.model_specs.setdefault('nonlin', 'elu')
-        meta.model_specs.setdefault('maxnorm_rate', 0.25)
-        #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
-        meta.model_specs.setdefault('unitnorm_scope', [])
         meta.model_specs['scope'] = self.scope
         super(EEGNet, self).__init__(meta, dataset)
         
@@ -2793,7 +2811,7 @@ class EEGNet(BaseModel):
                                        use_bias = False,
                                        depth_multiplier = self.specs['depth_multiplier'],
                                        depthwise_constraint = constraints.MaxNorm(1.))(block1)
-        block1       = BatchNormalization(axis = 1)(block1)
+        #block1       = BatchNormalization(axis = 1)(block1)
         block1       = layers.Activation(self.specs['nonlin'])(block1)
         block1       = layers.AveragePooling2D((1, self.specs['pooling']))(block1)
         print("Block 1:", block1.shape)
@@ -2801,7 +2819,7 @@ class EEGNet(BaseModel):
 
         block2       = SeparableConv2D(self.specs['n_latent']*self.specs['depth_multiplier'], (1, self.specs['filter_length']//self.specs["pooling"]),
                                        use_bias = False, padding = self.specs['padding'])(block1)
-        block2       = BatchNormalization(axis = 1)(block2)
+        #block2       = BatchNormalization(axis = 1)(block2)
 
         #print("Batchnorm 2:", block2.shape)
 
@@ -2810,7 +2828,8 @@ class EEGNet(BaseModel):
         block2       = dropoutType(self.specs['dropout'])(block2)
         print("Block 2:", block2.shape)
 
-        fin_fc = Dense(size=self.out_dim, nonlin=tf.identity)
+        fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+                            specs=self.specs)
         y_pred = fin_fc(block2)
 
         return y_pred
