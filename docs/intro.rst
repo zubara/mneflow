@@ -17,7 +17,7 @@ Examples
 ========
 * Data Import and `basic MNEflow pipeline <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb>`_.
 * `How to build your own custom network <https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb>`_.
-* `Loading and saving mneflow models <https://github.com/zubara/mneflow/blob/master/examples/save_load.ipynb>`_.
+* `Loading and saving mneflow models <https://github.com/zubara/mneflow/blob/master/examples/mneflow_save_restore.ipynb>`_.
 
 
 
