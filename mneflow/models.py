@@ -725,7 +725,7 @@ class BaseModel():
 
     def plot_confusion_matrix(self, cm=None,
                               classes=None,
-                              normalize=False,
+                              normalize=True,
                               title=None,
                               cmap=plt.cm.Blues):
         """
@@ -747,9 +747,6 @@ class BaseModel():
             classes = [' '.join(["Class", str(i)]) for i in range(cm.shape[0])]
         if normalize:
             cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-            print("Normalized confusion matrix")
-        else:
-            print('Confusion matrix, without normalization')
 
         #print(cm)
         fig, ax = plt.subplots()
@@ -778,7 +775,7 @@ class BaseModel():
                             ha="center", va="center",
                             color="white" if cm[i, j] > thresh else "black")
         fig.tight_layout()
-        fig.show()
+        #fig.show()
         return fig
 
 
