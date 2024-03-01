@@ -30,16 +30,15 @@ from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling
 from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
 from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
 from tensorflow.keras.initializers import Constant
+from tensorflow.keras import regularizers as k_reg, constraints, layers
 
 from .layers import LSTM
-from tensorflow.keras import regularizers as k_reg, constraints, layers
-import keras.backend as K
 import csv
 import os
 from .data import Dataset
 from .utils import regression_metrics, _onehot
 from collections import defaultdict
-from typing import Optional
+
 
 def uniquify(seq):
     un = []
