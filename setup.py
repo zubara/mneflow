@@ -13,7 +13,7 @@ if __name__ == '__main__':
         description='Neural networks for MEG and EEG data',
         license='BSD-3',
         url='https://github.com/zubara/mneflow',
-        version='0.5.4',
+        version='0.5.5',
         download_url='https://github.com/zubara/mneflow/archive/master.zip',
         #long_description=codecs.open('./docs/intro.rst', encoding='utf8').read(),
         long_description_content_type="text/x-rst",
