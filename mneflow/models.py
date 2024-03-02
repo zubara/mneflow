@@ -26,7 +26,7 @@ from matplotlib import patches as ptch
 from matplotlib import collections
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from .layers import LFTConv, VARConv, DeMixing, Dense, TempPooling
+from .layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling
 from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
 from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
 from tensorflow.keras.initializers import Constant
@@ -194,7 +194,7 @@ class BaseModel():
         """
 
         flat = Flatten()(self.inputs)
-        self.fc = Dense(size=self.out_dim, nonlin=tf.identity,
+        self.fc = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                         specs=self.specs)
         y_pred = self.fc(flat)
         return y_pred
@@ -606,7 +606,7 @@ class BaseModel():
         #self.specs['model_name'] = model_name
 
         #save the model
-        self.km.save(os.path.join(self.model_path, model_name))
+        self.km.save(os.path.join(self.model_path, model_name + '.hf5'))
         
 
         # #Save results from multiple folds
@@ -874,7 +874,7 @@ class LFCNN(BaseModel):
         self.dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
 
-        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+        self.fin_fc = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
 
         y_pred = self.fin_fc(self.dropout)
@@ -906,7 +906,7 @@ class LFCNN(BaseModel):
 
         #start with the output of decoder
         #elf.enc_inputs = layers.Input(self.y_shape)
-        self.enc_fc = Dense(size=self.fin_fc.w.shape[0], nonlin=tf.identity,
+        self.enc_fc = FullyConnected(size=self.fin_fc.w.shape[0], nonlin=tf.identity,
                             specs=self.specs)
         enc_tconv_activations =  self.enc_fc(self.y_pred)
         enc_tconv_activations_r = tf.reshape(enc_tconv_activations,
@@ -1344,6 +1344,7 @@ class LFCNN(BaseModel):
             print("Computing patterns: No path specified, using validation dataset (Default)")
             ds = self.dataset.val
         elif isinstance(data_path, str) or isinstance(data_path, (list, tuple)):
+            #TODO: rebalnce?
             ds = self.dataset._build_dataset(data_path,
                                              split=False,
                                              test_batch=None,
@@ -1416,28 +1417,28 @@ class LFCNN(BaseModel):
         patterns = {}
         patterns['cov_xx'] = self.patterns_cov_xx(y, weights, activations, dcov)
 
-        Sx_tconv, Sx_dmx = self.patterns_cov_xy_hat(X, y, activations, weights)
-        Sx_tconv_ccm = []
-        #Sx_dmx_ccm = []
-        Sx_fc_ccm = []
-        patterns_cxy = []
-        for class_y in range(self.out_dim):
-            class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
-            Sx_tconv_ccm.append(Sx_tconv[class_ind, ...].mean(0))
-            #Sx_dmx_ccm.append(Sx_dmx[class_ind, ...].mean(0, keepdims=True))
-            #a = activations['tconv'].numpy()[class_ind, ...].mean(0)*weights['out_weights'][None, ..., class_y]
-            Sx_fc_ccm.append(activations['fc'].numpy()[class_ind, ...].mean(0, keepdims=True))
-            # patterns_cxy.append(np.dot(dcov['class_conditional'][class_y],
-            #                                Sx_dmx[class_ind, ...].mean(0)))
-            #patterns_cxy.append(np.dot(dcov['input_spatial'],
-            #                            Sx_dmx[class_ind, ...].mean(0)))
-        ccms = {}
-        ccms['tconv'] = np.concatenate(Sx_tconv_ccm, 0)
+        Sx_tconv, Sx_dmx = None, None#self.patterns_cov_xy_hat(X, y, activations, weights)
+        # Sx_tconv_ccm = []
+        # #Sx_dmx_ccm = []
+        # Sx_fc_ccm = []
+        # patterns_cxy = []
+        # for class_y in range(self.out_dim):
+        #     class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
+        #     Sx_tconv_ccm.append(Sx_tconv[class_ind, ...].mean(0))
+        #     #Sx_dmx_ccm.append(Sx_dmx[class_ind, ...].mean(0, keepdims=True))
+        #     #a = activations['tconv'].numpy()[class_ind, ...].mean(0)*weights['out_weights'][None, ..., class_y]
+        #     Sx_fc_ccm.append(activations['fc'].numpy()[class_ind, ...].mean(0, keepdims=True))
+        #     # patterns_cxy.append(np.dot(dcov['class_conditional'][class_y],
+        #     #                                Sx_dmx[class_ind, ...].mean(0)))
+        #     #patterns_cxy.append(np.dot(dcov['input_spatial'],
+        #     #                            Sx_dmx[class_ind, ...].mean(0)))
+        # ccms = {}
+        # ccms['tconv'] = np.concatenate(Sx_tconv_ccm, 0)
         #ccms['dmx'] = np.concatenate(Sx_dmx_ccm, 0)
-        ccms['fc'] = np.concatenate(Sx_fc_ccm, 0)
+        #ccms['fc'] = np.concatenate(Sx_fc_ccm, 0)
 
 
-        patterns['cov_xy'] = Sx_dmx
+        #patterns['cov_xy'] = Sx_dmx
         patterns['pinv_w'] = self.patterns_pinv_w(y, weights, activations, dcov).mean(-1)
 
         patterns['wfc_mean'] = self.patterns_wfc_mean(y, weights, activations, dcov)
@@ -1446,7 +1447,7 @@ class LFCNN(BaseModel):
         patterns_struct['weights'] = weights
         patterns_struct['spectra'] = spectra
         patterns_struct['dcov'] = dcov
-        patterns_struct['ccms'] = ccms
+        patterns_struct['ccms'] = {}#ccms
         patterns_struct['patterns'] = patterns
 
         #compute the effect of removing each latent component on the cost function
@@ -2345,10 +2346,10 @@ class VARCNN(BaseModel):
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
 
-        #fc1 = Dense(size=128, nonlin=tf.nn.elu,
+        #fc1 = FullyConnected(size=128, nonlin=tf.nn.elu,
         #                    specs=self.specs)(dropout)
 
-        self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+        self.fin_fc = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
 
         y_pred = self.fin_fc(dropout)
@@ -2431,7 +2432,7 @@ class FBCSP_ShallowNet(BaseModel):
                                   )(sconv1_out)
 
         print('pool1: ', pool1.shape)
-        fc_out = Dense(size=self.out_dim, nonlin=tf.identity,
+        fc_out = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
         y_pred = fc_out(tf.keras.backend.log(pool1))
         return y_pred
@@ -2577,7 +2578,7 @@ class LFLSTM(BaseModel):
             self.fin_fc = DeMixing(size=self.out_dim,
                                    nonlin=tf.identity, axis=2)
         else:
-            self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+            self.fin_fc = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                                 specs=self.specs)
             
         y_pred = self.fin_fc(self.lstm_out)
@@ -2733,7 +2734,7 @@ class Deep4(BaseModel):
         print('pool4: ', pool4.shape)
 
 
-        fc_out = Dense(size=self.out_dim, nonlin=tf.identity,
+        fc_out = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
         y_pred = fc_out(pool4)
         return y_pred
@@ -2824,7 +2825,7 @@ class EEGNet(BaseModel):
         block2       = dropoutType(self.specs['dropout'])(block2)
         print("Block 2:", block2.shape)
 
-        fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+        fin_fc = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
         y_pred = fin_fc(block2)
 
@@ -2873,7 +2874,7 @@ class EEGNet(BaseModel):
 #             noise_shape=None
 #         )(self.pooled)
 
-#         self.fin_fc = Dense(size=self.out_dim, nonlin=tf.identity,
+#         self.fin_fc = FullyConnected(size=self.out_dim, nonlin=tf.identity,
 #                             specs=self.specs)
 
 #         y_pred = self.fin_fc(dropout)

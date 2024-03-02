@@ -167,9 +167,10 @@ class Dataset(object):
             train_dataset = dataset.filter(self._cv_train_fold_filter)
             val_dataset =  dataset.filter(self._cv_val_fold_filter)
 
-            if rebalance_classes:
+            if self.h_params['rebalance_classes']:
                 train_dataset = self._resample(train_dataset)
                 val_dataset = self._resample(val_dataset)
+                print("Rebalancing Train and Val")
 
             #batch
             if not test_batch:
@@ -192,8 +193,10 @@ class Dataset(object):
         else:
             #print(dataset)
             #batch
-            if rebalance_classes:
+            if self.h_params['rebalance_classes']:
                 dataset = self._resample(dataset)
+                print("Rebalancing unsplit dataset")
+                print()
             if np.any(['train' in tp for tp in path]):
                 size = self.h_params['train_size']
             else:

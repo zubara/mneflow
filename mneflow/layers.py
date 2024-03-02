@@ -51,7 +51,7 @@ class BaseLayer(tf.keras.layers.Layer):
         return constr
 
 
-class Dense(BaseLayer, tf.keras.layers.Layer):
+class FullyConnected(BaseLayer, tf.keras.layers.Layer):
 
 
     """
@@ -61,7 +61,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
     def __init__(self, scope='fc', size=None, nonlin=tf.identity, specs={},
                  **args):
         self.scope = scope
-        super(Dense, self).__init__(size=size, nonlin=nonlin, specs=specs,
+        super(FullyConnected, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
@@ -73,7 +73,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
         # return config
 
     def build(self, input_shape):
-        super(Dense, self).build(input_shape)
+        super(FullyConnected, self).build(input_shape)
         # print(input_shape)
         self.flatsize = np.prod(input_shape[1:])
         #print(self.scope, ':::', )
@@ -98,7 +98,7 @@ class Dense(BaseLayer, tf.keras.layers.Layer):
 
     def call(self, x, training=None):
         """
-        Dense layer currying, to apply layer to any input tensor `x`
+        FullyConnected layer currying, to apply layer to any input tensor `x`
         """
         while True:
             with tf.name_scope(self.scope):
