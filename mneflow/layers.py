@@ -11,7 +11,7 @@ Defines mneflow.layers for mneflow.models.
 import tensorflow as tf
 from tensorflow.keras.initializers import Constant
 from tensorflow.keras.activations import relu
-from tensorflow.keras import constraints as k_con, regularizers as k_reg
+from tensorflow.keras import constraints as k_con, regularizers as k_reg, saving
 # import tensorflow.compat.v1 as tf
 # tf.disable_v2_behavior()
 import numpy as np
@@ -50,7 +50,7 @@ class BaseLayer(tf.keras.layers.Layer):
             constr = None
         return constr
 
-
+@saving.register_keras_serializable(package="mneflow")
 class FullyConnected(BaseLayer, tf.keras.layers.Layer):
 
 
@@ -66,11 +66,19 @@ class FullyConnected(BaseLayer, tf.keras.layers.Layer):
         self.constraint = self._set_constraints()
         self.reg = self._set_regularizer()
 
-    # def get_config(self):
-    #     config = self.get_config()
-    #     config.update({'scope': self.scope, 'size': self.size,
-    #                    'nonlin': self.nonlin})
-        # return config
+    def get_config(self):
+        base_config = super(FullyConnected, self).get_config()
+        config = {'scope': self.scope, 'size': self.size,
+                  'nonlin': self.nonlin, 'specs': self.specs}
+        
+        return {**base_config, **config}
+    
+    @classmethod
+    def from_config(cls, config):
+        nonlin_config = config.pop("nonlin")
+        scope = config.pop("scope")
+        nonlin = saving.deserialize_keras_object(nonlin_config)
+        return cls(nonlin, **config)
 
     def build(self, input_shape):
         super(FullyConnected, self).build(input_shape)
@@ -109,7 +117,7 @@ class FullyConnected(BaseLayer, tf.keras.layers.Layer):
                 #print(self.scope, ": output :", tmp.shape)
                 return tmp
 
-
+@saving.register_keras_serializable(package="mneflow")
 class DeMixing(BaseLayer):
     """
     Spatial demixing Layer
@@ -123,11 +131,19 @@ class DeMixing(BaseLayer):
         super(DeMixing, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
 
-    # def get_config(self):
-    #     config = super(DeMixing, self).get_config()
-    #     config.update({'scope': self.scope, 'size': self.size,
-    #                    'nonlin': self.nonlin, 'axis': self.axis})
-    #     return config
+    def get_config(self):
+        config = super(DeMixing, self).get_config()
+        config.update({'scope': self.scope, 'size': self.size,
+                        'nonlin': self.nonlin, 'axis': self.axis, 
+                        'specs':self.specs})
+        return config
+    
+    @classmethod
+    def from_config(cls, config):
+        nonlin_config = config.pop("nonlin")
+        scope = config.pop("scope")
+        nonlin = saving.deserialize_keras_object(nonlin_config)
+        return cls(nonlin, **config)
 
     def build(self, input_shape):
 
@@ -167,7 +183,7 @@ class DeMixing(BaseLayer):
                 except(AttributeError):
                     input_shape = x.shape
                     self.build(input_shape)
-
+@saving.register_keras_serializable(package="mneflow")
 class SquareSymm(BaseLayer):
     """
     SquaredSymmetric Layer
@@ -180,7 +196,20 @@ class SquareSymm(BaseLayer):
         super(SquareSymm, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
 
-
+    def get_config(self):
+        config = super(SquareSymm, self).get_config()
+        config.update({'scope': self.scope, 'size': self.size,
+                        'nonlin': self.nonlin, 'axis': self.axis, 
+                        'specs':self.specs})
+        return config
+    
+    @classmethod
+    def from_config(cls, config):
+        nonlin_config = config.pop("nonlin")
+        scope = config.pop("scope")
+        nonlin = saving.deserialize_keras_object(nonlin_config)
+        return cls(nonlin, **config)
+    
     def build(self, input_shape):
 
         super(SquareSymm, self).build(input_shape)
@@ -222,7 +251,7 @@ class SquareSymm(BaseLayer):
                     input_shape = x.shape
                     self.build(input_shape)
                     
-
+@saving.register_keras_serializable(package="mneflow")
 class LFTConv(BaseLayer):
     """
     Stackable temporal convolutional layer, interpreatble (LF)
@@ -239,13 +268,21 @@ class LFTConv(BaseLayer):
         self.filter_length = filter_length
         self.padding = padding
 
-    # def get_config(self):
+    def get_config(self):
 
-    #     config = super(LFTConv, self).get_config()
-    #     config.update({'scope': self.scope,
-    #                    'filter_length': self.filter_length,
-    #                    'nonlin': self.nonlin, 'padding': self.padding})
-    #    return config
+        config = super(LFTConv, self).get_config()
+        config.update({'scope': self.scope,
+                        'filter_length': self.filter_length,
+                        'nonlin': self.nonlin, 'padding': self.padding, 
+                        'specs':self.specs})
+        return config
+    
+    @classmethod
+    def from_config(cls, config):
+        nonlin_config = config.pop("nonlin")
+        scope = config.pop("scope")
+        nonlin = saving.deserialize_keras_object(nonlin_config)
+        return cls(nonlin, **config)
 
     def build(self, input_shape):
         super(LFTConv, self).build(input_shape)
@@ -288,7 +325,7 @@ class LFTConv(BaseLayer):
                     input_shape = x.shape
                     self.build(input_shape)
 
-
+@saving.register_keras_serializable(package="mneflow")
 class VARConv(BaseLayer):
     """
     Stackable temporal convolutional layer
@@ -301,18 +338,27 @@ class VARConv(BaseLayer):
         super(VARConv, self).__init__(size=size, nonlin=nonlin, specs=specs,
              **args)
         self.size = size
+        self.nonlin = nonlin
         self.filter_length = filter_length
         self.padding = padding
 
 
-    # def get_config(self):
+    def get_config(self):
 
-    #     config = super(VARConv, self).get_config()
-    #     config.update({'scope': self.scope,
-    #                    'filter_length': self.filter_length,
-    #                    'nonlin': self.nonlin, 'padding': self.padding})
-    #    return config
+        config = super(VARConv, self).get_config()
+        config.update({'scope': self.scope,
+                        'filter_length': self.filter_length,
+                        'nonlin': self.nonlin, 'padding': self.padding, 
+                        'specs':self.specs})
+        return config
 
+    @classmethod
+    def from_config(cls, config):
+        nonlin_config = config.pop("nonlin")
+        scope = config.pop("scope")
+        nonlin = saving.deserialize_keras_object(nonlin_config)
+        return cls(nonlin, **config)
+    
     def build(self, input_shape):
         print("input_shape:", input_shape)
         super(VARConv, self).build(input_shape)
@@ -356,7 +402,7 @@ class VARConv(BaseLayer):
                     self.build(input_shape)
                     #print(self.scope, 'building from call')
 
-
+@saving.register_keras_serializable(package="mneflow")
 class TempPooling(BaseLayer):
     def __init__(self, scope='pool', stride=2, pooling=2, specs={},
                  padding='SAME', pool_type='max', **args):
@@ -368,7 +414,17 @@ class TempPooling(BaseLayer):
 
         self.padding = padding
         self.pool_type = pool_type
+        
+    def get_config(self):
 
+        config = super(TempPooling, self).get_config()
+        config.update({'scope': self.scope,
+                        'stride': self.strides[2],
+                        'pooling': self.kernel[2], 'padding': self.padding, 
+                        'specs':self.specs, 'pool_type' : self.pool_type})
+        return config
+    
+    
     #@tf.function
     def call(self, x):
         """
@@ -404,7 +460,7 @@ class TempPooling(BaseLayer):
     #     return config
 
 
-
+@saving.register_keras_serializable(package="mneflow")
 class LSTM(tf.keras.layers.LSTM):
     def __init__(self, scope='lstm', size=32, nonlin='tanh', dropout=0.0,
                  recurrent_activation='tanh', recurrent_dropout=0.0,
@@ -432,11 +488,18 @@ class LSTM(tf.keras.layers.LSTM):
         self.nonlin = nonlin
         print(self.scope, 'init : OK')
 
-    # def get_config(self):
-    #     config = super(LSTM, self).get_config()
-    #     config.update({'scope': self.scope, 'size': self.size,
-    #                    'nonlin': self.nonlin})
-    #     return config
+    def get_config(self):
+        config = super(LSTM, self).get_config()
+        config.update({'scope': self.scope, 'size': self.size,
+                        'nonlin': self.nonlin})
+        return config
+    
+    @classmethod
+    def from_config(cls, config):
+        nonlin_config = config.pop("nonlin")
+        scope = config.pop("scope")
+        nonlin = saving.deserialize_keras_object(nonlin_config)
+        return cls(nonlin, **config)
 
     def build(self, input_shape):
         # print(self.scope, 'build : OK')

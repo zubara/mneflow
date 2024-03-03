@@ -606,7 +606,7 @@ class BaseModel():
         #self.specs['model_name'] = model_name
 
         #save the model
-        self.km.save(os.path.join(self.model_path, model_name + '.hf5'))
+        self.km.save(os.path.join(self.model_path, model_name + '.h5'))
         
 
         # #Save results from multiple folds
