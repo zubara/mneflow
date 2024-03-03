@@ -111,12 +111,15 @@ class MetaData():
         elif self.model_specs['scope'] == 'eegnet8':
             model = models.EEGNet(meta=self)
         
-        #model.build()
-        
+        model.build()
         model_name = "_".join([self.model_specs['scope'],
                                self.data['data_id'] + '.h5'])
-        model.km = tf.keras.models.load_model(os.path.join(self.model_specs['model_path'],
-                                              model_name))
+        model.km.load_weights(os.path.join(self.model_specs['model_path'],
+                                           model_name))
+        
+        
+        #model.km = tf.keras.models.load_model(os.path.join(self.model_specs['model_path'],
+        #                                      model_name))
         
         
         #model.build()
