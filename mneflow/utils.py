@@ -12,8 +12,10 @@ import tensorflow as tf
 import scipy.io as sio
 import mne
 from mneflow import models
-
-   
+from matplotlib import pyplot as plt
+from matplotlib import patches as ptch
+from matplotlib import collections
+from mpl_toolkits.axes_grid1 import make_axes_locatable   
 
 class MetaData():
     """
@@ -83,15 +85,18 @@ class MetaData():
         self.model_specs = dict()
         self.train_params = dict()
         self.patterns = dict()
+        self.results = dict()
+        self.weights = dict()
         
-    def save(self):
+    def save(self, verbose=True):
         """Saves the metadata to self.data['path'] + self.data['data_id']"""
         if 'path' in self.data.keys() and 'data_id' in self.data.keys():
             fname = self.data['data_id'] + '_meta.pkl'
             with open(os.path.join(self.data['path'], fname), 'wb') as f:
                 pickle.dump(self, f)
-            print("""Saving MetaData as {} \n
-                  to {}""".format(fname, self.data['path']))
+            if verbose:
+                print("""Saving MetaData as {} \n
+                      to {}""".format(fname, self.data['path']))
         else:
             print("""Cannot save MetaData! \n
                   Please specify meta.data['path'] and meta.data['data_id'']""")
@@ -112,10 +117,10 @@ class MetaData():
             model = models.EEGNet(meta=self)
         
         model.build()
-        model_name = "_".join([self.model_specs['scope'],
+        model.model_name = "_".join([self.model_specs['scope'],
                                self.data['data_id'] + '.h5'])
         model.km.load_weights(os.path.join(self.model_specs['model_path'],
-                                           model_name))
+                                           model.model_name))
         
         
         #model.km = tf.keras.models.load_model(os.path.join(self.model_specs['model_path'],
@@ -129,7 +134,7 @@ class MetaData():
         return model
     
     def update(self, data=None, preprocessing=None, train_params=None, 
-               model_specs=None, patterns=None):
+               model_specs=None, patterns=None, results=None, weights=None):
         """Updates metadata file"""
         if isinstance(data, dict):
             self.data.update(data)
@@ -146,9 +151,247 @@ class MetaData():
         if isinstance(patterns, dict):
             self.patterns.update(patterns)
             print("Updating: meta.patterns")
-        #self.save()
+        if isinstance(results, dict):
+            self.results.update(results)
+            print("Updating: meta.results")
+        if isinstance(weights, dict):
+            self.weights.update(weights)
+            print("Updating: meta.weights")
+        self.save(verbose=False)
         return
+    
+    def make_fake_evoked(self, topos, sensor_layout):
+        if 'info' not in self.data.keys():
+            lo = mne.channels.read_layout(sensor_layout)
+            #lo = channels.generate_2d_layout(lo.pos)
+            info = mne.create_info(lo.names, 1., sensor_layout.split('-')[-1])
+            orig_xy = np.mean(lo.pos[:, :2], 0)
+            for i, ch in enumerate(lo.names):
+                if info['chs'][i]['ch_name'] == ch:
+                    info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/4.5
+                    #info['chs'][i]['loc'][4:] = 0
+                else:
+                    print("Channel name mismatch. info: {} vs lo: {}".format(
+                        info['chs'][i]['ch_name'], ch))
+        #info['sfreq'] = 1
+        fake_evoked = mne.evoked.EvokedArray(topos, info)
+        return fake_evoked
+    
+    def explore_components(self, sorting='output_corr',
+                         integrate=['vars', 'folds'], info=None, 
+                         sensor_layout='Vectorview-grad',
+                         class_names=None):
+        """Plots the weights of the output layer.
+
+        Parameters
+        ----------
+
+        pat : int [0, self.specs['n_latent'])
+            Index of the latent component to higlight
+
+        t : int [0, self.h_params['n_t'])
+            Index of timepoint to highlight
+
+        Returns
+        -------
+        figure :
+            Imshow [n_latent, y_shape]
+
+        """
+
+        def _onclick_component(event):
+            
+            x_ind = np.maximum(np.round(event.xdata, 0).astype(int), 0)
+            y_ind = np.maximum(np.round(event.ydata).astype(int), 0)
+            
+
+
+            f1, ax = plt.subplots(2,2, tight_layout=True)
+            #f1.set_layout_engine('constrained')
+            f1.suptitle("{}: {}  {}: {}"
+                  .format(names[0][:-1], x_ind, names[1][:-1], y_ind))
+
+            # a = np.dot(self.patterns['dcov']['class_conditional'][x_ind].mean(-1),
+            #            self.patterns['weights']['dmx'])
+
+            self.fake_evoked_interactive.data[:, y_ind] = topos[:, y_ind]
+            self.fake_evoked_interactive.plot_topomap(times=[y_ind],
+                                                      axes=ax[0, 0],
+                                                      colorbar=False,
+                                                      time_format='Spatial activation pattern, [au]'
+                                                      )
+            psd = psds[:, y_ind].T
+            freq_response = freq_responses[:, y_ind].T
+            out_psd = psd*freq_response
+            psd /= np.maximum(np.sum(psd), 1e-9)
+            out_psd /= np.maximum(np.sum(out_psd), 1e-9)
+            #freq /= np.maximum(np.sum(out_psd), 1e-9)
+            #ax[1,].clear()
+            ax[0,1].semilogy(self.patterns['freqs'], psd,
+                         label='Input RPS')
+            ax[0,1].semilogy(self.patterns['freqs'], out_psd,
+                         label='Output RPS')
+            #ax[0,1].semilogy(patterns_struct['spectra']['freqs'], freq_response,
+            #             label='Freq_response')
+            ax[0,1].set_xlim(1, 125.)
+            ax[0,1].set_ylim(1e-6, 1.)
+            ax[0,1].legend(frameon=False)
+            ax[0,1].set_title('Relative power spectra')
+
+
+            #ax[1,0].stem(tconv_kernels[:, y_ind])
+            ax[1,0].set_title('Temporal convolution kernel coefficients')
+            if trans:
+                ax[1,1].plot(F[y_ind, :], 'ks')
+                ax[1,1].plot(y_ind, F[y_ind, x_ind], 'rs')
+            else:                    
+                ax[1,1].plot(F[y_ind, :], 'ks')
+                ax[1,1].plot(x_ind, F[y_ind, x_ind], 'rs')
+            ax[1,1].set_title('{} per {}. Red={}'.format(sorting, names[0][:-1], x_ind))
+            ax[1,1].set_xlabel(names[0])
+
+
+
+        # get feature relevance
+        F = self.patterns[sorting]['feature_relevance']
+        ax = 1
+        names = ['Time Points', 'Components', 'Classes', 'Folds']
+        if 'folds' in integrate:
+            F = F.mean(3, keepdims=True)
+            names.pop(names.index('Folds'))
+        if 'timepoints' in integrate:
+            F = F.max(0, keepdims=True)
+            ax = 0
+            names.pop(names.index('Time Points'))
+        if 'vars' in integrate:
+            F = F.sum(2, keepdims=True)
+            names.pop(names.index('Classes'))
+        if 'components' in integrate:
+            F = F.sum(1, keepdims=True)
+            names.pop(names.index('Components'))
         
+        #print(names)
+        
+        F = np.squeeze(F)
+        while F.ndim < 2:
+            F = np.expand_dims(F, -1)
+            ax = 0
+            
+        if F.ndim > 2:
+            print("""Integrate: {} returned shape {}. \n
+                  Can only plot 2 dimensions!""".format(integrate, F.shape))
+            return
+        if 'timepoints' in integrate:
+            F = F.T
+            trans = False
+            ax = 1 - ax
+            print(names)
+        else:
+            trans = False
+            names = names[::-1]
+        
+        # if F.shape[1] < F.shape[0]:
+        #     F = F.T
+        #     
+                    
+        inds = np.argmax(F, ax)
+        
+        print(inds)
+        # new_topos = [np.dot(self.patterns['dcov']['input_spatial'][:, :, i], 
+        #                     self.weights['dmx'][:, ind, i])
+        #               for i, ind in enumerate(inds)]
+        #new_topos = np.concatenate(new_topos, axis=0).T
+        
+
+        #print(new_topos.shape)
+        
+
+        #psds = patterns_struct['spectra']['psds']
+        topos =  np.squeeze(self.patterns[sorting]['spatial'])#.mean(-1)
+        #print(topos.shape)
+        psds = np.squeeze(self.patterns[sorting]['psds'])#.mean(-1)
+        freq_responses = np.squeeze(self.patterns[sorting]['temporal'])#.mean(-1)
+        #tconv_kernels = self.patterns['weights']['tconv']
+        self.fake_evoked_interactive = self.make_fake_evoked(topos, sensor_layout)
+
+        vmin = np.min(F)
+        vmax = np.max(F)
+
+        f = plt.figure()
+        ax = f.gca()
+        
+        im = ax.imshow(F, cmap='bone_r', vmin=vmin, vmax=vmax)
+        if trans:
+            r = [ptch.Rectangle((i - .5, ind - .5), width=1,
+                                height=1, angle=0.0, facecolor='none') for i, ind in enumerate(inds)]
+        else:
+            r = [ptch.Rectangle((ind - .5, i - .5), width=1,
+                                height=1, angle=0.0, facecolor='none') for i, ind in enumerate(inds)]
+
+        pc = collections.PatchCollection(r, facecolor='none', alpha=.5,
+                                          edgecolor='red')
+        #ax = f.gca()
+        ax.add_collection(pc)
+        ax.set_ylabel(names[1])
+        ax.set_xlabel(names[0])
+        ax.set_title('Component relevance map: {} (Clickable)'.format(sorting))
+
+        f.colorbar(im)
+        f.canvas.mpl_connect('button_press_event', _onclick_component)
+        f.show()
+        return f
+    
+    def plot_topos(self, topos, sensor_layout='Vectorview-mag', class_subset=None):
+        """
+        Plot any spatial distribution in the sensor space.
+        TODO: Interpolation??
+
+
+        Parameters
+        ----------
+        topos : np.array
+            [n_ch, n_classes, ...]
+        sensor_layout : TYPE, optional
+            DESCRIPTION. The default is 'Vectorview-mag'.
+        class_subset  : np.array, optional
+
+        Returns
+        -------
+        None.
+
+        """
+ 
+        if topos.ndim > 2:
+            topos = topos.mean(-1)
+        topos_new = topos / topos.std(0, keepdims=True)
+
+        n = topos.shape[1]
+
+        if class_subset is None:
+            class_subset = np.arange(0,  n, 1.)
+
+        fake_evoked = self.make_fake_evoked(topos_new, sensor_layout)
+
+        ft = fake_evoked.plot_topomap(times=class_subset,
+                                    colorbar=True,
+                                    scalings=1,
+                                    time_format="Class %g",
+                                    outlines='head',
+                                    #vlim= np.percentile(topos, [5, 95])
+                                    )
+        #ft.show()
+        return ft
+    
+    def plot_combined_pattern(self):
+        return
+    
+    def plot_sepctra(self):
+        return
+    
+    def plot_waveforms(self):
+        return
+    
+    
 
 def _onehot(y, n_classes=False):
     """
@@ -740,9 +983,8 @@ def produce_tfrecords(inputs,
                 print('Saving TFRecord# {}'.format(jj))
 
                 folds.append(fold_split)
-                train_filename = ''.join([data_path, data_id, '_train_', 
-                                          str(jj),
-                                          '.tfrecord'])
+                trname = ''.join([data_id, '_train_', str(jj), '.tfrecord'])
+                train_filename = os.path.join(data_path, trname)
                 train_paths.append(train_filename)
 
                 _write_tfrecords(X, Y, n, train_filename, 
@@ -1231,4 +1473,59 @@ def r2_score(y_true, y_pred):
     res = np.sum((y_true - y_pred)**2, axis=0)
     tot = np.sum((y_true - np.mean(y_true, axis=0, keepdims=True))**2, axis=0)
     return 1 - res/tot
+
+def plot_confusion_matrix(cm,
+                          classes=None,
+                          normalize=True,
+                          title=None,
+                          cmap=plt.cm.Blues,
+                          vmax=None):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+    if not title:
+        if normalize:
+            title = 'Normalized confusion matrix'
+        else:
+            title = 'Confusion matrix, without normalization'
+
+    # Compute confusion matrix
+    # Only use the labels that appear in the data
+    #classes = classes[unique_labels(y_true, y_pred)]
+    if not classes:
+        classes = [' '.join(["Class", str(i)]) for i in range(cm.shape[0])]
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    #if not vmax:
+    #    vmax = np.max(cm)
+    #print(cm)
+    fig, ax = plt.subplots()
+    im = ax.imshow(cm, interpolation='nearest', cmap=cmap, vmax=vmax)
+    ax.figure.colorbar(im, ax=ax)
+    # We want to show all ticks...
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           # ... and label them with the respective list entries
+           xticklabels=classes, yticklabels=classes,
+           title=title,
+           ylabel='Predicted label',
+           xlabel='True label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    fmt = '.2f' if normalize else '.0f'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            #if i == j:
+            ax.text(j, i, format(cm[i, j], fmt),
+                        ha="center", va="center",
+                        color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    #fig.show()
+    return fig
 
