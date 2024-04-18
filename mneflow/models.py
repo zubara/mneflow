@@ -898,7 +898,7 @@ class LFCNN(BaseModel):
         #((rows - 1) * strides[0] + kernel_size[0] - 2 * padding[0] + output_padding[0])
         if self.dataset.h_params['n_t']%self.specs['stride'] == 0:
             padding=None
-        elif self.dataset.h_params['n_t']%self.specs['stride'] - 1 >= 1:
+        elif self.dataset.h_params['n_t']%self.specs['stride'] - 1 > 0:
             padding = (self.dataset.h_params['n_t']%self.specs['stride'] - 1, 0)
         else :
             padding = ((self.dataset.h_params['n_t'] - 1)%self.specs['stride'] , 0)
@@ -955,13 +955,13 @@ class LFCNN(BaseModel):
         print(self.X_pred.shape)
         self.km_enc = tf.keras.Model(inputs=self.inputs, outputs=self.X_pred)
 
-        self.params['enc_loss'] = [tf.keras.losses.MAE]#tf.reduce_mean((self.X_pred - self.inputs)**2)
+        self.meta.train_params['enc_loss'] = [tf.keras.losses.MAE]#tf.reduce_mean((self.X_pred - self.inputs)**2)
         #self.params['enc_metrics'] = tf.keras.metrics.RootMeanSquaredError(name="RMSE")
 
 
         #print(params)
         self.km_enc.compile(optimizer=tf.keras.optimizers.legacy.Adam(),
-                        loss=self.params['enc_loss'])
+                        loss=self.meta.train_params['enc_loss'])
 
     def compute_enc_patterns(self, inputs=None):
         """
