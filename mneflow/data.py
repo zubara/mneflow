@@ -260,7 +260,7 @@ class Dataset(object):
     def class_weights(self):
         """Weights take class proportions into account."""
         weights = np.array(
-                [v for k, v in self.h_params['class_proportions'].items()])
+                [v for k, v in self.h_params['class_ratio'].items()])
         return (1./np.mean(weights))/weights
 
     def _decimate(self, example_proto):

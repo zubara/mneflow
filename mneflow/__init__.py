@@ -6,5 +6,5 @@ from . import data
 from .utils import produce_tfrecords, load_meta
 from .data import Dataset
 
-mneflow.__version__ = '0.5.6'
+mneflow.__version__ = '0.5.7'
 

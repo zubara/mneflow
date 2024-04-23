@@ -193,7 +193,7 @@ class BaseModel():
         #save intial model weights
         
         self.km.save_weights(os.path.join(self.model_path, 
-                                          self.model_name + 'init.h5'))
+                                          self.model_name + '_init.weights.h5'))
 
 
         print('Input shape:', self.input_shape)
@@ -971,7 +971,7 @@ class LFCNN(BaseModel):
             print('Using fake inputs')
             inputs = np.identity(self.out_dim)
         pooled = tf.reshape(self.enc_fc(inputs),
-                   [self.out_dim,
+                   [-1,
                     1,
                     self.pooled.shape[-2],
                     self.specs['n_latent']])
@@ -1148,13 +1148,17 @@ class LFCNN(BaseModel):
         xinp = np.reshape(X, [-1, X.shape[-1]])
         xinp = xinp - xinp.mean(0, keepdims=True)
         cov_xy = np.dot(xinp.T, xdmx)
+        print("aw", cov_xy.shape)
         aw = cov_xy
         sx = np.reshape(Sx, [-1, Sx.shape[-2], Sx.shape[-1]])
         sx = sx - sx.mean(0, keepdims=True)
         ddof = sx.shape[0] - 1
         cov_sx = np.einsum('ijk, ilk -> kjl', sx,sx) / ddof
+        print("cov_sx:", cov_sx.shape)
         prec_yy_hat = np.stack([np.linalg.pinv(s) for s in cov_sx])
-        ww = np.einsum('ij, ljk -> ikl', w, prec_yy_hat)
+        print(w.shape, prec_yy_hat.shape)
+        ww = np.einsum('ij, jlk -> ikl', w, prec_yy_hat)
+        print(cov_xy.shape, ww.shape)
         a = np.einsum('ij, ijk -> ik', cov_xy, ww)
 
         return a
@@ -1376,7 +1380,29 @@ class LFCNN(BaseModel):
         patterns_struct['weights'] = weights
         patterns_struct['spectra'] = spectra
         patterns_struct['dcov'] = dcov
-        #patterns_struct['ccms'] = {}#ccms
+        patterns_struct['ccms'] = {}#ccms
+        #Sx_tconv, Sx_dmx = self.patterns_cov_xy_hat(X, y, activations, weights)
+        Sx_tconv_ccm = []
+        #Sx_dmx_ccm = []
+        Sx_fc_ccm = []
+        patterns_cxy = []
+        # for class_y in range(self.out_dim):
+        #     class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
+        #     Sx_tconv_ccm.append(Sx_tconv[class_ind, ...].mean(0))
+        #     #Sx_dmx_ccm.append(Sx_dmx[class_ind, ...].mean(0, keepdims=True))
+        #     #a = activations['tconv'].numpy()[class_ind, ...].mean(0)*weights['out_weights'][None, ..., class_y]
+        #     Sx_fc_ccm.append(activations['fc'].numpy()[class_ind, ...].mean(0, keepdims=True))
+        #     # patterns_cxy.append(np.dot(dcov['class_conditional'][class_y],
+        #     #                                Sx_dmx[class_ind, ...].mean(0)))
+        #     #patterns_cxy.append(np.dot(dcov['input_spatial'],
+        #     #                            Sx_dmx[class_ind, ...].mean(0)))
+        #ccms = {}
+        #ccms['tconv'] = np.concatenate(Sx_tconv_ccm, 0)
+        #ccms['dmx'] = np.concatenate(Sx_dmx_ccm, 0)
+        #ccms['fc'] = np.concatenate(Sx_fc_ccm, 0)
+        
+        
+        
         patterns_struct['patterns'] = self._compute_combined_patterns(y, weights, activations, dcov)
 
         #compute the effect of removing each latent component on the cost function
@@ -1622,7 +1648,7 @@ class LFCNN(BaseModel):
     # --- LFCNN plot functions ---
 
     def plot_evoked_peaks(self, data=None, t=None, class_subset=None,
-                          sensor_layout='Vectorview-mag'):
+                          sensor_layout='Vectorview-mag', title=None, savefig=None):
         """
         Plot one spatial topography of class-conditional average of the input.
         If timepoint is not specified it is picked as a maximum RMS for each
@@ -1641,21 +1667,84 @@ class LFCNN(BaseModel):
 
         if data is None:
             data = self.true_evoked_data
-            title = 'True Patterns'
+            if not title:
+                title = 'True Patterns'
         else:
             title = 'Model-derived patterns'
 
         if t is None:
             t = np.argmax(np.mean(data**2, axis=0).mean(-1))
-
+        title = title +  't={}'.format(t)
         ed = np.stack([data[i, t, :] for i in range(n)], axis=-1)
         assert ed.ndim==2
         topoplot = self.plot_topos(ed, sensor_layout=sensor_layout,
-                                   class_subset=class_subset)
+                                   class_subset=class_subset, title=title)
 
-        topoplot.figure.suptitle(title)
+        #topoplot.figure.suptitle(title)
         topoplot.show()
+        if savefig:
+            figname = '-'.join([self.meta.data['path'] + self.scope, self.meta.data['data_id'], title, "topos.svg"])
+            topoplot.savefig(figname, format='svg', transparent=True)
         return topoplot
+    
+    def plot_topos(self, topos, sensor_layout='Vectorview-mag', class_subset=None,
+                   title="Class %g"):
+        """
+        Plot any spatial distribution in the sensor space.
+        TODO: Interpolation??
+
+
+        Parameters
+        ----------
+        topos : np.array
+            [n_ch, n_classes, ...]
+        sensor_layout : TYPE, optional
+            DESCRIPTION. The default is 'Vectorview-mag'.
+        class_subset  : np.array, optional
+
+        Returns
+        -------
+        None.
+
+        """
+ 
+        if topos.ndim > 2:
+            topos = topos.mean(-1)
+        topos_new = topos / topos.std(0, keepdims=True)
+
+        n = topos.shape[1]
+
+        if class_subset is None:
+            class_subset = np.arange(0,  n, 1.)
+
+        fake_evoked = self.make_fake_evoked(topos_new, sensor_layout)
+
+        ft = fake_evoked.plot_topomap(times=class_subset,
+                                    colorbar=True,
+                                    scalings=1,
+                                    time_format=title,
+                                    outlines='head',
+                                    #vlim= np.percentile(topos, [5, 95])
+                                    )
+        #ft.show()
+        return ft
+    
+    def make_fake_evoked(self, topos, sensor_layout):
+        if 'info' not in self.meta.data.keys():
+            lo = channels.read_layout(sensor_layout)
+            #lo = channels.generate_2d_layout(lo.pos)
+            info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
+            orig_xy = np.mean(lo.pos[:, :2], 0)
+            for i, ch in enumerate(lo.names):
+                if info['chs'][i]['ch_name'] == ch:
+                    info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/4.5
+                    #info['chs'][i]['loc'][4:] = 0
+                else:
+                    print("Channel name mismatch. info: {} vs lo: {}".format(
+                        info['chs'][i]['ch_name'], ch))
+        #info['sfreq'] = 1
+        fake_evoked = evoked.EvokedArray(topos, info)
+        return fake_evoked
 
 
     def explore_components(self, patterns_struct, sorting='output_corr',
@@ -1918,7 +2007,8 @@ class LFCNN(BaseModel):
         return topo, freq_response, psd#, freqs
 
     def plot_combined_pattern(self, method='combined', sensor_layout=None,
-                              names=None, n_comp=1, plot_true_evoked=False):
+                              names=None, n_comp=1, plot_true_evoked=False,
+                              savefig=None):
         if not names:
             names = ['Class {}'.format(i) for i in range(self.y_shape[-1])]
 
@@ -1968,19 +2058,23 @@ class LFCNN(BaseModel):
                                           colorbar=True,
                                           #vmax=vmax,
                                           scalings=1,
-                                          time_format="Class %g",
+                                          time_format=method,
                                           #title='',
                                           #size=1,
                                           outlines='head',
                                           )
-        method = "paternnet_rect_cc_covdif_cc_fcactdif"
+        #method = "paternnet_rect_cc_covdif_cc_fcactdif"
         #ft.set_size_inches([15,3.5])
-        #figname = '-'.join([self.model_path + self.scope, self.dataset.h_params['data_id'], method, "topos.svg"])
-        #ft.savefig(figname, format='svg', transparent=True)
+        if savefig:
+            figname = '-'.join([self.meta.data['path'] + method, "topos.svg"])
+            ft.savefig(figname, format='svg', transparent=True)
         if plot_true_evoked:
             #true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
             #ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
-            self.plot_true_evoked(self.true_evoked_data, sensor_layout=sensor_layout)
+            t = self.plot_evoked_peaks(None, sensor_layout=sensor_layout,
+                                       title='True evoked')
+            figname = '-'.join([self.meta.data['path'] + self.scope, self.meta.data['data_id'], 'true', "topos.svg"])
+            t.savefig(figname, format='svg', transparent=True)
 
 #         if ncols == 1:
 #             plt.figure()

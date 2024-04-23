@@ -29,4 +29,8 @@ if __name__ == '__main__':
                      'Operating System :: MacOS'],
         platforms='any',
         packages=['mneflow'],
-        install_requires=['numpy', 'scipy', 'mne', 'tensorflow', 'matplotlib'])
+        install_requires=['numpy', 
+                          'scipy', 
+                          'mne >= 0.24.0, <=1.1.1', 
+                          'tensorflow >= 2.12.0, <=2.16rc', 
+                          'matplotlib'])
