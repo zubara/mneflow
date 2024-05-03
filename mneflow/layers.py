@@ -9,6 +9,7 @@ Defines mneflow.layers for mneflow.models.
 
 #import functools
 import tensorflow as tf
+
 from tensorflow.keras.initializers import Constant
 from tensorflow.keras.activations import relu
 from tensorflow.keras import constraints as k_con, regularizers as k_reg, saving

@@ -74,7 +74,7 @@ class BaseModel():
                                                       'models')  
         
         self.meta = meta
-        self.model_path = os.path.join(meta.data['path'], 'models\\')
+        self.model_path = meta.model_specs['model_path'] #os.path.join(meta.data['path'], 'models')
         if not os.path.exists(self.model_path):
             os.mkdir(self.model_path)            
 
@@ -143,7 +143,7 @@ class BaseModel():
         # Initialize computational graph
         if mapping:
             map_fun = tf.keras.activations.get(mapping)
-            self.y_pred= map_fun(self.y_pred)
+            self.y_pred = map_fun(self.y_pred)
 
         self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
 
@@ -169,8 +169,8 @@ class BaseModel():
 
         elif self.dataset.h_params["target_type"] in ['int']:
             params.setdefault("loss", tf.keras.losses.CategoricalCrossentropy(from_logits=True,
-                                                                                   name='Cat.CE'))
-            params.setdefault("metrics", [tf.keras.metrics.CategoricalAccuracy(name="Cat. Acc")])
+                                                                                   name='Cat_CE'))
+            params.setdefault("metrics", [tf.keras.metrics.CategoricalAccuracy(name="Cat_Acc")])
 
         self.km.compile(optimizer=params["optimizer"],
                         loss=params["loss"],
@@ -191,7 +191,8 @@ class BaseModel():
         #self.specs['model_name'] = model_name
 
         #save intial model weights
-        
+        # self.km.save(os.path.join(self.model_path, 
+        #                                   self.model_name + '.h5'))
         self.km.save_weights(os.path.join(self.model_path, 
                                           self.model_name + '_init.weights.h5'))
 
@@ -379,8 +380,10 @@ class BaseModel():
 
                 if jj < n_folds - 1:
                     self.km.load_weights(os.path.join(self.model_path, 
-                                                      self.model_name + 'init.h5'))
+                                          self.model_name + '_init.weights.h5'),
+                                         skip_mismatch=True)
                     self.shuffle_weights()
+                    stop_early.best = np.Inf
                 else:
                     "Not shuffling the weights for the last fold"
 
@@ -464,8 +467,10 @@ class BaseModel():
 
                 if jj < n_folds -1:
                     self.km.load_weights(os.path.join(self.model_path, 
-                                                      self.model_name + 'init.h5'))
+                                                      self.model_name + 'init.h5'),
+                                         skip_mismatch=True)
                     self.shuffle_weights()
+                    stop_early.best = np.Inf
                 else:
                     "Not shuffling the weights for the last fold"
 

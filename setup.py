@@ -13,7 +13,7 @@ if __name__ == '__main__':
         description='Neural networks for MEG and EEG data',
         license='BSD-3',
         url='https://github.com/zubara/mneflow',
-        version='0.5.7',
+        version='0.5.10',
         download_url='https://github.com/zubara/mneflow/archive/master.zip',
         #long_description=codecs.open('./docs/intro.rst', encoding='utf8').read(),
         long_description_content_type="text/x-rst",
@@ -31,6 +31,6 @@ if __name__ == '__main__':
         packages=['mneflow'],
         install_requires=['numpy', 
                           'scipy', 
-                          'mne >= 0.24.0, <=1.1.1', 
-                          'tensorflow >= 2.12.0, <=2.16rc', 
+                          'mne >= 1.0, <=1.7', 
+                          'tensorflow >= 2.12.0, <=2.16.1', 
                           'matplotlib'])
