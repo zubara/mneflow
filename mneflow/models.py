@@ -102,7 +102,7 @@ class BaseModel():
             self.scope = 'basemodel'
         
         if specs_prefix:
-           self.specs_prefix = '_'.join([str(k)+ '-' + str(v) for k,v in {1:2, 4:3}.items() if k not in ['nonlin', 'model_path', 'l1_scope', 'l2_scope']])
+           self.specs_prefix = '_'.join([str(v).replace('.', '-') for k,v in self.specs.items() if k not in ['nonlin', 'model_path', 'l1_scope', 'l2_scope', 'unitnorm_scope', 'scope']])
         else:
             self.specs_prefix = ''
         self.model_name = "_".join([self.scope,
@@ -203,8 +203,9 @@ class BaseModel():
         # self.km.save(os.path.join(self.model_path, 
         #                                   self.model_name + '.h5'))
         self.km.save_weights(os.path.join(self.model_path, 
-                                          self.model_name,
-                                          self.specs_prefix + '_init.weights.h5'))
+                                          ''.join([self.model_name,
+                                                   self.specs_prefix,
+                                                   '_init.weights.h5'])))
 
 
         print('Input shape:', self.input_shape)
@@ -393,9 +394,10 @@ class BaseModel():
 
 
                 if jj < n_folds - 1:
-                    self.km.load_weights(os.path.join(self.model_path, 
-                                          self.model_name,
-                                          self.specs_prefix + '_init.weights.h5'),
+                    self.km.load_weights(os.path.join(self.model_path,
+                                                      ''.join([self.model_name,
+                                                               self.specs_prefix,
+                                                               '_init.weights.h5'])),
                                          skip_mismatch=True)
                     self.shuffle_weights()
                     stop_early.best = np.Inf
@@ -483,10 +485,11 @@ class BaseModel():
                                           n_comp=int(collect_patterns))
 
                 if jj < n_folds -1:
-                    self.km.load_weights(os.path.join(self.model_path, 
-                                                    self.model_name,
-                                                    self.specs_prefix + '_init.weights.h5'),
-                                        skip_mismatch=True))
+                    self.km.load_weights(os.path.join(self.model_path,
+                                                      ''.join([self.model_name,
+                                                               self.specs_prefix,
+                                                               '_init.weights.h5'])),
+                                        skip_mismatch=True)
                     self.shuffle_weights()
                     stop_early.best = np.Inf
                 else:
@@ -817,7 +820,7 @@ class LFCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, meta, dataset=None):
+    def __init__(self, meta, dataset=None, specs_prefix=False):
         """
 
         Parameters
@@ -867,7 +870,7 @@ class LFCNN(BaseModel):
         meta.model_specs.setdefault('unitnorm_scope', [])
         meta.model_specs['scope'] = self.scope
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
-        super(LFCNN, self).__init__(meta, dataset)
+        super(LFCNN, self).__init__(meta, dataset, specs_prefix)
 
 
 
@@ -2230,7 +2233,7 @@ class VARCNN(BaseModel):
         [1] I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, meta, dataset=None):
+    def __init__(self, meta, dataset=None, specs_prefix=False):
         """
         Parameters
         ----------
@@ -2273,7 +2276,7 @@ class VARCNN(BaseModel):
         meta.model_specs.setdefault('l2_scope', [])
         meta.model_specs.setdefault('unitnorm_scope', [])
         meta.model_specs['scope'] = self.scope
-        super(VARCNN, self).__init__(meta, dataset)
+        super(VARCNN, self).__init__(meta, dataset, specs_prefix)
 
     def build_graph(self):
         """Build computational graph using defined placeholder `self.X`
@@ -2329,7 +2332,7 @@ class FBCSP_ShallowNet(BaseModel):
        visualization.
        Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
     """
-    def __init__(self, meta, dataset=None):
+    def __init__(self, meta, dataset=None, specs_prefix=False):
         self.scope = 'fbcsp-ShallowNet'
         meta.model_specs.setdefault('filter_length', 25)
         meta.model_specs.setdefault('n_latent', 40)
@@ -2345,7 +2348,7 @@ class FBCSP_ShallowNet(BaseModel):
 
         meta.model_specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
-        super(FBCSP_ShallowNet, self).__init__(meta, dataset)
+        super(FBCSP_ShallowNet, self).__init__(meta, dataset, specs_prefix)
 
     def build_graph(self):
 
@@ -2425,7 +2428,7 @@ class LFLSTM(BaseModel):
         [1]  I. Zubarev, et al., Adaptive neural network classifier for
         decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
     """
-    def __init__(self, meta, dataset=None):
+    def __init__(self, meta, dataset=None, specs_prefix=False):
         """
 
         Parameters
@@ -2475,7 +2478,7 @@ class LFLSTM(BaseModel):
         meta.model_specs['scope'] = self.scope
         meta.model_specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path',  self.dataset.h_params['save_path'])
-        super(LFLSTM, self).__init__(meta, dataset)
+        super(LFLSTM, self).__init__(meta, dataset, specs_prefix)
 
 
     def build_graph(self):
@@ -2559,7 +2562,7 @@ class Deep4(BaseModel):
        visualization.
        Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
     """
-    def __init__(self, meta, dataset=None):
+    def __init__(self, meta, dataset=None, specs_prefix=False):
         self.scope = 'deep4'
         meta.model_specs.setdefault('filter_length', 10)
         meta.model_specs.setdefault('n_latent', 25)
@@ -2574,7 +2577,7 @@ class Deep4(BaseModel):
         meta.model_specs.setdefault('l2_scope', [])
         meta.model_specs.setdefault('unitnorm_scope', [])
         #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
-        super(Deep4, self).__init__(meta, dataset)
+        super(Deep4, self).__init__(meta, dataset, specs_prefix)
 
     def build_graph(self):
         self.scope = 'deep4'
@@ -2734,7 +2737,7 @@ class EEGNet(BaseModel):
     [4] Original EEGNet implementation by the authors can be found at
     https://github.com/vlawhern/arl-eegmodels
     """
-    def __init__(self, meta, dataset=None):
+    def __init__(self, meta, dataset=None, specs_prefix=False):
         self.scope = 'eegnet8'
         meta.model_specs.setdefault('unitnorm_scope', [])
         meta.model_specs.setdefault('filter_length', 64)
@@ -2746,7 +2749,7 @@ class EEGNet(BaseModel):
         meta.model_specs.setdefault('padding', 'same')
         meta.model_specs.setdefault('nonlin', 'elu')
         meta.model_specs['scope'] = self.scope
-        super(EEGNet, self).__init__(meta, dataset)
+        super(EEGNet, self).__init__(meta, dataset, specs_prefix)
         
 
     def build_graph(self):

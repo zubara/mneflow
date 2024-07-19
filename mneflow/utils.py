@@ -816,7 +816,8 @@ def produce_tfrecords(inputs,
     
     predefined_split : list or lists, optional
         Pre-defined split of the dataset into training/validation folds. 
-        Should match exactly the size of the dataset, and contain n_folds
+        Should match exactly the size and type of MetaData.data['folds'], 
+        size of the dataset, and contain n_folds.
 
     test_set : str {'holdout', 'loso', None}, optional
         Defines if a separate holdout test set is required.
@@ -976,10 +977,7 @@ def produce_tfrecords(inputs,
                         seq_length=seq_length,
                         segment_y=segment_y)
                 
-                if predefined_split:
-                    assert len(predefined_split) == len(fold_split) or len(predefined_split) == (len(fold_split) - 1), "Number of folds in predefined_split does not match n_folds!"
-                    assert np.all([len(fpd) == len(fa) for fpd, fa in zip(predefined_split, fold_split)]), "Number of samples in predefined folds does not match the original split!"
-                    fold_split = predefined_split                   
+                
 
                 Y = preprocess_targets(Y, scale_y=scale_y,
                                        transform_targets=transform_targets)
@@ -999,6 +997,12 @@ def produce_tfrecords(inputs,
                     test_size += x_test.shape[0]
                 else:
                     test_fold = None
+                
+                if predefined_split:
+                    assert len(predefined_split[jj]) == len(fold_split), "Number of folds in predefined_split {} does not match n_folds {}!".format(len(predefined_split), len(fold_split))
+                    assert np.all([len(fpd) == len(fa) for fpd, fa in zip(predefined_split[jj], fold_split)]), "Number of samples in predefined folds does not match the original split!"
+                    print("Using Predefined Train/Validation Split....")
+                    fold_split = predefined_split[jj]                  
                     #TODO: remove?
 #                if input_type == 'fconn':
 #                    _n, meta['n_ch'], meta['n_t'], meta['n_freq'] = X.shape
