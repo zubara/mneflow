@@ -698,27 +698,10 @@ class BaseModel():
                          model_specs=self.specs,
                          patterns=self.cv_patterns,
                          weights=weights)
-        #self.meta.save()
         
-        # model_name = "_".join([self.scope,
-        #                        self.dataset.h_params['data_id']])
-        #self.specs['model_name'] = model_name
-
         #save the model
         self.km.save(os.path.join(self.model_path, self.model_name + '.h5'))
         
-
-        # #Save results from multiple folds
-        # if hasattr(self, 'cv_patterns'):
-        #     #if hasattr(self, 'cv_patterns'):
-        #     print("Saving patterns to: " + self.model_path + self.model_name + "\\mneflow_patterns.npz" )
-        #     np.savez(self.model_path + self.model_name + "\\mneflow_patterns.npz",
-        #              cv_patterns=self.cv_patterns,
-        #              specs=self.specs,
-        #              meta=self.dataset.h_params,
-        #              log=self.log,
-        #              cm=self.cm,
-        #              )
 
         #Update metadata with specs and new self.dataset options
         #For LFCNN save patterns
