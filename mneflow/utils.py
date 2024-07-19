@@ -385,8 +385,72 @@ class MetaData():
     def plot_combined_pattern(self):
         return
     
-    def plot_sepctra(self):
-        return
+    def plot_spectra(self, method='output_corr', log=True, savefig=False):
+        #def plot_spectra(self, patterns_struct, component_ind, ax, fs=None, loag=False):
+        """Relative power spectra of a given latent componende before and after
+            applying the convolution.
+
+        Parameters
+        ----------
+
+        patterns_struct :
+            instance of patterns_struct produced by model.compute_patterns
+
+        ax : axes
+
+        fs : float
+            Sampling frequency.
+
+        log : bool
+            Apply log-transform to the spectra.
+        """
+
+        
+        #self.fs = self.data['fs']
+
+        filters = self.patterns[method]['temporal'].mean(-1)
+        p_input = self.patterns[method]['psds'].mean(-1)
+        h = (self.patterns[method]['temporal']*self.patterns[method]['psds']).mean(-1)
+        h_std = (self.patterns[method]['temporal']*self.patterns[method]['psds']).std(-1)
+        n = p_input.shape[-1]
+        #p_input = p_input/p_input.sum(0, keepdims=True).mean(-1)
+
+        # w, h = freqz(filters, 1, worN=self.nfft)
+        # fr1 = w/np.pi*self.fs/2
+        # h0 = p_input*np.abs(h)
+        f, ax = plt.subplots(1, n, sharey=True)
+        for i in range(n):
+            #h = p_input[:, i]*filters[:, i]
+            if log:
+                ax[i].semilogy(self.patterns['freqs'], p_input[:, i],
+                               label='Filter input RPS')
+                ax[i].semilogy(self.patterns['freqs'], h[:, i]/np.sum(h[:, i]),
+                                    label='Fitler output RPS', color='tab:orange')
+                # ax[i].semilogy(self.patterns['freqs'], filters[:, i],
+                #                label='Freq response RPS')
+            else:
+                ax[i].plot(self.patterns['freqs'], 
+                           p_input[:, i] / np.sum(p_input[:, i]),
+                           label='Filter input RPS')
+                ax[i].plot(self.patterns['freqs'], h[:, i]/np.sum(h[:, i]), 
+                           label='Fitler output RPS', 
+                           color='tab:orange')
+                ax[i].fill_between(self.patterns['freqs'], 
+                                   h[:, i] / np.sum(h[:, i]) + h_std[:, i], 
+                                   h[:, i] / np.sum(h[:, i]) - h_std[:, i], 
+                                   label='fold variation', color='tab:orange', 
+                                   alpha=.25)
+                # ax[i].plot(self.patterns['freqs'], filters[:, i] / np.sum(filters[:, i]),
+                #                 label='Freq response')
+            ax[i].set_xlim(1, 90)
+        if i == n - 1:
+            ax[i].legend(frameon=False)
+        if savefig:
+            figname = '-'.join([self.meta.data['path'] + self.model_specs['scope'], 
+                                self.meta.data['data_id'], method, "spectra.svg"])
+            f.savefig(figname, format='svg', transparent=True)
+        return f
+    
     
     def plot_waveforms(self):
         return
@@ -688,21 +752,18 @@ def produce_tfrecords(inputs,
                       target_type='int',
                       array_keys={'X': 'X', 'y': 'y'},
                       n_folds=5,
+                      predefined_split=None,
+                      test_set=False,
                       scale=False,
                       scale_interval=None,
                       crop_baseline=False,
                       segment=False,
                       aug_stride=None,
                       seq_length=None,
-                      picks=None,
                       overwrite=False,
-                      test_set=False,
-                      bp_filter=False,
-                      decimate=False,
-                      combine_events=None,
                       transform_targets=False,
                       scale_y=False,
-                      save_as_numpy=False):
+                      ):
 
     """Produce TFRecord files from input, apply (optional) preprocessing.
 
@@ -752,6 +813,10 @@ def produce_tfrecords(inputs,
         One fold of the n_folds is used as a validation set.
         If test_set == 'holdout' generates one extra fold
         used as test set. Defaults to 5
+    
+    predefined_split : list or lists, optional
+        Pre-defined split of the dataset into training/validation folds. 
+        Should match exactly the size of the dataset, and contain n_folds
 
     test_set : str {'holdout', 'loso', None}, optional
         Defines if a separate holdout test set is required.
@@ -779,7 +844,6 @@ def produce_tfrecords(inputs,
         Whether to perform scaling to baseline. Defaults to False.
 
     scale_interval : NoneType, tuple of ints,  optional
-
         Baseline definition. If None (default) scaling is
         performed based on all timepoints of the epoch.
         If tuple, then baseline is data[tuple[0] : tuple[1]].
@@ -795,21 +859,6 @@ def produce_tfrecords(inputs,
         corresponding variables if the input is paths to .mat or .npz
         files. Defaults to {'X':'X', 'y':'y'}
 
-    bp_filter : bool, tuple, optional
-        Band pass filter. Tuple of int or NoneType.
-
-    decimate : False, int, optional
-        Whether to decimate the input data. Defaults to False.
-
-    combine_events : dict, optional
-        Dictionary for combining or otherwise manipulating lables.
-        Should contain mapping {old_label: new_label}. If provided and
-        some old_labels are not specified in keys, the corresponding
-        epochs are discarded.
-
-    picks : ndarray of int, optional
-        Array of channel indices to use in decoding.
-
     transform_targets : callable, optional
         custom function used to transform target variables
 
@@ -822,7 +871,7 @@ def produce_tfrecords(inputs,
 
     Returns
     -------
-    meta : dict
+    meta : mneflow.MetaData
         Metadata associated with the processed dataset. Contains all
         the information about the dataset required for further
         processing with mneflow.
@@ -926,6 +975,11 @@ def produce_tfrecords(inputs,
                         segment=segment, aug_stride=aug_stride,
                         seq_length=seq_length,
                         segment_y=segment_y)
+                
+                if predefined_split:
+                    assert len(predefined_split) == len(fold_split) or len(predefined_split) == (len(fold_split) - 1), "Number of folds in predefined_split does not match n_folds!"
+                    assert np.all([len(fpd) == len(fa) for fpd, fa in zip(predefined_split, fold_split)]), "Number of samples in predefined folds does not match the original split!"
+                    fold_split = predefined_split                   
 
                 Y = preprocess_targets(Y, scale_y=scale_y,
                                        transform_targets=transform_targets)
@@ -961,20 +1015,6 @@ def produce_tfrecords(inputs,
 
                 train_size += _n
 
-                # if save_as_numpy == True:
-                #     train_fold = np.concatenate(folds[1:])
-                #     val_fold = folds[0]
-                #     np.savez(data_path+data_id,
-                #              X_train=np.swapaxes(X[train_fold, ...], -2, -1),
-                #              X_val=np.swapaxes(X[val_fold, ...], -2, -1),
-                #              #X_test=np.swapaxes(x_test,-2, -1),
-                #              y_train=Y[train_fold, ...],
-                #              y_val=Y[val_fold, ...],
-                #              #y_test=y_test
-                #              )
-
-
-                #                                                 np.min(n), np.max(n)))
                 val_size += len(fold_split[0])
 
                 print('Prepocessed sample shape:', X[0].shape)

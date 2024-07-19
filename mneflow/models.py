@@ -56,7 +56,7 @@ class BaseModel():
     _set_optimizer methods.
     """
 
-    def __init__(self, meta=None, dataset=None):
+    def __init__(self, meta=None, dataset=None, specs_prefix=False):
         """
         Parameters
         ----------
@@ -100,6 +100,11 @@ class BaseModel():
         self.cv_weights = defaultdict(list)
         if not hasattr(self, 'scope'):
             self.scope = 'basemodel'
+        
+        if specs_prefix:
+           self.specs_prefix = '_'.join([str(k)+ '-' + str(v) for k,v in {1:2, 4:3}.items() if k not in ['nonlin', 'model_path', 'l1_scope', 'l2_scope']])
+        else:
+            self.specs_prefix = ''
         self.model_name = "_".join([self.scope,
                                     meta.data['data_id']])
 
@@ -176,8 +181,12 @@ class BaseModel():
                         loss=params["loss"],
                         metrics=params["metrics"])
         
-        if not loss:
+        if not loss and self.dataset.h_params["target_type"] in ['float', 'signal']:
             loss_name = 'MSE'
+        elif not loss:
+            loss_name = 'Cat_CE'
+        else:
+            loss_name = params['loss'].name
         _ = params.pop('loss')
         metrics = params.pop('metrics')
         metric_names = ':'.join([m.name for m in metrics])
@@ -194,7 +203,8 @@ class BaseModel():
         # self.km.save(os.path.join(self.model_path, 
         #                                   self.model_name + '.h5'))
         self.km.save_weights(os.path.join(self.model_path, 
-                                          self.model_name + '_init.weights.h5'))
+                                          self.model_name,
+                                          self.specs_prefix + '_init.weights.h5'))
 
 
         print('Input shape:', self.input_shape)
@@ -276,6 +286,7 @@ class BaseModel():
         self.cv_metrics = []
         self.cv_test_losses = []
         self.cv_test_metrics = []
+        self.cv_metric_pvalues = []
         
         if class_weights:
             multiplier = 1. / min(class_weights.values())
@@ -307,6 +318,7 @@ class BaseModel():
 
             self.cv_losses.append(v_loss)
             self.cv_metrics.append(v_metric)
+            #self.cv_metric_pvalues.append(self.permutation_p_value())
 
             if len(self.dataset.h_params['test_paths']):
                     t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
@@ -354,6 +366,8 @@ class BaseModel():
                 v_loss, v_metric = self.evaluate(val)
                 self.cv_losses.append(v_loss)
                 self.cv_metrics.append(v_metric)
+                #self.cv_metric_pvalues.append(self.permutation_p_value())
+
                 if len(self.dataset.h_params['test_paths']):
                     t_loss, t_metric = self.evaluate(self.dataset.h_params['test_paths'])
                     print("""Test performance:
@@ -380,7 +394,8 @@ class BaseModel():
 
                 if jj < n_folds - 1:
                     self.km.load_weights(os.path.join(self.model_path, 
-                                          self.model_name + '_init.weights.h5'),
+                                          self.model_name,
+                                          self.specs_prefix + '_init.weights.h5'),
                                          skip_mismatch=True)
                     self.shuffle_weights()
                     stop_early.best = np.Inf
@@ -449,6 +464,8 @@ class BaseModel():
                 self.cv_metrics.append(v_metric)
                 self.cv_test_losses.append(t_loss)
                 self.cv_test_metrics.append(t_metric)
+                #self.cv_metric_pvalues.append(self.permutation_p_value(dataset=test))
+                
 
                 y_true, y_pred = self.predict(val)
                 if self.dataset.h_params['target_type'] == 'float':
@@ -467,8 +484,9 @@ class BaseModel():
 
                 if jj < n_folds -1:
                     self.km.load_weights(os.path.join(self.model_path, 
-                                                      self.model_name + 'init.h5'),
-                                         skip_mismatch=True)
+                                                    self.model_name,
+                                                    self.specs_prefix + '_init.weights.h5'),
+                                        skip_mismatch=True))
                     self.shuffle_weights()
                     stop_early.best = np.Inf
                 else:
@@ -563,6 +581,7 @@ class BaseModel():
         results['v_loss'] = np.mean(self.cv_losses)
         results['cv_metrics'] = self.cv_metrics
         results['cv_losses'] = self.cv_losses
+        results['cv_metric_pvalues'] = self.cv_metric_pvalues
         
         tr_loss, tr_metric = self.evaluate(self.dataset.train)
         results['tr_metric'] = tr_metric
@@ -591,6 +610,25 @@ class BaseModel():
         results['cm'] = self.cm
         
         self.meta.update(results=results)
+    
+    def permutation_p_value(self, dataset=None, n_perm=1000):
+        perm_losses = []
+        perm_metrics = []
+        if not dataset:
+            dataset = self.dataset.val
+        y_true, y_pred_obs = self.predict(dataset) 
+        obs_loss, obs_metric = self.evaluate(dataset)
+        n = y_true.shape[0]
+        for i in range(n_perm):
+            shuffle = np.random.permutation(n)
+            y_surrogate = y_true[shuffle, :]
+            perm_losses.append(self.km.loss(y_surrogate, y_pred_obs).numpy())
+            perm_metrics.append(self.km.metrics[-1](y_surrogate, y_pred_obs).numpy())
+        loss_pvalue = np.sum(np.array(perm_losses) < obs_loss)/n_perm
+        metric_pvalue = np.sum(np.array(perm_metrics) > obs_metric)/n_perm
+        #print("Loss p-value={:.4f}".format(loss_pvalue))
+        print("Metric p-value={:.4f}".format(metric_pvalue))
+        return metric_pvalue
         
     def update_log(self, rms=None, prefix=''):
         """Logs experiment to self.model_path + self.scope + '_log.csv'.
