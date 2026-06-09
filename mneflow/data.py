@@ -19,7 +19,8 @@ class Dataset(object):
 
     def __init__(self, meta, train_batch=50, test_batch=None, split=True,
                  class_subset=None, pick_channels=None, decim=None,
-                 crop=None, rebalance_classes=False, **kwargs):
+                 sample_subset=None, crop=None,
+                 rebalance_classes=False, **kwargs):
 
         r"""Initialize tf.data.TFRdatasets.
 
@@ -49,6 +50,9 @@ class Dataset(object):
             discriminate between these classes, without changing the parameters
             of the whole dataset (e.g. y_shape=5)
 
+        sample_subset : list of int
+            NOT IMPLEMENTED
+
         pick_channels : array of int
             Pick a subset of channels
 
@@ -69,6 +73,8 @@ class Dataset(object):
             self.h_params['channel_subset'] = pick_channels
         if np.any(class_subset) or not 'class_subset' in self.h_params.keys():
             self.h_params['class_subset'] = class_subset
+        if np.any(sample_subset) or not 'sample_subset' in self.h_params.keys():
+            self.h_params['sample_subset'] = sample_subset
         if decim or not 'decim' in self.h_params.keys():
             self.h_params['decim'] = decim
         if crop or not 'crop' in self.h_params.keys():
@@ -105,58 +111,10 @@ class Dataset(object):
         """
         # import and process parent dataset
         dataset = tf.data.TFRecordDataset(path)
-
         dataset = dataset.map(self._parse_function)
 
-        
-
-        if np.any(self.h_params['class_subset']) and self.h_params['target_type'] == 'int':
-            dataset = dataset.filter(self._select_classes)
-            dataset = dataset.map(self._select_class_subset)
-
-            subset_ratio = np.sum([v for k,v in self.h_params['class_ratio'].items()
-                                   if k in self.h_params['class_subset']])
-            ratio_multiplier = 1./subset_ratio
-            print("Using class_subset with {} classes:".format(len(self.h_params['class_subset'])))
-            #print(*[self.h_params['orig_classes'][i] for i in self.h_params['class_subset']])
-            print("Subset ratio {:.2f}, Multiplier {:.2f}".format(subset_ratio,
-                                                                  ratio_multiplier
-                                                                  ))
-            cp = {k:v*ratio_multiplier for k,v in self.h_params['class_ratio'].items()
-                  if k in self.h_params['class_subset']}
-
-            self.h_params['class_ratio'] = cp
-            self.y_shape = (len(self.h_params['class_subset']),)
-
-
-            #print("y_shape:", self.h_params['y_shape'])
-        if self.h_params['crop'] is not None:
-            print('Cropping indinces [{} - {}]').format(self.h_params['crop'][0],
-                                                        self.h_params['crop'][1])
-            self.timepoints = tf.constant(
-                    np.arange(0, self.h_params['n_t']))[self.h_params['crop'][0]:
-                                                        self.h_params['crop'][1]]
-
-            self.h_params['n_t'] = len(self.timepoints)
-            dataset = dataset.map(self._crop)
-
-
-
-
-
-        if self.h_params['decim'] is not None:
-            print('Decimating')
-
-            self.decimated_timepoints = tf.constant(
-                    np.arange(0, self.h_params['n_t'], self.h_params['decim']))
-
-            self.h_params['n_t'] = len(self.timepoints)
-            dataset = dataset.map(self._decimate)
-
-
-        #TODO: test set case
-
-        if split:
+        #Define batch sizes
+        if split == True:
             train_folds = []
             val_folds = []
             #split into training and validation folds
@@ -166,106 +124,108 @@ class Dataset(object):
                 vf = f.pop(val_fold_ind)
                 val_folds.extend(vf)
                 train_folds.extend(np.concatenate(f))
-                #print("datafile: {} iter: {} val: {} train: {}".format(i, val_fold_ind, len(val_folds), len(train_folds)))
-
 
             self.val_fold = np.array(val_folds)
             self.train_fold = np.array(train_folds)
 
-            # ovl = 0
-            # for si in self.train_fold:
-            #     if si in self.val_fold:
-            #         ovl += 1
-            # print('OVERLAP: ', ovl)
-            #print(len(np.concatenate(folds)))
-            #print("Train fold:", self.train_fold, self.train_fold.shape)
-            #print("val fold:", self.val_fold, self.val_fold.shape)
-            #self.train_fold = np.concatenate(self.train_fold)
+            self.training_batch = train_batch
+            if not test_batch:
+                if 'sample_subset' in self.h_params.keys() and self.h_params['sample_subset'] is not None:
+                    self.validation_batch = train_batch
+                else:
+                    self.validation_batch = len(self.val_fold)
+            else:
+                self.validation_batch = test_batch
+
+            self.validation_steps = max(1, len(self.val_fold) // self.validation_batch)
+            self.training_steps = max(1, len(self.train_fold) // self.training_batch)
+
+            print(self.training_batch, self.validation_batch)
+
+        else:
+
+            self.test_batch = train_batch
+
+            self.test_steps = max(1, self.test_batch // self.test_batch)
+
+        if 'sample_subset' in self.h_params.keys() and self.h_params['sample_subset'] is not None:
+
+            batch_range = np.arange(train_batch)
+            self.sample_subset = np.stack(np.meshgrid(batch_range,
+                                                      self.h_params['sample_subset'],
+                                                      self.h_params['sample_subset'],
+                                                      indexing='ij'),
+                                                      axis=-1)
+
+            print('Picking {} sample points {}'.format(len(self.h_params['sample_subset']),
+                                                    self.h_params['sample_subset']))
+
+
+        if 'timepoint_subset' in self.h_params.keys() and self.h_params['timepoint_subset'] is not None:
+
+
+
+            self.timepoint_subset = self.h_params['timepoint_subset']
+            print('Picking {} timepoints {}'.format(len(self.h_params['timepoint_subset']),
+                                                    self.h_params['timepoint_subset']))
+
+        if split:
 
             train_dataset = dataset.filter(self._cv_train_fold_filter)
             val_dataset =  dataset.filter(self._cv_val_fold_filter)
 
-            if self.h_params['rebalance_classes']:
-                train_dataset = self._resample(train_dataset)
-                val_dataset = self._resample(val_dataset)
-                print("Rebalancing Train and Val")
-
-            #batch
-            if not test_batch:
-                test_batch = len(self.val_fold)
-
-            self.validation_steps = max(1, len(self.val_fold)//test_batch)
-            self.training_steps = max(1, len(self.train_fold)//train_batch)
-            self.validation_batch = test_batch
-            self.training_batch = train_batch
-
-            val_dataset = val_dataset.shuffle(5).batch(test_batch)#.repeat()
-            val_dataset.batch_size = test_batch
-            train_dataset = train_dataset.shuffle(5).batch(train_batch)#.repeat()
-            
-            val_dataset = val_dataset.repeat()
-            train_dataset = train_dataset.repeat()
-            
-            if self.h_params['channel_subset'] is not None:
-                val_dataset = val_dataset.map(self._select_channels)
-                train_dataset = train_dataset.map(self._select_channels)
-                #self.h_params['n_ch'] = len(self.h_params['channel_subset'])
-            
-
-
-            train_dataset = train_dataset.map(self._unpack)
-            val_dataset = val_dataset.map(self._unpack)
+            train_dataset = self._preprocess(train_dataset, dataset_type='train')
+            val_dataset = self._preprocess(val_dataset, dataset_type='val')
 
             return train_dataset, val_dataset
 
         else:
-            #print(dataset)
-            #batch
-            if self.h_params['rebalance_classes']:
-                dataset = self._resample(dataset)
-                print("Rebalancing unsplit dataset")
-                print()
-            if np.any(['train' in tp for tp in path]):
-                size = self.h_params['train_size']
-            else:
-                size = self.h_params['val_size']
-            if not test_batch:
-                test_batch = size
-                dataset = dataset.shuffle(5).batch(test_batch)
-            else:
-                dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
-            
-            if self.h_params['channel_subset'] is not None:
-                dataset = dataset.map(self._select_channels)
-                
-                
+            dataset = self._preprocess(dataset, dataset_type='test')
 
-            #dataset = dataset.shuffle(5).batch(test_batch)#.repeat()
-            dataset.batch = test_batch
+            return dataset
 
 
-            self.test_batch = test_batch
-            self.test_steps = max(1, size // test_batch)
-            dataset = dataset.map(self._unpack)
-            return dataset#, None
-            #else:
-            # unsplit datasets are used for visuzalization and evaluation
-            # if batching is not specified the whole set is used as batch
+    def _preprocess(self, dataset, dataset_type='test'):
 
-        #     val_size = self.dataset.h_params['val_size']
-        #     self.validation_steps =  val_size // val_batch)
-        # else:
-        #     self.validation_steps = 1
+        if self.h_params['class_subset'] is not None and self.h_params['target_type'] == 'int':
+            dataset = dataset.filter(self._select_classes)
+            dataset = dataset.map(self._select_class_subset)
 
+            subset_ratio = np.sum([v for k,v in self.h_params['class_ratio'].items()
+                                   if k in self.h_params['class_subset']])
+            ratio_multiplier = 1./subset_ratio
+            print("Using class_subset with {} classes:".format(len(self.h_params['class_subset'])))
 
-            # print(dataset)
+            print("Subset ratio {:.2f}, Multiplier {:.2f}".format(subset_ratio,
+                                                                  ratio_multiplier
+                                                                  ))
+            cp = {k:v*ratio_multiplier for k,v in self.h_params['class_ratio'].items()
+                  if k in self.h_params['class_subset']}
 
-            # else:
-            #     test_batch = self.h_params['val_size']
-            #     dataset = dataset.shuffle(5).batch(test_batch).repeat()
+            self.h_params['class_ratio'] = cp
+            self.y_shape = (len(self.h_params['class_subset']),)
 
+        if self.h_params['rebalance_classes']:
+            dataset = self._resample(dataset)
 
+        if dataset_type == 'train':
+            dataset = dataset.shuffle(5).batch(self.training_batch).repeat()
+        elif dataset_type == 'val':
+            dataset = dataset.shuffle(5).batch(self.validation_batch).repeat()
+        elif dataset_type == 'test':
+            dataset = dataset.shuffle(5).batch(self.test_batch)
 
+        if self.h_params['channel_subset'] is not None:
+            dataset = dataset.map(self._select_channels)
+
+        if self.h_params['sample_subset'] is not None:
+            dataset = dataset.map(self._select_samples)
+
+        if 'timepoint_subset' in self.h_params.keys() and self.h_params['timepoint_subset'] is not None:
+            dataset = dataset.map(self._select_timepoints)
+
+        dataset = dataset.map(self._unpack)
+        return dataset
 
     def _select_class_subset(self, example_proto):
         """Pick classes defined in self.h_params['class_subset'] from y"""
@@ -276,18 +236,18 @@ class Dataset(object):
 
     def _select_channels(self, example_proto):
         """Pick a subset of channels specified by self.channel_subset."""
-    
         example_proto['X'] = tf.gather(example_proto['X'],
                                         tf.constant(self.h_params['channel_subset']),
                                         axis=3)
         return example_proto
 
-    def _select_times(self, example_proto):
+    def _select_samples(self, example_proto):
         """Pick a subset of channels specified by self.channel_subset."""
-        example_proto['X'] = tf.gather(example_proto['X'],
-                                        tf.constant(self.times),
-                                        axis=2)
+        example_proto['X'] = tf.gather_nd(example_proto['X'],
+                                        indices=tf.constant(self.sample_subset)
+                                            )
         return example_proto
+
 
     def class_weights(self):
         """Weights take class proportions into account."""
@@ -295,24 +255,17 @@ class Dataset(object):
                 [v for k, v in self.h_params['class_ratio'].items()])
         return (1./np.mean(weights))/weights
 
-    def _decimate(self, example_proto):
+    def _select_timepoints(self, example_proto):
         """Downsample data."""
         example_proto['X'] = tf.gather(example_proto['X'],
-                                        self.decimated_timepoints,
-                                        axis=2)
+                                       self.timepoint_subset,
+                                       axis=2)
 
     def _crop(self, example_proto):
         """Crop data on the time axis."""
         example_proto['X'] = tf.gather(example_proto['X'],
                                         self.timepoints,
                                         axis=2)
-    #     return example_proto
-
-#    def _get_n_samples(self, path):
-#        """Count number of samples in TFRecord files specified by path."""
-#        ns = path
-#        return ns
-
     def _parse_function(self, example_proto):
         """Restore data shape from serialized records.
 
@@ -392,7 +345,7 @@ class Dataset(object):
 
     def assign_bin(self, sample):
         # Assign each sample to a bin
-        
+
         bin_id = tf.searchsorted(self.h_params['bins'],
                                  sample['y'], side='left')
         bin_id = tf.clip_by_value(bin_id, 0, self.h_params['n_bins'] - 1)[0]
@@ -404,31 +357,31 @@ class Dataset(object):
         target_dist = 1./n_classes*np.ones(n_classes)
         empirical_dist = [v for k, v in self.h_params['class_ratio'].items()]
         print(self.h_params['class_ratio'], n_classes)
-        
+
         if self.h_params['target_type'] == 'int':
             #Classification case
             resample_ds = dataset.rejection_resample(class_func,
                                                      target_dist=target_dist,
-                                                     initial_dist=empirical_dist)    
-            
+                                                     initial_dist=empirical_dist)
+
         elif self.h_params['target_type'] == 'float':
             #using width-based resampling
             #self.h_params['bins'] = np.array(list(self.h_params['orig_classees'].values())).astype(np.float32)[1:-1]
-            #self.h_params['n_bins'] = 
+            #self.h_params['n_bins'] =
             #using percentile-based resampling
-            
+
             self.h_params['bins'] = np.array(list(self.h_params['class_ratio'].values())).astype(np.float32)
             target_dist = 1./len(self.h_params['bins'])*np.ones(len(self.h_params['bins']))
-            print('n_bins {}, len(bins): {}'.format(self.h_params['n_bins'], 
+            print('n_bins {}, len(bins): {}'.format(self.h_params['n_bins'],
                                                     len(self.h_params['bins'])))
-            
+
             resample_ds = dataset.rejection_resample(self.assign_bin,
                                                      target_dist=target_dist,
                                                      #initial_dist=empirical_dist
                                                      )
-            
-        
-        
+
+
+
         balanced_ds = resample_ds.map(lambda y, xy: xy)
         new_dist = {k: target_dist[0]
                     for k in self.h_params['class_ratio'].keys()}
@@ -439,9 +392,9 @@ class Dataset(object):
 def class_func(sample):
     return tf.argmax(sample['y'], -1)
 
-    
-    
-    
+
+
+
 # def _onehot(y, n_classes=False):
 #     if not n_classes:
 #         """Create one-hot encoded labels."""

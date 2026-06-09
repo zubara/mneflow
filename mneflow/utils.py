@@ -5,60 +5,16 @@ Specifies utility functions.
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
 import os
-import pickle
+import dill
 import numpy as np
 import tensorflow as tf
 import scipy.io as sio
-import csv
+
 import mne
 from matplotlib import pyplot as plt
 from .meta import MetaData
 
-class Logger(object):
-    """Logs all parameters manupulated in the current script and writes them
-    into a csv"""
-    def __init__(self, name, path):
-        self.savepath = path + name + '.csv'
-        self.name = name
-        self.dict = {}
-        self.header = []
-        self.appending = os.path.exists(self.savepath)
 
-    def write(self, param_dict):
-        self.appending = os.path.exists(self.savepath)
-        with open(self.savepath, 'a+', newline='') as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=param_dict.keys())
-
-            if self.appending == False:
-                writer.writeheader()
-                self.appending = True
-                print("Writing to: ",  self.savepath)
-            writer.writerow(param_dict)
-
-def aligned_mean(topos):
-    if topos.ndim == 2:
-        topos = np.expand_dims(topos, 1)
-    n_topos = topos.shape[1]
-    topos_aligned = []
-    
-    for i in range(n_topos):
-        t = topos[:, i, :]
-        cc = np.sign(np.corrcoef(t.T)[0, :])
-        if np.any(np.isnan(cc)):
-            print(cc)
-            cc[np.isnan(cc)] = 0.0
-            print(cc)
-            print('***')
-
-        majority = np.sign(np.sum(cc))
-        if majority == 0:
-            majority = 1.
-
-        aligned = np.dot(t, cc) / len(cc)
-        topos_aligned.append(majority * aligned)
-
-    topos_aligned = np.stack(topos_aligned, 1)
-    return topos_aligned
 
 def _onehot(y, n_classes=False):
     """
@@ -106,8 +62,9 @@ def load_meta(path, data_id=''):
         Metadata file
 
     """
-    with open(path+data_id+'_meta.pkl', 'rb') as f:
-        meta = pickle.load(f)
+    with open(os.path.join(path, data_id + '_meta.pkl'), 'rb') as f:
+        print(f)
+        meta = dill.load(f)
     return meta
 
 # def load_model(model_path):
@@ -117,7 +74,7 @@ def load_meta(path, data_id=''):
 
 
 
-def scale_to_baseline(X, baseline=None):
+def scale_to_baseline(X, baseline=None, crop_baseline=False):
     """Perform global scaling based on a specified baseline.
 
     Subtracts the mean of each channel and divides by the standard deviation of
@@ -132,6 +89,9 @@ def scale_to_baseline(X, baseline=None):
         Baseline definition (in samples). If baseline is set to None (default)
         the whole epoch is used for scaling.
 
+    crop_baseline : bool
+        Whether to crop the baseline after scaling is applied. Only used if
+        baseline is specified.
     Returns
     -------
     X : ndarray
@@ -151,9 +111,9 @@ def scale_to_baseline(X, baseline=None):
 
     X -= X0m
     X /= X0sd
-    # if crop_baseline and baseline is not None:
-    #     X = np.delete(X, interval, axis=-1)
-    # #print("Scaling Done")
+    if crop_baseline and baseline is not None:
+        X = np.delete(X, interval, axis=-1)
+    #print("Scaling Done")
     return X
 
 
@@ -356,7 +316,7 @@ def produce_tfrecords(inputs,
                       test_set=False,
                       scale=False,
                       scale_interval=None,
-                      crop=None,
+                      crop_baseline=False,
                       segment=False,
                       aug_stride=None,
                       seq_length=None,
@@ -364,8 +324,7 @@ def produce_tfrecords(inputs,
                       transform_targets=False,
                       scale_y=False,
                       train_batch=50,
-                      test_batch=None,
-                      n_bins=3
+                      test_batch=None
                       ):
 
     """Produce TFRecord files from input, apply (optional) preprocessing.
@@ -453,8 +412,9 @@ def produce_tfrecords(inputs,
         If tuple, then baseline is data[tuple[0] : tuple[1]].
         Only used if scale == True.
 
-    crop : tuple, optional
-        Indices along the time axis to crop. Can be int or None.
+    crop_baseline : bool, optional
+        Whether to crop baseline specified by 'scale_interval'
+        after scaling. Defaults to False.
 
     array_keys : dict, optional
         Dictionary mapping {'X':'data_matrix','y':'labels'},
@@ -574,7 +534,7 @@ def produce_tfrecords(inputs,
                         n_folds=n_folds,
                         scale=scale,
                         scale_interval=scale_interval,
-                        crop=crop,
+                        crop_baseline=crop_baseline,
                         segment=segment, aug_stride=aug_stride,
                         seq_length=seq_length,
                         segment_y=segment_y)
@@ -588,16 +548,8 @@ def produce_tfrecords(inputs,
                     Y, n_ev, class_ratio, orig_classes = produce_labels(Y)
                     Y = _onehot(Y)
                 else:
-                    #TODO: need renaming
-                    #for regression class_ratio - frequency-based resampling
-                    #orig_classes - width-based resampling, and 
-                    bin_edges_freq = np.percentile(Y, np.linspace(20, 80, n_bins))
-                    bin_edges_width = np.linspace(np.min(Y), np.max(Y), n_bins)
-                    
-                    
-                    class_ratio = {bin_: edge for bin_, edge in enumerate(bin_edges_freq)}
-                    
-                    orig_classes = {bin_: edge for bin_, edge in enumerate(bin_edges_width)}
+                    class_ratio = dict()
+                    orig_classes = dict()
 
 
                 if test_set == 'holdout':
@@ -683,15 +635,14 @@ def produce_tfrecords(inputs,
                              n_ch=n_ch,
                              y_shape=y_shape,
                              class_ratio=class_ratio,
-                             orig_classes=orig_classes,
-                             n_bins=n_bins,
+                             orig_classees=orig_classes,
                              fs=fs,
                              train_batch=train_batch,
                              test_batch=test_batch)
 
             meta_preprocessing = dict(scale=scale,
                                       scale_interval=scale_interval,
-                                      crop=crop,
+                                      crop_baseline=crop_baseline,
                                       segment=segment, aug_stride=aug_stride,
                                       seq_length=seq_length,
                                       segment_y=segment_y)
@@ -699,8 +650,8 @@ def produce_tfrecords(inputs,
             meta = MetaData()
             meta.update(data=meta_data, preprocessing=meta_preprocessing)
 
-            with open(path+data_id+'_meta.pkl', 'wb') as f:
-                pickle.dump(meta, f)
+            with open(os.path.join(path, data_id+'_meta.pkl'), 'wb') as f:
+                dill.dump(meta, f)
 
     elif os.path.exists(meta_fname):
         print('Metadata file found, restoring')
@@ -741,7 +692,7 @@ def produce_labels(y, return_stats=True):
                                            return_counts=True)
     total_counts = np.sum(counts)
     counts = counts/float(total_counts)
-    #print(np.squeeze(inv)[inds].shape, np.squeeze(inv[inds]).shape)
+    print(np.squeeze(inv)[inds].shape, np.squeeze(inv[inds]).shape)
     class_proportions = {str(clss): cnt for clss, cnt in zip(np.squeeze(inv)[inds], counts)}
     orig_classes = {str(new): old for new, old in zip(np.squeeze(inv)[inds], classes)}
     if return_stats:
@@ -771,7 +722,7 @@ def _combine_labels(labels, new_mapping):
     """
     assert isinstance(new_mapping, dict), "Invalid label mapping."
     # Find all possible label values
-    #print(labels)
+    print(labels)
     tmp = []
     for k, j in new_mapping.items():
         tmp.append(k)
@@ -946,7 +897,7 @@ def preprocess_realtime(data, decimate=False, picks=None,
 
 def preprocess(data, events, sample_counter,
                input_type='trials', n_folds=5,
-               scale=False, scale_interval=None, crop=None,
+               scale=False, scale_interval=None, crop_baseline=False,
                segment=False, aug_stride=None,
                seq_length=None,
                segment_y=False):
@@ -981,8 +932,9 @@ def preprocess(data, events, sample_counter,
         If tuple, than baseline is data[tuple[0] : tuple[1]].
         Only used if scale == True.
 
-    crop : tuple, optional
-        Indices along the time axis to crop. Can be int or None.
+    crop_baseline : bool, optional
+        Whether to crop baseline specified by \'scale_interval\'
+        after scaling (defaults to False).
 
     segment : bool, int, optional
         If specified, splits the data into smaller segments of specified
@@ -1019,15 +971,8 @@ def preprocess(data, events, sample_counter,
     # TODO: remove scale_y and transform targets?
 
     if scale:
-        data = scale_to_baseline(data, baseline=scale_interval)
-
-    if crop:
-        if crop[0] == None:
-            crop[0] = 0
-        if crop[1] == None:
-            data = data[:, :, crop[0] : ]
-        else:
-            data = data[:, :, crop[0] : crop[1]]
+        data = scale_to_baseline(data, baseline=scale_interval,
+                                 crop_baseline=crop_baseline)
 
     #define folds
     if input_type  == 'continuous':
