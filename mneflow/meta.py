@@ -108,11 +108,12 @@ class MetaData():
                   Please specify meta.data['path'] and meta.data['data_id'']""")
         
         
-    def restore_model(self, load_encoder=False):
+    def restore_model(self, load_encoder=False, dataset=False):
         """Restored previously saved model from metadata."""
+        
         from mneflow import models, lfcnn
         if self.model_specs['scope'] == 'lfcnn':
-            model = lfcnn.LFCNN(meta=self)
+            model = lfcnn.LFCNN(meta=self, dataset=dataset)
         elif self.model_specs['scope'] == 'varcnn':
             model = models.VARCNN(meta=self)
         elif self.model_specs['scope'] == 'fbcsp-ShallowNet':
@@ -144,6 +145,23 @@ class MetaData():
         #TODO: set weights from self.km.weights
         #TODO: set val loss, patterns, etc, specs
         return model
+    
+    def change_dataset(self, new_data_id, meta_path=None):
+        if not meta_path:
+            meta_path = self.data['path']
+        if os.path.exists(meta_path + new_data_id + '_meta.pkl'):
+            with open(meta_path + new_data_id + '_meta.pkl', 'rb') as f:
+                new_meta = pickle.load(f)
+        # elif os.path.exists(meta_path):
+        #     self.data
+        #print(new_meta.data)
+        keys = ['path', 'data_path', 'data_id', 
+                'test_set', 'train_paths', 'test_paths', 'folds', 'indices', 
+                'n_folds', 'test_fold', 'train_size', 'test_size', 'val_size', 
+                'n_seq', 'n_t', 'n_ch', 'y_shape']
+        new_data = {k:new_meta.data[k] for k in keys}
+        self.data.update(new_data)
+        return self
     
     def update(self, data=None, preprocessing=None, train_params=None, 
                model_specs=None, patterns=None, results=None, weights=None):
@@ -881,19 +899,20 @@ class MetaData():
             class_subset = np.arange(0,  psds.shape[1], 1.)
         
         n_freq, n_y, n_folds = h.shape
-      
-        # psds /= np.sum(psds, 0, keepdims=True)
-        # h /= np.sum(h, 0, keepdims=True)
-        # freq_responses /= np.sum(freq_responses, 0, keepdims=True)
+        if not log:
+            psds /= np.sum(psds, 0, keepdims=True)
+            h_stds = np.std(h, -1)
+            h /= np.sum(h, 0, keepdims=True)
+            freq_responses /= np.sum(freq_responses, 0, keepdims=True)
         
         if freqs_lim:
             #ax[i].set_xlim(freqs_lim[0], freqs_lim[1])
-            vmin = .9*np.min(h[freqs_lim[0] : freqs_lim[1], :])
-            vmax = 1.1*np.max(psds[freqs_lim[0] : freqs_lim[1], :])
+            vmin = .9*min(np.min(h[freqs_lim[0] : freqs_lim[1], :]), np.min(psds[freqs_lim[0] : freqs_lim[1], :]))
+            vmax = 1.1*max(np.max(h), np.max(psds))
             
         else:
-            vmin = 0.9*np.min(h)
-            vmax = 1.1*np.max(psds)
+            vmin = 0.9*min(np.min(psds), np.min(h))
+            vmax = 1.1*max(np.max(h), np.max(psds))
         #print(vmin, vmax)
             
         f, ax = plt.subplots(1, n_y, sharey=True, figsize=(3*n_y, 4))
@@ -901,19 +920,20 @@ class MetaData():
         if isinstance(ax, plt.matplotlib.axes._axes.Axes):
             ax = [ax]
         for i in range(n_y):
-            h_std = np.std(h[:, i], -1)
+            #h_std = np.std(h[:, i], -1)
+            h_std = h_stds[:, i]
             inp_std = np.std(psds[:, i], -1)
             self.plot_temporal_pattern(psds[:, i].mean(-1), 
                                        h[:, i].mean(-1), 
                                        freq_responses[:, i].mean(-1),
                                        log=log, freqs_lim=freqs_lim, 
                                        vlim = (vmin, vmax), ax=ax[i],
-                                       #h_std=h_std, inp_std=inp_std
+                                       h_std=h_std, inp_std=inp_std
                                        )
             
                
         if i == n_y - 1:
-            ax[i].legend(frameon=False)
+            ax[i].legend(frameon=False, fontsize=16)
         # if savefig:
         #     figname = '-'.join([self.meta.data['path'] + self.model_specs['scope'], 
         #                         self.meta.data['data_id'], method, "spectra.svg"])
@@ -923,31 +943,33 @@ class MetaData():
     def plot_temporal_pattern(self, psd, h, freq_response, 
                               log=False, vlim=None, 
                               freqs_lim=None, ax=None,
-                              h_std = None, inp_std = None):
+                              h_std = None, inp_std=None, size=16):
+        
         if not ax:
             f = plt.figure()
             ax = f.gca()
         
-        # if vlim:
-        #     vmin = vlim[0]
-        #     vmax = vlim[1]
-        # elif freqs_lim:
-        #     #ax[i].set_xlim(freqs_lim[0], freqs_lim[1])
-        #     vmin = np.min(psd[freqs_lim[0] : freqs_lim[1]])
-        #     vmax = np.max(h[freqs_lim[0] : freqs_lim[1]])
-        # else:
-        #     vmin = np.min(psd)
-        #     vmax = np.max(h)
+        if vlim:
+            vmin = vlim[0]
+            vmax = vlim[1]
+        elif freqs_lim:
+            #ax[i].set_xlim(freqs_lim[0], freqs_lim[1])
+            vmin = np.min(psd[freqs_lim[0] : freqs_lim[1]])
+            vmax = np.max(h[freqs_lim[0] : freqs_lim[1]])
+        else:
+            vmin = min(np.min(psd), np.min(h))
+            vmax = max(np.max(h), np.max(psd))
             
         if log:
             ax.semilogy(self.patterns['freqs'], psd,
                            label='Filter input RPS')
             ax.semilogy(self.patterns['freqs'], h,
                                 label='Fitler output RPS', color='tab:orange')
-            ax.semilogy(self.patterns['freqs'], freq_response,
-                            label='Freq response',
-                            color='tab:green', linestyle='dotted')
-            #vmin = np.log(vmin)
+            # ax.semilogy(self.patterns['freqs'], freq_response,
+            #                 label='Freq response',
+            #                 color='tab:green', linestyle='dotted')
+            ax.set_ylabel("Log power, dB", size=size)
+            vmin = min(psd[-1], h[-1])
             #vmax = np.log(vmax)
         else:
             psd /= np.sum(psd)
@@ -959,6 +981,7 @@ class MetaData():
                        h, 
                        label='Fitler output RPS', 
                        color='tab:orange')
+            ax.set_ylabel("Relative power, %", size=size)
             if np.any(h_std):
                 ax.fill_between(self.patterns['freqs'], 
                                     h + h_std, 
@@ -976,9 +999,18 @@ class MetaData():
                             label='Freq response', 
                             color='tab:green', linestyle='dotted')
             
-        # ax.set_ylim(0.75*vmin, 1.25*vmax)
-        # if freqs_lim:
-        #     ax.set_xlim(freqs_lim[0], freqs_lim[1])
+        ax.set_ylim(0.95*vmin, 1.05*vmax)
+        if freqs_lim:
+            ax.set_xlim(freqs_lim[0], freqs_lim[1])
+        
+        ax.set_xlabel("Frequency, Hz", size=size)
+        ax.set_xticks(np.arange(freqs_lim[0], freqs_lim[1], 3))
+        ax.set_xticklabels(ax.get_xticklabels(), size=size)
+        ax.set_yticklabels(ax.get_yticklabels(), size=size)
+        ax.vlines(np.arange(freqs_lim[0], freqs_lim[1], 3), 
+                  ymin=vmin, ymax=vmax, linestyle='dashed', alpha=0.25, 
+                  color='tab:grey')
+        
         return ax
     
     

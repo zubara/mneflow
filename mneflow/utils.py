@@ -216,20 +216,17 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
     writer.close()
 
 
-def _split_indices(X, y, n_folds=5):
-    # TODO: check if indices are permuted
+def _split_indices(n_samples, n_folds=5):
     """Generate indices for n-fold cross-validation"""
-    n = X.shape[0]
-    print('n:', n)
-    #original_indices = np.arange(n)
-    shuffle = np.random.permutation(n)
+    
+    shuffle = np.random.permutation(n_samples)
     subset_proportion = 1./float(n_folds)
-    fold_size = int(subset_proportion*n)
+    fold_size = int(subset_proportion*n_samples)
     folds = [shuffle[i*fold_size:(i+1)*fold_size] for i in range(n_folds)]
     return folds
 
 
-def _split_sets(X, y, folds, ind=-1, sample_counter=0):
+def _split_sets(X, test_fold):
     """Split the data returning a single fold specified by ind as a holdout set
         and the rest of the data as training/validation sets.
 
@@ -259,14 +256,15 @@ def _split_sets(X, y, folds, ind=-1, sample_counter=0):
 
     """
 
-    fold = folds.pop(ind) - sample_counter
-    X_test = X[fold, ...]
-    y_test = y[fold, ...]
-    X_train = np.delete(X, fold, axis=0)
-    y_train = np.delete(y, fold, axis=0)
-    test_fold = fold + sample_counter
+    #fold = fold_split.pop(ind) - sample_counter
+    X_test = X[test_fold, ...]
+    #y_test = y[fold, ...]
+    X_train = np.delete(X, test_fold, axis=0)
+    #y_train = np.delete(y, fold, axis=0)
+    #test_fold = fold + sample_counter
     # return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
-    return X_train, y_train, X_test, y_test, test_fold
+    #return X_train, y_train, X_test, y_test, test_fold
+    return X_train, X_test
 
 
 def import_data(inp, array_keys={'X': 'X', 'y': 'y'}):
@@ -352,18 +350,19 @@ def produce_tfrecords(inputs,
                       target_type='int',
                       array_keys={'X': 'X', 'y': 'y'},
                       n_folds=5,
-                      predefined_split=None,
                       test_set=False,
                       scale=False,
-                      scale_interval=None,
-                      crop=None,
                       segment=False,
-                      aug_stride=None,
-                      seq_length=None,
                       overwrite=False,
                       transform_targets=False,
                       scale_y=False,
-                      train_batch=50,
+                      predefined_split=None,
+                      t_index=None,
+                      scale_interval=None,
+                      crop=None,
+                      aug_stride=None,
+                      seq_length=None,
+                      train_batch=None,
                       test_batch=None,
                       n_bins=3
                       ):
@@ -471,6 +470,11 @@ def produce_tfrecords(inputs,
     overwrite : bool, optional
         Whether to overwrite the metafile if it already exists at the
         specified path.
+    
+    t_index : array-like, optional
+        Index of timestamps associated with each training example. Must be
+        of the same size as each of inputs. 
+        Implemented only for type(inputs) == [tuple]
 
     Returns
     -------
@@ -495,7 +499,7 @@ def produce_tfrecords(inputs,
 
     assert input_type in ['trials', 'seq', 'continuous', 'fconn'], "Unknown input type: {}".format(input_type)
     assert target_type in ['int', 'float', 'signal'], "Unknown target type."
-
+    
     if not os.path.exists(path):
         os.mkdir(path)
     data_path = os.path.join(path, 'tfrecords')
@@ -508,6 +512,7 @@ def produce_tfrecords(inputs,
         test_size = 0
         val_size = 0
         folds = []
+        indices = []
         train_paths=[]
         test_paths=[]
 
@@ -523,7 +528,7 @@ def produce_tfrecords(inputs,
         if len(inputs) == 0:
             print("Cannot process Input: {} of type {}".format(inputs, type(inputs)))
             return
-        for inp in inputs:
+        for i, inp in enumerate(inputs):
             #print("inp:", inp, len(inp), type(inp))
 
 
@@ -549,7 +554,9 @@ def produce_tfrecords(inputs,
                     segment_y = False
                 else:
                     segment_y = True
-
+                
+                
+                
                 if input_type == 'fconn':
                     assert data.shape[1] == data.shape[2], "data.shape incompatible with fconn input type"
                     print('Input shapes: X (n, ch, ch, freq) : ', data.shape,
@@ -566,7 +573,13 @@ def produce_tfrecords(inputs,
                           'input_type : ', input_type,
                           'target_type : ', target_type,
                           'segment_y : ', segment_y)
-
+                import pdb
+                pdb.set_trace()
+                if t_index is not None:
+                    assert len(t_index[i]) == len(events), "t_index size ({}) mismatches the size of  the data ({})".format(len(t_index[i]), len(events))
+                else:
+                    t_index = np.arange(len(events))
+                    
                 X, Y, fold_split = preprocess(
                         data, events,
                         sample_counter=train_size,
@@ -599,25 +612,29 @@ def produce_tfrecords(inputs,
                     
                     orig_classes = {bin_: edge for bin_, edge in enumerate(bin_edges_width)}
 
-
-                if test_set == 'holdout':
-                    X, Y, x_test, y_test, test_fold = _split_sets(X, Y,
-                                                                  folds=fold_split,
-                                                                  sample_counter=train_size)
-                    test_size += x_test.shape[0]
-                else:
-                    test_fold = None
-
                 if predefined_split:
                     assert len(predefined_split[jj]) == len(fold_split), "Number of folds in predefined_split {} does not match n_folds {}!".format(len(predefined_split), len(fold_split))
                     assert np.all([len(fpd) == len(fa) for fpd, fa in zip(predefined_split[jj], fold_split)]), "Number of samples in predefined folds does not match the original split!"
                     print("Using Predefined Train/Validation Split....")
                     fold_split = predefined_split[jj]
-                    #TODO: remove?
-#                if input_type == 'fconn':
-#                    _n, meta['n_ch'], meta['n_t'], meta['n_freq'] = X.shape
-#                else:
-                _n, n_seq, n_t, n_ch = X.shape
+                    
+                if test_set == 'holdout':
+                    test_fold = fold_split.pop(-1) - train_size
+                    X, x_test = _split_sets(X, test_fold)
+                    Y, y_test = _split_sets(Y, test_fold)
+                    if np.any(t_index):
+                        T, t_test = _split_sets(t_index, test_fold)
+                    test_fold = test_fold + train_size
+                    test_size += x_test.shape[0]
+                else:
+                    test_fold = None
+
+
+
+                if input_type == 'fconn':
+                    _n, n_ch, n_t, n_freq = X.shape
+                else:
+                    _n, n_seq, n_t, n_ch = X.shape
 
 
                 if input_type == 'seq':
@@ -625,8 +642,18 @@ def produce_tfrecords(inputs,
                 else:
                     y_shape = Y[-1].shape
 
+                
+                
                 n = np.arange(_n) + train_size
 
+                folds.append(fold_split)
+                if t_index is not None:
+                    # import pdb
+                    # pdb.set_trace()
+                    indices.append([t_index[i][f - train_size] for f in fold_split])
+                else:
+                    indices.append([n[f - train_size]  for f in fold_split])
+                
                 train_size += _n
 
                 val_size += len(fold_split[0])
@@ -635,8 +662,7 @@ def produce_tfrecords(inputs,
                 print('Target shape actual/metadata: ', Y[0].shape, y_shape)
 
                 print('Saving TFRecord# {}'.format(jj))
-
-                folds.append(fold_split)
+                
                 trname = ''.join([data_id, '_train_', str(jj), '.tfrecord'])
                 train_filename = os.path.join(data_path, trname)
                 train_paths.append(train_filename)
@@ -663,7 +689,7 @@ def produce_tfrecords(inputs,
                     test_paths.append(test_filename)
                 jj += 1
                 #create and save metadata file
-
+# TODO: check train / test batch updating in meta
             meta_data = dict(path=path,
                              data_path=data_path,
                              target_type=target_type,
@@ -673,6 +699,7 @@ def produce_tfrecords(inputs,
                              train_paths=train_paths,
                              test_paths=test_paths,
                              folds=folds,
+                             indices=indices,
                              n_folds=n_folds,
                              test_fold=test_fold,
                              train_size=train_size,
@@ -1017,7 +1044,8 @@ def preprocess(data, events, sample_counter,
     print("Preprocessing:")
 
     # TODO: remove scale_y and transform targets?
-
+    n_samples = events.shape[0]
+    
     if scale:
         data = scale_to_baseline(data, baseline=scale_interval)
 
@@ -1031,21 +1059,21 @@ def preprocess(data, events, sample_counter,
 
     #define folds
     if input_type  == 'continuous':
-        data, events, folds = cont_split_indices(data, events,
+        data, events, batch_folds = cont_split_indices(data, events,
                                                  n_folds=5,
                                                  segments_per_fold=10)
-        shuffle = np.random.permutation(np.arange(events.shape[0]))
+        shuffle = np.random.permutation(np.arange(n_samples))
         data = data[shuffle]
         events = events[shuffle]
         print("Continuous events: ", events.shape)
 
     else:
-        shuffle = np.random.permutation(np.arange(events.shape[0]))
-        data = data[shuffle]
-        events = events[shuffle]
-        folds = _split_indices(data, events, n_folds=n_folds)
+        shuffle = np.random.permutation(np.arange(n_samples))
+        # data = data[shuffle]
+        # events = events[shuffle]
+        batch_folds = _split_indices(n_samples, n_folds=n_folds)
 
-    print("Splitting into: {} folds x {}".format(len(folds), len(folds[0])))
+    print("Splitting into: {} folds x {}".format(len(batch_folds), len(batch_folds[0])))
 
     if segment:
         print("Segmenting")
@@ -1053,7 +1081,7 @@ def preprocess(data, events, sample_counter,
         Y = []
         segmented_folds = []
         jj = 0
-        for fold in folds:
+        for fold in batch_folds:
             #print(data[fold, ...].shape)
             x = _segment(data[fold, ...], segment_length=segment,
                          stride=aug_stride, input_type=input_type,
@@ -1088,7 +1116,7 @@ def preprocess(data, events, sample_counter,
             X = data
 
         Y = events
-        folds = [f + sample_counter for f in folds]
+        folds = [f + sample_counter for f in batch_folds]
     # Finally cast X into shape [n_epochs, n_seq, n_times, n_channels]
     if input_type != 'fconn':
         X = np.swapaxes(X, -2, -1)

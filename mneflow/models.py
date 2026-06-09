@@ -114,7 +114,7 @@ class BaseModel():
         self.model_name = "_".join([self.scope,
                                     meta.data['data_id']])
 
-
+    
 
     def build(self, optimizer="adam",
               loss=None,
@@ -226,7 +226,7 @@ class BaseModel():
               early_stopping=3, mode='single_fold', prune_weights=False,
               collect_patterns=False, class_weights=None,
               noisy_labels=False, noise_std=.1, shapley_order=1, fold=0, 
-              compute_pvalues=False) :
+              compute_pvalues=False, store_fold_predictions=False) :
 
         """
         Train a model
@@ -289,6 +289,7 @@ class BaseModel():
         self.cv_test_losses = []
         self.cv_test_metrics = []
         self.cv_metric_pvalues = []
+        self.cv_predictions = []
         cv_pvals = []
         
         if class_weights:
@@ -300,7 +301,7 @@ class BaseModel():
         print("Class weights: ", class_weights)
 
         if mode == 'single_fold':
-            n_folds = 1
+            n_folds = 1 + fold
         elif mode == 'cv':
             n_folds = len(self.dataset.h_params['folds'][0])
             print("Running cross-validation with {} folds".format(n_folds))
@@ -418,6 +419,11 @@ class BaseModel():
                 self.collect_patterns(fold=self.current_fold, n_folds=n_folds,
                                       n_comp=int(collect_patterns),
                                       shapley_order=shapley_order)
+            if store_fold_predictions:
+                self.cv_predictions.append({'y_true':y_true,
+                                            'y_pred':y_pred,
+                                            'inds':self.dataset.val_inds})
+                
 
 
             if jj < n_folds - 1:
@@ -522,35 +528,47 @@ class BaseModel():
     def update_results(self):
         """Add training results to training log"""
         results = dict()
-        results['v_metric'] = np.mean(self.cv_metrics)
-        results['v_loss'] = np.mean(self.cv_losses)
-        results['cv_metrics'] = self.cv_metrics
-        results['cv_losses'] = self.cv_losses
-        results['cv_metric_pvalues'] = self.cv_metric_pvalues
+        if hasattr(self, 'cv_metrics'):
+            results['v_metric'] = np.mean(self.cv_metrics)
+            results['v_loss'] = np.mean(self.cv_losses)
+            results['cv_metrics'] = self.cv_metrics
+            results['cv_losses'] = self.cv_losses
+            results['cv_metric_pvalues'] = self.cv_metric_pvalues
+            if len(self.cv_test_losses) > 0:
+                t_loss = np.mean(self.cv_test_losses)
+                t_metric = np.mean(self.cv_test_metrics)
+                if self.dataset.h_params['target_type'] == 'float':
+                    y_true, y_pred = self.predict(self.dataset.h_params['test_paths'])
+                    rms_test = regression_metrics(y_true, y_pred)
+                    print("Test set: Corr =", rms_test['cc'], "R2 =", rms_test['r2'])
+                    results.update({'test_'+k:v for k,v in rms_test.items()})
+                results['test_metric'] = t_metric
+                results['test_loss'] = t_loss
+                results['test_metrics'] = self.cv_test_metrics
+                results['test_losses'] = self.cv_test_losses
+        else:
+            results['v_metric'] = np.mean(self.meta.results['cv_metrics'])
+            results['v_loss'] = np.mean(self.meta.results['cv_losses'])
+            results['cv_metrics'] = self.meta.results['cv_metrics']
+            results['cv_losses'] = self.meta.results['cv_losses']
+            results['cv_metric_pvalues'] = self.meta.results['cv_metrics']
+            results['test_metric'] = self.meta.results['t_metric']
+            results['test_loss'] = self.meta.results['t_metric']
+            results['test_metrics'] = self.meta.results['t_metric']
+            results['test_losses'] = self.meta.results['t_metric']
 
         tr_loss, tr_metric = self.evaluate(self.dataset.train)
         results['tr_metric'] = tr_metric
         results['tr_loss'] = tr_loss
 
 
-        if len(self.cv_test_losses) > 0:
-            t_loss = np.mean(self.cv_test_losses)
-            t_metric = np.mean(self.cv_test_metrics)
-            if self.dataset.h_params['target_type'] == 'float':
-                y_true, y_pred = self.predict(self.dataset.h_params['test_paths'])
-                rms_test = regression_metrics(y_true, y_pred)
-                print("Test set: Corr =", rms_test['cc'], "R2 =", rms_test['r2'])
-                results.update({'test_'+k:v for k,v in rms_test.items()})
-            results['test_metric'] = t_metric
-            results['test_loss'] = t_loss
-            results['test_metrics'] = self.cv_test_metrics
-            results['test_losses'] = self.cv_test_losses
+        
 
-        else:
-            results['test_metric'] = "NA"
-            results['test_loss'] = "NA"
-            results['test_metrics'] = "NA"
-            results['test_losses'] = "NA"
+        # else:
+        #     results['test_metric'] = "NA"
+        #     results['test_loss'] = "NA"
+        #     results['test_metrics'] = "NA"
+        #     results['test_losses'] = "NA"
 
         results['cm'] = self.cm
 
@@ -609,6 +627,8 @@ class BaseModel():
         #dataset info
         data_dict = self.meta.data.copy()
         _ = data_dict.pop('folds')
+        if 'indices' in data_dict.keys():
+            _ = data_dict.pop('indices')
         _ = data_dict.pop('test_fold')
         _ = data_dict.pop('train_paths')
         _ = data_dict.pop('test_paths')
@@ -618,10 +638,10 @@ class BaseModel():
         results_dict = self.meta.results.copy()
         log['train metric'] = results_dict.pop('tr_metric')
         log['validation metric'] = results_dict.pop('v_metric')
-        log['test metric'] =  results_dict.pop('test_metric')
+        #log['test metric'] =  results_dict.pop('test_metric')
         log['train loss'] = results_dict.pop('tr_loss')
         log['validation loss'] = results_dict.pop('v_loss')
-        log['test loss'] =  results_dict.pop('test_loss')
+        #log['test loss'] =  results_dict.pop('test_loss')
 
 
         #format specs: architecture and regularization
@@ -678,9 +698,9 @@ class BaseModel():
         while x.ndim < 4:
             x = np.expand_dims(x, 0)
 
-        out = self.km.predict(x)
-        if self.dataset.h_params['target_type'] == 'int':
-            out = np.argmax(out, -1)
+        out = self.km(x, training=True)
+        # if self.dataset.h_params['target_type'] == 'int':
+        #     out = np.argmax(out, -1)
 
         return out
 
@@ -748,6 +768,11 @@ class BaseModel():
                                            steps=self.dataset.validation_steps,
                                            verbose=0)
         return  losses, metrics
+    
+    def ablation(self, method='weight', ):
+        """
+        Pick single component according to 'method' and evaluate loss
+        """
 
 class SourceNet(BaseModel):
     """SourceNet
@@ -1609,7 +1634,8 @@ class NoisyTrainer:
         self.model_path = model_path + '_best.weights.h5'
         self.noise_std = noise_std
         self.loss_fn = tf.keras.losses.MeanSquaredError()
-        self.metric = tf.keras.metrics.R2Score()
+        self.metric = tf.keras.metrics.MeanAbsoluteError(name='MAE')
+        #self.metric = tf.keras.metrics.R2Score()
         self.optimizer = tf.keras.optimizers.Adam()
 
         # Early stopping parameters

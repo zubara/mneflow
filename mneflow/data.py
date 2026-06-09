@@ -73,8 +73,13 @@ class Dataset(object):
             self.h_params['decim'] = decim
         if crop or not 'crop' in self.h_params.keys():
             self.h_params['crop'] = crop
-        if train_batch or not 'train_batch' in self.h_params.keys():
+        if not 'train_batch' in self.h_params.keys() or self.h_params['train_batch'] == None:
             self.h_params['train_batch'] = train_batch
+        if not test_batch:
+            test_batch = train_batch
+            
+        if not 'test_batch' in self.h_params.keys() or self.h_params['test_batch'] == None:
+            self.h_params['test_batch'] = test_batch
         if rebalance_classes or not 'rebalance_classes' in self.h_params.keys():
             self.h_params['rebalance_classes'] = rebalance_classes
 
@@ -159,18 +164,31 @@ class Dataset(object):
         if split:
             train_folds = []
             val_folds = []
-            #split into training and validation folds
+            train_inds = []
+            val_inds = []
+            
+            # split into training and validation folds for each tfrecord file
+            # and concatenate
 
-            for i, fold in enumerate(self.h_params['folds']):
-                f = fold.copy()
+            for i, tfrecord_folds in enumerate(self.h_params['folds']):
+                f = tfrecord_folds.copy()
                 vf = f.pop(val_fold_ind)
                 val_folds.extend(vf)
                 train_folds.extend(np.concatenate(f))
+                if 'indices' in self.h_params.keys():
+                    inds = self.h_params['indices'][i].copy()
+                    v_inds = inds.pop(val_fold_ind)
+                    
+                    val_inds.extend(v_inds)
+                    train_inds.extend(np.concatenate(inds))
+                    self.val_inds = np.array(val_inds)
+                    self.train_inds = np.array(train_inds)
                 #print("datafile: {} iter: {} val: {} train: {}".format(i, val_fold_ind, len(val_folds), len(train_folds)))
-
 
             self.val_fold = np.array(val_folds)
             self.train_fold = np.array(train_folds)
+            
+
 
             # ovl = 0
             # for si in self.train_fold:
