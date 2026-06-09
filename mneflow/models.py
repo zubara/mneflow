@@ -7,7 +7,6 @@ parent class.
 @author: Ivan Zubarev, ivan.zubarev@aalto.fi
 """
 
-#TODO: update vizualizations
 
 import tensorflow as tf
 
@@ -164,7 +163,7 @@ class BaseModel():
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
             params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
 
-            params.setdefault("metrics", [tf.keras.metrics.RootMeanSquaredError(name="RMSE")])
+            params.setdefault("metrics", [tf.keras.metrics.R2Score(name="R2")])
 
         elif self.dataset.h_params["target_type"] in ['int']:
             params.setdefault("loss", tf.keras.losses.CategoricalCrossentropy(from_logits=True,
@@ -223,7 +222,7 @@ class BaseModel():
 
 
     def train(self, n_epochs=10, eval_step=None, min_delta=1e-6,
-              early_stopping=3, mode='single_fold', prune_weights=False,
+              early_stopping=3, mode='single_fold',
               collect_patterns=False, class_weights=None,
               noisy_labels=False, noise_std=.1, shapley_order=1, fold=0, 
               compute_pvalues=False, store_fold_predictions=False) :
@@ -291,14 +290,14 @@ class BaseModel():
         self.cv_metric_pvalues = []
         self.cv_predictions = []
         cv_pvals = []
-        
+
         if class_weights:
             multiplier = 1. / min(class_weights.values())
             class_weights = {k:v*multiplier for k,v in class_weights.items()}
 
         else:
             class_weights = None
-        print("Class weights: ", class_weights)
+            print("Class weights: ", class_weights)
 
         if mode == 'single_fold':
             n_folds = 1 + fold
@@ -314,9 +313,10 @@ class BaseModel():
         if fold:
             self.current_fold = fold
 
-        for jj in range(self.current_fold, n_folds):
+        for jj in range(self.current_fold, min(self.current_fold + n_folds, n_folds)):
             self.current_fold = jj
             print("Running {} fold: {}".format(mode, self.current_fold))
+
             if mode == "loso":
                 test_subj = self.dataset.h_params['train_paths'][jj]
                 train_subjs = self.dataset.h_params['train_paths'].copy()
@@ -366,17 +366,13 @@ class BaseModel():
             self.meta.train_params.update({"trained":True})
 
             v_loss, v_metric = self.evaluate(val)
-            print("""Fold: {} Validation performance:\n
-                  Loss: {:.4f}, 
-                  Metric: {:.4f}""".format(jj, v_loss, v_metric))
-                  
             self.cv_losses.append(v_loss)
             self.cv_metrics.append(v_metric)
-            
+
             if compute_pvalues:
                 cv_pvals.append(self.permutation_p_value(n_perm=1000))
                 print("permutation_p_value : {}".format(cv_pvals[-1]))
-                                
+
             if mode == 'loso':
                 print("Creating loso test DS")
                 test = self.dataset._build_dataset(test_subj,
@@ -394,15 +390,12 @@ class BaseModel():
             if test:
 
                 t_loss, t_metric = self.evaluate(test)
-                print("""Fold: {} Test set performance:\n
-                      Loss: {:.4f}, 
-                      Metric: {:.4f}""".format(jj, t_loss, t_metric))
                 self.cv_test_losses.append(t_loss)
                 self.cv_test_metrics.append(t_metric)
 
 
-
-            y_true, y_pred = self.predict(val)
+            y_true, y_pred = self.predict(val,
+                                          n_batches=self.dataset.validation_steps)
 
 
             if self.dataset.h_params['target_type'] == 'float':
@@ -415,7 +408,7 @@ class BaseModel():
                 self.cm += self._confusion_matrix(y_true, y_pred)
                 rms = None
 
-            if collect_patterns and self.scope == 'lfcnn':
+            if collect_patterns and hasattr(self, 'collect_patterns'):
                 self.collect_patterns(fold=self.current_fold, n_folds=n_folds,
                                       n_comp=int(collect_patterns),
                                       shapley_order=shapley_order)
@@ -424,7 +417,6 @@ class BaseModel():
                                             'y_pred':y_pred,
                                             'inds':self.dataset.val_inds})
                 
-
 
             if jj < n_folds - 1:
                 self.km.load_weights(os.path.join(self.model_path,
@@ -438,23 +430,21 @@ class BaseModel():
             else:
                 print("Not shuffling the weights for the last fold")
 
+            print("""Fold: {} Validation performance:\n
+                  Loss: {:.4f},
+                  Metric: {:.4f}""".format(jj, v_loss, v_metric))
+
         metrics = self.cv_metrics
         losses = self.cv_losses
-
-        print("""{} with {} folds completed.
-              Loss: {:.4f} +/- {:.4f}.
-              Metric: {:.4f} +/- {:.4f}""".format(mode, n_folds,
-                                                  np.mean(losses), np.std(losses),
-                                                  np.mean(metrics), np.std(metrics)))
 
         if self.dataset.h_params['target_type'] == 'float':
             rms = {k:np.mean(v) for k, v in rmss.items()}
             rms.update({k + '_std':np.std(v) for k, v in rmss.items()})
             rms['r2_folds'] = rmss['r2']
             rms['cc_folds'] = rmss['cc']
-            print("""Validation set: 
-                  Corr : {:.3f} +/- {:.3f}. 
-                  R^2: {:.3f} +/- {:.3f}""".format(
+            print("""Validation set:
+                  Corr : {:.3f} +/- {:.3f}.
+                  R2: {:.3f} +/- {:.3f}""".format(
                   rms['cc'], rms['cc_std'], rms['r2'], rms['r2_std']))
             self.meta.update(results=rms)
         else:
@@ -467,7 +457,7 @@ class BaseModel():
               .format(mode, n_folds,
                       np.mean(self.cv_losses), np.std(self.cv_losses),
                       np.mean(self.cv_metrics), np.std(self.cv_metrics)))
-        
+
         if len(self.dataset.h_params['test_paths']) > 0 or mode == 'loso':
             print("""\n
               Test Performance:
@@ -479,7 +469,7 @@ class BaseModel():
                       np.std(self.cv_test_metrics)))
         if compute_pvalues:
             self.meta.update(results={'cv_pvals':cv_pvals})
-        
+
         self.meta.train_params.update({"trained":True})
         self.update_log(rms=rms, prefix=mode)
         self.save()
@@ -542,6 +532,7 @@ class BaseModel():
                     rms_test = regression_metrics(y_true, y_pred)
                     print("Test set: Corr =", rms_test['cc'], "R2 =", rms_test['r2'])
                     results.update({'test_'+k:v for k,v in rms_test.items()})
+                
                 results['test_metric'] = t_metric
                 results['test_loss'] = t_loss
                 results['test_metrics'] = self.cv_test_metrics
@@ -549,31 +540,23 @@ class BaseModel():
         else:
             results['v_metric'] = np.mean(self.meta.results['cv_metrics'])
             results['v_loss'] = np.mean(self.meta.results['cv_losses'])
+            
             results['cv_metrics'] = self.meta.results['cv_metrics']
             results['cv_losses'] = self.meta.results['cv_losses']
-            results['cv_metric_pvalues'] = self.meta.results['cv_metrics']
+            results['cv_metric_pvalues'] = self.meta.results['cv_metric_pvalues']
+           
             results['test_metric'] = self.meta.results['t_metric']
-            results['test_loss'] = self.meta.results['t_metric']
-            results['test_metrics'] = self.meta.results['t_metric']
-            results['test_losses'] = self.meta.results['t_metric']
+            results['test_loss'] = self.meta.results['test_loss']
+            results['test_metrics'] = self.meta.results['test_metrics']
+            results['test_losses'] = self.meta.results['test_losses']
 
         tr_loss, tr_metric = self.evaluate(self.dataset.train)
         results['tr_metric'] = tr_metric
         results['tr_loss'] = tr_loss
-
-
-        
-
-        # else:
-        #     results['test_metric'] = "NA"
-        #     results['test_loss'] = "NA"
-        #     results['test_metrics'] = "NA"
-        #     results['test_losses'] = "NA"
-
         results['cm'] = self.cm
 
         self.meta.update(results=results)
-    
+
     def permutation_p_value(self, dataset=None, n_perm=10000):
         perm_metrics2 = []
         perm_metrics = []
@@ -581,10 +564,10 @@ class BaseModel():
             criterion = r2_score
         else:
             criterion = tf.keras.metrics.categorical_accuracy
-            
+
         if not dataset:
             dataset = self.dataset.val
-        y_true, y_pred_obs = self.predict(dataset) 
+        y_true, y_pred_obs = self.predict(dataset)
         y_true -= y_true.mean(0)
         y_pred_obs -= y_pred_obs.mean(0)
         obs_loss, obs_metric = self.evaluate(dataset)
@@ -592,25 +575,20 @@ class BaseModel():
         for i in range(n_perm):
             shuffle = np.random.permutation(n)
             y_surrogate = y_true[shuffle, :]
-            #perm_losses.append(self.km.loss(y_surrogate, y_pred_obs).numpy())
-            
             perm_metrics.append(criterion(y_surrogate, y_pred_obs)[0])
             perm_metrics2.append(criterion(y_true, y_surrogate)[0])
-            #print(perm_metrics[-1], perm_metrics2[-1])
         plt.hist(perm_metrics, 100)
         plt.hist(perm_metrics2, 100)
         print(min(perm_metrics), max(perm_metrics))
         print(min(perm_metrics2), max(perm_metrics2))
         print("criterion, corresponding to p = 0.005 : {:.4f}".format(np.percentile(perm_metrics, 99.5)))
         print("criterion, corresponding to p2 = 0.005 : {:.4f}".format(np.percentile(perm_metrics2, 99.5)))
-        #loss_pvalue = np.sum(np.array(perm_losses) < obs_loss)/n_perm
         metric_pvalue = np.sum(np.array(perm_metrics) > obs_metric)/n_perm
         metric_pvalue2 = np.sum(np.array(perm_metrics2) > obs_metric)/n_perm
-        #print("Loss p-value={:.4f}".format(loss_pvalue))
         print("Metric p-value={:.4f}".format(metric_pvalue))
         print("Metric p-value2={:.4f}".format(metric_pvalue2))
         return metric_pvalue, metric_pvalue2
-        
+
     def update_log(self, rms=None, prefix=''):
         """Logs experiment to self.model_path + self.scope + '_log.csv'.
 
@@ -618,55 +596,102 @@ class BaseModel():
         """
         savepath = os.path.join(self.model_path, self.scope + '_log.csv')
         appending = os.path.exists(savepath)
-        self.update_results()
+
+
+        #make default header
+        log_header = ['data_id',
+                      'train metric',	'validation metric',	'test metric', #metrics
+                      'train loss',	'validation loss',	'test loss'] #losses
+        
+        training_params = ['n_epochs',	'eval_step',
+                           'early_stopping',	'min_delta', 'learn_rate',
+                           'mode', 'optimizer', 'loss', 'metrics']
+        
+        model_specs = ['model_id',	'scope', 'n_latent', #model
+                      'stddev',	'nonlin',	'stride',
+                      #regulatization
+                      'dropout', 'l1_lambda']
+        
+        data_info = [ 'path',	'data_path',
+                      'target_type', 'input_type',
+                      'train_size',	'val_size', 'test_size', 'n_folds',	 #dataset size
+                      'train_batch',
+                      'n_seq',	'n_t',	'n_ch',	'y_shape', # shapes
+                      'fs'] # optional time domain]
+        
+        classif_header = ['class_ratio',	'orig_classees',
+                          'rebalance_classes', 'cm']	 # optional classification
+        
+        regression_header = ['cc',	'r2',	'cc_std',	'r2_std'] #optional regression
+
+        by_fold = ['cv_metrics',	'cv_losses',
+                   'test_metrics',	'test_losses', #by fold
+                   'cv_metric_pvalues']
 
         log = dict()
-        if rms:
-            log.update({prefix+k:v for k,v in rms.items()})
-
-        #dataset info
-        data_dict = self.meta.data.copy()
-        _ = data_dict.pop('folds')
-        if 'indices' in data_dict.keys():
-            _ = data_dict.pop('indices')
-        _ = data_dict.pop('test_fold')
-        _ = data_dict.pop('train_paths')
-        _ = data_dict.pop('test_paths')
-        log['data_id'] = data_dict.pop('data_id')
+        log['data_id'] = self.meta.data['data_id']
 
         #results info
-        results_dict = self.meta.results.copy()
-        log['train metric'] = results_dict.pop('tr_metric')
-        log['validation metric'] = results_dict.pop('v_metric')
-        #log['test metric'] =  results_dict.pop('test_metric')
-        log['train loss'] = results_dict.pop('tr_loss')
-        log['validation loss'] = results_dict.pop('v_loss')
-        #log['test loss'] =  results_dict.pop('test_loss')
+        self.update_results()
+        log['train metric'] = self.meta.results['tr_metric']
+        log['validation metric'] = self.meta.results['v_metric']
+        log['test metric'] =  self.meta.results['test_metric']
+        log['train loss'] = self.meta.results['tr_loss']
+        log['validation loss'] = self.meta.results['v_loss']
+        log['test loss'] =  self.meta.results['test_loss']
 
+
+        #training params
+        for k in training_params:
+            log[k] = self.meta.train_params[k]
+        log_header += training_params
 
         #format specs: architecture and regularization
         specs_dict = self.meta.model_specs.copy()
         specs_dict['l1_scope'] = '-'.join(self.meta.model_specs['l1_scope'])
         specs_dict['l2_scope'] = '-'.join(self.meta.model_specs['l2_scope'])
         specs_dict['unitnorm_scope'] = '-'.join(self.meta.model_specs['unitnorm_scope'])
-        _ = specs_dict.pop('model_path')
         if isinstance(specs_dict['nonlin'], Callable):
             specs_dict['nonlin'] = specs_dict['nonlin'].__name__
+        for k in model_specs:
+            log[k] = specs_dict[k]
+        log_header += model_specs
 
-        log.update(specs_dict)
-        #training paramters
-        log.update(self.meta.train_params)
-        log.update(data_dict)
-        log.update(results_dict)
+        for k in data_info:
+            log[k] = self.meta.data[k]
+        log_header += data_info
+        # class specific
+        if self.meta.data['target_type'] == 'int':
+            log['class_ratio'] = self.meta.data['class_ratio']
+            log['orig_classees'] = self.meta.data['orig_classees']
+            log['rebalance_classes'] = self.meta.data['rebalance_classes']
+            log['cm'] = self.meta.data['cm']
+            log_header += classif_header
 
+        elif self.meta.data['target_type'] == 'float':
+            log['cc'] = self.meta.results['cc']
+            log['r2'] = self.meta.results['r2']
+            log['cc_std'] = self.meta.results['cc_std']
+            log['r2_std'] = self.meta.results['r2_std']
+            log_header += regression_header
 
-        self.log.update(log)
+        if self.meta.data['channel_subset']  is not None:
+            log['n_ch'] = len(self.meta.data['channel_subset'])
+        if self.meta.data['sample_subset'] is not None:
+            log['n_t'] = len(self.meta.data['sample_subset'])
+            log['n_seq'] = len(self.meta.data['sample_subset'])
+        
+        # by fold
+        for k in by_fold:
+            log[k] = self.meta.results[k]
+        
+        self.log = log
 
         with open(savepath, 'a+', newline='') as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=self.log.keys())
+            writer = csv.DictWriter(csv_file, fieldnames=log_header)
             if not appending:
                 writer.writeheader()
-            writer.writerow(self.log)
+            writer.writerow(log)
             print("Saving updated log to: ",  savepath)
 
     def save(self):
@@ -839,12 +864,7 @@ class SourceNet(BaseModel):
             Output of the forward pass of the computational graph.
             Prediction of the target variable.
         """
-        # self.tconv = VARConv(size=self.specs['n_latent'],
-        #                      nonlin=self.specs['nonlin'],
-        #                      filter_length=self.specs['filter_length'],
-        #                      padding=self.specs['padding'],
-        #                      specs=self.specs
-        #                      )(self.inputs)
+
         self.tconv = tf.keras.layers.DepthwiseConv2D(
             kernel_size = (1, self.specs['filter_length']),
             #strides=1,
@@ -875,15 +895,9 @@ class SourceNet(BaseModel):
         self.dmx1 = DeMixing(size=self.specs['n_latent'], nonlin=self.specs['nonlin'],
                             axis=1, specs=self.specs)(self.dmx)
 
-
-
-
         dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.dmx1)
 
-        # fc1 = FullyConnected(size=self.specs['n_latent'],
-        #                      nonlin=self.specs['nonlin'],
-        #                      specs=self.specs)(dropout)
 
         self.fin_fc = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
@@ -1475,149 +1489,6 @@ class EEGNet(BaseModel):
 
         return y_pred
 
-# class SourceNet(BaseModel):
-#     """
-
-#     """
-#     def __init__(self, meta, dataset=None, specs_prefix=False):
-#         self.scope = 'SourceNet'
-#         meta.model_specs.setdefault('unitnorm_scope', [])
-#         meta.model_specs.setdefault('filter_length', 10)
-#         meta.model_specs.setdefault('n_latent', 25)
-#         meta.model_specs.setdefault('pooling', 3)
-#         meta.model_specs.setdefault('stride', 3)
-#         meta.model_specs.setdefault('pool_type', 'max')
-#         meta.model_specs.setdefault('padding', 'SAME')
-#         meta.model_specs.setdefault('nonlin', tf.nn.elu)
-#         meta.model_specs.setdefault('l1_lambda', 0)
-#         meta.model_specs.setdefault('l2_lambda', 0)
-#         meta.model_specs.setdefault('l1_scope', [])
-#         meta.model_specs.setdefault('l2_scope', [])
-#         meta.model_specs.setdefault('unitnorm_scope', [])
-#         #specs.setdefault('model_path', os.path.join(self.dataset.h_params['path'], 'models'))
-#         super(SourceNet, self).__init__(meta, dataset, specs_prefix)
-
-#     def build_graph(self):
-#         self.scope = 'SourceNet'
-
-#         self.scope = 'deep4'
-
-#         inputs = tf.keras.ops.transpose(self.inputs,[0,3,2,1])
-
-#         tconv1 = DepthwiseConv2D(
-#                         kernel_size=(1, self.specs['filter_length']),
-#                         depth_multiplier = self.specs['n_latent'],
-#                         strides=1,
-#                         padding=self.specs['padding'],
-#                         activation = tf.identity,
-#                         depthwise_initializer="he_uniform",
-#                         bias_initializer=Constant(0.1),
-#                         data_format="channels_last",
-#                         depthwise_regularizer=k_reg.l2(self.specs['l2_lambda'])
-#                         #kernel_constraint="maxnorm"
-#                         )
-#         tconv1_out = tconv1(inputs)
-#         print('tconv1: ', tconv1_out.shape) #should be n_batch, sensors, times, kernels
-
-#         sconv1 = Conv2D(filters=self.specs['n_latent'],
-#                         kernel_size=(self.dataset.h_params['n_ch'], 1),
-#                         strides=1,
-#                         padding=self.specs['padding'],
-#                         activation=self.specs['nonlin'],
-#                         kernel_initializer="he_uniform",
-#                         bias_initializer=Constant(0.1),
-#                         data_format="channels_last",
-#                         #data_format="channels_first",
-#                         kernel_regularizer=k_reg.l2(self.specs['l2_lambda']))
-#         sconv1_out = sconv1(tconv1_out)
-#         print('sconv1:',  sconv1_out.shape)
-
-#         pool1 = TempPooling(pooling=self.specs['pooling'],
-#                                   pool_type="avg",
-#                                   stride=self.specs['stride'],
-#                                   padding='SAME',
-#                                   )(sconv1_out)
-
-#         print('pool1: ', pool1.shape)
-
-#         ############################################################
-
-#         tsconv2 = Conv2D(filters=self.specs['n_latent'],
-#                         kernel_size=(1, self.specs['filter_length']),
-#                         strides=1,
-#                         padding=self.specs['padding'],
-#                         activation=self.specs['nonlin'],
-#                         kernel_initializer="he_uniform",
-#                         bias_initializer=Constant(0.1),
-#                         data_format="channels_last",
-#                         #data_format="channels_first",
-#                         kernel_regularizer=k_reg.l2(self.specs['l2_lambda']))
-
-
-#         tsconv2_out = tsconv2(pool1)
-#         print('tsconv2:',  tsconv2_out.shape)
-
-#         pool2 = TempPooling(pooling=self.specs['pooling'],
-#                                   pool_type="avg",
-#                                   stride=self.specs['stride'],
-#                                   padding='SAME',
-#                                   )(tsconv2_out)
-
-#         print('pool2: ', pool2.shape)
-
-#         dmx1 = DeMixing(size=4, nonlin=tf.identity,
-#                             axis=1, specs=self.specs)(pool2)
-#         print('dmx1: ', dmx1.shape)
-
-#         dmx2 = DeMixing(size=4, nonlin=tf.identity,
-#                             axis=2, specs=self.specs)(dmx1)
-#         print('dmx2: ', dmx2.shape)
-
-#         # dmx1 = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
-#         #                     axis=1, specs=self.specs)(pool2)
-#         # print('dmx1: ', dmx1.shape)
-#         ############################################################
-
-#         # tsconv3 = Conv2D(filters=self.specs['n_latent'],
-#         #                 kernel_size=(1, self.specs['filter_length']),
-#         #                 strides=1,
-#         #                 padding=self.specs['padding'],
-#         #                 activation=self.specs['nonlin'],
-#         #                 kernel_initializer="he_uniform",
-#         #                 bias_initializer=Constant(0.1),
-#         #                 data_format="channels_last",
-#         #                 #data_format="channels_first",
-#         #                 kernel_regularizer=k_reg.l2(self.specs['l2_lambda']))
-
-
-#         # tsconv3_out = tsconv3(pool2)
-#         # print('tsconv3:',  tsconv3_out.shape)
-
-#         # pool3 = TempPooling(pooling=self.specs['pooling'],
-#         #                           pool_type="avg",
-#         #                           stride=self.specs['stride'],
-#         #                           padding='SAME',
-#         #                           )(tsconv3_out)
-
-#         #print('pool3: ', pool3.shape)
-
-
-
-
-#         fc_out = FullyConnected(size=self.out_dim, nonlin=tf.identity,
-#                             specs=self.specs)
-#         y_pred = fc_out(dmx2)
-#         return y_pred
-# class SimpleNet(LFCNN):
-#     """
-#         Petrosyan, A., Sinkin, M., Lebedev, M. A., & Ossadtchi, A.  Decoding and interpreting cortical signals with
-#         a compact convolutional neural network, 2021, Journal of Neural Engineering, 2021,
-#         https://doi.org/10.1088/1741-2552/abe20e
-#     """
-#     def __init__(self, Dataset, specs=None):
-#         if specs is None:
-#             specs=dict()
-#         super().__init__(Dataset, specs)
 
 class NoisyTrainer:
     def __init__(self, model, model_path, noise_std=.1, patience=5, min_delta=0.001):
@@ -1633,9 +1504,8 @@ class NoisyTrainer:
         self.model = model
         self.model_path = model_path + '_best.weights.h5'
         self.noise_std = noise_std
-        self.loss_fn = tf.keras.losses.MeanSquaredError()
-        self.metric = tf.keras.metrics.MeanAbsoluteError(name='MAE')
-        #self.metric = tf.keras.metrics.R2Score()
+        self.loss_fn = model.loss 
+        self.metric = tf.keras.metrics.R2Score()
         self.optimizer = tf.keras.optimizers.Adam()
 
         # Early stopping parameters
