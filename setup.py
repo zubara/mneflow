@@ -32,5 +32,5 @@ if __name__ == '__main__':
         install_requires=['numpy', 
                           'scipy', 
                           'mne >= 1.0, <=1.7', 
-                          'tensorflow >= 2.12.0, <=2.16.1', 
+                          'tensorflow >= 2.12.0, <=2.16rc', 
                           'matplotlib'])

@@ -20,14 +20,16 @@ from tensorflow.keras.layers import (Dense, Flatten, Dropout, BatchNormalization
                                      MaxPooling2D, Lambda, DepthwiseConv2D)
 from tensorflow.keras import initializers
 
-working_directory = Path("/m/nbe/scratch/restmeg/eero/code/mneflow/")
-os.chdir(working_directory)
-import mneflow
-from mneflow.layers import SquareSum3d, WeightSum3d
-from mneflow.layers import se_block, channel_attention, spatial_attention
+# working_directory = Path("/m/nbe/scratch/restmeg/eero/code/mneflow/")
+# os.chdir(working_directory)
+#import mneflow
+from .layers import SquareSum3d, WeightSum3d
+from .layers import se_block, channel_attention, spatial_attention
+from .models import BaseModel
+from .data import Dataset
 
 
-class Conv3DModel(mneflow.models.BaseModel):
+class Conv3DModel(BaseModel):
     """3D convolutional model designed to decode connectomes (Model 3).
     Extracts features simultaneously along the row fingerprints for each ROI and
     across the frequency channels. Channels should be the last dimension of the
@@ -190,7 +192,7 @@ class Conv3DModel(mneflow.models.BaseModel):
         return y_pred
 
 
-class WeightedSum3dModel(mneflow.models.BaseModel):
+class WeightedSum3dModel(BaseModel):
     """Weighted sum 3D model designed to decode connectomes (Model 2).
 
     The model architecture is as follows:
@@ -307,7 +309,7 @@ class WeightedSum3dModel(mneflow.models.BaseModel):
                                      nonlin=tf.nn.relu)
         rsum = self.rowsum_3d(inputs1)
         print(
-            f"Built: Depthwise convolutional layer with {self.specs["n_latent1"]} filters. "
+            f"Built: Depthwise convolutional layer with {self.specs['n_latent1']} filters. "
             f"Input shape before: {inputs1}, shape after: {rsum}")
 
         # Batch normalization and spatial dropout (optional)
@@ -324,7 +326,7 @@ class WeightedSum3dModel(mneflow.models.BaseModel):
                                          nonlin=tf.nn.relu)
             csum = self.colsum_3d(rsum)
             print(
-                f"Built: Depthwise convolutional layer with {self.specs["n_latent2"]} filters. "
+                f"Built: Depthwise convolutional layer with {self.specs['n_latent2']} filters. "
                 f"Input shape before: {rsum}, shape after: {csum}")
 
             # Batch normalization and spatial dropout (optional)
@@ -380,7 +382,7 @@ class WeightedSum3dModel(mneflow.models.BaseModel):
         return y_pred
 
 
-class SymmetricModel(mneflow.models.BaseModel):
+class SymmetricModel(BaseModel):
     """Symmetric 3D model designed to decode connectomes (Model 1).
 
     Extracts features first along the row fingerprints for each ROI
@@ -498,7 +500,7 @@ class SymmetricModel(mneflow.models.BaseModel):
                                         nonlin=tf.nn.relu)
         ssum1 = self.squaresum_3d(inputs1)
         print(
-            f"Built: Depthwise convolutional layer with {self.specs["n_latent"]} "
+            f"Built: Depthwise convolutional layer with {self.specs['n_latent']} "
             f"filters. Input shape before: {inputs1.shape}, shape after: {ssum1.shape}")
 
         # Batch normalization and spatial dropout (optional)
@@ -754,34 +756,34 @@ class SymmetricModel(mneflow.models.BaseModel):
 
         return roi_labels
 
-    def get_frequency_kernels(self, methods=['row', 'col', 'diag'], patterns=None):
-        if not patterns:
-            patterns = self.extract_patterns()
+    # def get_frequency_kernels(self, methods=['row', 'col', 'diag'], patterns=None):
+    #     if not patterns:
+    #         patterns = self.extract_patterns()
 
-        freq_weights = {}
-        activations = patterns_struct['ccms']['pointwise']
+    #     freq_weights = {}
+    #     activations = patterns_struct['ccms']['pointwise']
 
-        for key in methods:
-            data = (patterns['spatial_patterns'][key] - patterns['spatial_patterns'][key].mean(0)) / patterns['spatial_patterns'][key].std(0, keepdims=True)
-            if selection_method == 'count':
-                top_active = np.percentile(data, percentile, axis=0)
-                top_label_inds = []
-                for f in range(data.shape[-1]):
-                    top_label_inds.append(data[:, f] > top_active[f])
-                counts = np.sum(np.stack(top_label_inds, 0), 0)
-                mask = np.where(counts >= 4)[0]
-            elif selection_method == 'activation':
-                mean_activation = np.mean(data, -1)
-                top_active = np.percentile(mean_activation, percentile)
-                mask = np.where(mean_activation > top_active)[0]
+    #     for key in methods:
+    #         data = (patterns['spatial_patterns'][key] - patterns['spatial_patterns'][key].mean(0)) / patterns['spatial_patterns'][key].std(0, keepdims=True)
+    #         if selection_method == 'count':
+    #             top_active = np.percentile(data, percentile, axis=0)
+    #             top_label_inds = []
+    #             for f in range(data.shape[-1]):
+    #                 top_label_inds.append(data[:, f] > top_active[f])
+    #             counts = np.sum(np.stack(top_label_inds, 0), 0)
+    #             mask = np.where(counts >= 4)[0]
+    #         elif selection_method == 'activation':
+    #             mean_activation = np.mean(data, -1)
+    #             top_active = np.percentile(mean_activation, percentile)
+    #             mask = np.where(mean_activation > top_active)[0]
 
-            roi_labels[key] = mask
-        if 'row' in methods and 'col' in methods:
-            roi_labels['row-col'] = np.unique(np.concatenate([roi_labels['row'],
-                                                              roi_labels['col']]))
+    #         roi_labels[key] = mask
+    #     if 'row' in methods and 'col' in methods:
+    #         roi_labels['row-col'] = np.unique(np.concatenate([roi_labels['row'],
+    #                                                           roi_labels['col']]))
 
 
-        return
+    #     return
 
     def ablation_analysis(self, name, label_inds, hyperparameters):
         """
@@ -811,14 +813,14 @@ class SymmetricModel(mneflow.models.BaseModel):
         #meta_abl.data['n_seq'] = len(label_inds)
         #meta_abl.data['n_t'] = len(label_inds)
 
-        dataset = mneflow.data.Dataset(meta_abl, train_batch=hyperparameters['batch_size'],
+        dataset = Dataset(meta_abl, train_batch=hyperparameters['batch_size'],
                                        sample_subset=label_inds)
         meta_abl.update(model_specs=self.meta.model_specs)
         meta_abl.weights = {}
 
-        model_abl = mneflow.fc_models.SymmetricModel(meta=meta_abl,
-                                                     dataset=dataset,
-                                                     specs_prefix=False)
+        model_abl = SymmetricModel(meta=meta_abl,
+                                   dataset=dataset,
+                                   specs_prefix=False)
 
         return meta_abl, model_abl, dataset
 

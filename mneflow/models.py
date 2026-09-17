@@ -433,6 +433,10 @@ class BaseModel():
             print("""Fold: {} Validation performance:\n
                   Loss: {:.4f},
                   Metric: {:.4f}""".format(jj, v_loss, v_metric))
+            if test:
+                print("""Test set performance:\n
+                      Loss: {:.4f},
+                      Metric: {:.4f}""".format(t_loss, t_metric))
 
         metrics = self.cv_metrics
         losses = self.cv_losses
@@ -537,6 +541,12 @@ class BaseModel():
                 results['test_loss'] = t_loss
                 results['test_metrics'] = self.cv_test_metrics
                 results['test_losses'] = self.cv_test_losses
+            else:
+                results['test_metric'] = "NA"
+                results['test_loss'] = "NA"
+                results['test_metrics'] = "NA"
+                results['test_losses'] = "NA"
+                
         else:
             results['v_metric'] = np.mean(self.meta.results['cv_metrics'])
             results['v_loss'] = np.mean(self.meta.results['cv_losses'])
@@ -545,10 +555,10 @@ class BaseModel():
             results['cv_losses'] = self.meta.results['cv_losses']
             results['cv_metric_pvalues'] = self.meta.results['cv_metric_pvalues']
            
-            results['test_metric'] = self.meta.results['t_metric']
-            results['test_loss'] = self.meta.results['test_loss']
-            results['test_metrics'] = self.meta.results['test_metrics']
-            results['test_losses'] = self.meta.results['test_losses']
+            # results['test_metric'] = self.meta.results['t_metric']
+            # results['test_loss'] = self.meta.results['test_loss']
+            # results['test_metrics'] = self.meta.results['test_metrics']
+            # results['test_losses'] = self.meta.results['test_losses']
 
         tr_loss, tr_metric = self.evaluate(self.dataset.train)
         results['tr_metric'] = tr_metric
@@ -607,8 +617,9 @@ class BaseModel():
                            'early_stopping',	'min_delta', 'learn_rate',
                            'mode', 'optimizer', 'loss', 'metrics']
         
-        model_specs = ['model_id',	'scope', 'n_latent', #model
-                      'stddev',	'nonlin',	'stride',
+        model_specs = ['n_latent', #model
+                       'nonlin',	'stride',
+                       'filter_length',
                       #regulatization
                       'dropout', 'l1_lambda']
         
@@ -648,11 +659,15 @@ class BaseModel():
 
         #format specs: architecture and regularization
         specs_dict = self.meta.model_specs.copy()
+        #print(specs_dict)
         specs_dict['l1_scope'] = '-'.join(self.meta.model_specs['l1_scope'])
         specs_dict['l2_scope'] = '-'.join(self.meta.model_specs['l2_scope'])
         specs_dict['unitnorm_scope'] = '-'.join(self.meta.model_specs['unitnorm_scope'])
         if isinstance(specs_dict['nonlin'], Callable):
             specs_dict['nonlin'] = specs_dict['nonlin'].__name__
+        
+        log['model_id'] = self.model_name
+        log_header += ['model_id']
         for k in model_specs:
             log[k] = specs_dict[k]
         log_header += model_specs
@@ -684,7 +699,7 @@ class BaseModel():
         # by fold
         for k in by_fold:
             log[k] = self.meta.results[k]
-        
+        log_header += by_fold
         self.log = log
 
         with open(savepath, 'a+', newline='') as csv_file:
@@ -794,10 +809,6 @@ class BaseModel():
                                            verbose=0)
         return  losses, metrics
     
-    def ablation(self, method='weight', ):
-        """
-        Pick single component according to 'method' and evaluate loss
-        """
 
 class SourceNet(BaseModel):
     """SourceNet

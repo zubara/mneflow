@@ -534,8 +534,7 @@ def produce_tfrecords(inputs,
                           'input_type : ', input_type,
                           'target_type : ', target_type,
                           'segment_y : ', segment_y)
-                import pdb
-                pdb.set_trace()
+
                 if t_index is not None:
                     assert len(t_index[i]) == len(events), "t_index size ({}) mismatches the size of  the data ({})".format(len(t_index[i]), len(events))
                 else:
