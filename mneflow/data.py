@@ -15,7 +15,91 @@ import numpy as np
 from mneflow.utils import _onehot
 
 class Dataset(object):
-    """TFRecords dataset from TFRecords files using the metadata."""
+    """TFRecords dataset from TFRecords files using the metadata.
+
+    Wraps one or more sets of TFRecords files (produced by
+    ``mneflow.utils.produce_tfrecords``) into ``tf.data.Dataset``
+    objects that are ready to be consumed by ``mneflow`` models,
+    applying any requested subsetting, decimation, cropping, and
+    class rebalancing.
+
+    Attributes
+    ----------
+    h_params : dict
+        Metadata dictionary (``meta.data``), updated in-place with
+        the effective values of ``channel_subset``, ``class_subset``,
+        ``sample_subset``, ``decim``, ``crop``, ``train_batch``,
+        ``test_batch``, and ``rebalance_classes``.
+
+    y_shape : tuple
+        Shape of the target variable, taken from
+        ``h_params['y_shape']`` and possibly updated by
+        ``_preprocess`` when a ``class_subset`` is applied.
+
+    train : tf.data.Dataset
+        Training fold of the dataset built from
+        ``h_params['train_paths']``.
+
+    val : tf.data.Dataset
+        Validation fold of the dataset built from
+        ``h_params['train_paths']``.
+
+    test : tf.data.Dataset
+        Held-out test dataset built from ``h_params['test_paths']``.
+        Only set if ``h_params['test_paths']`` is non-empty.
+
+    train_fold : ndarray
+        Concatenated example indices assigned to the training folds,
+        set by :meth:`_build_dataset`.
+
+    val_fold : ndarray
+        Example indices assigned to the validation fold, set by
+        :meth:`_build_dataset`.
+
+    train_inds : ndarray
+        Concatenated indices into the training folds, set by
+        :meth:`_build_dataset` when ``'indices'`` is present in
+        ``h_params``.
+
+    val_inds : ndarray
+        Indices into the validation fold, set by
+        :meth:`_build_dataset` when ``'indices'`` is present in
+        ``h_params``.
+
+    training_batch : int
+        Effective training mini-batch size, set by
+        :meth:`_build_dataset`.
+
+    validation_batch : int
+        Effective validation mini-batch size, set by
+        :meth:`_build_dataset`.
+
+    training_steps : int
+        Number of mini-batches per training epoch, set by
+        :meth:`_build_dataset`.
+
+    validation_steps : int
+        Number of mini-batches per validation epoch, set by
+        :meth:`_build_dataset`.
+
+    test_batch : int
+        Effective test mini-batch size, set by :meth:`_build_dataset`
+        when ``split=False``.
+
+    test_steps : int
+        Number of mini-batches per test epoch, set by
+        :meth:`_build_dataset` when ``split=False``.
+
+    sample_subset : ndarray
+        Index array used to gather a subset of samples, set by
+        :meth:`_build_dataset` when
+        ``h_params['sample_subset']`` is not None.
+
+    timepoint_subset : array-like
+        Indices of timepoints to keep, set by :meth:`_build_dataset`
+        when ``h_params['timepoint_subset']`` is not None.
+
+    """
 
     def __init__(self, meta, train_batch=50, test_batch=None, split=True,
                  class_subset=None, pick_channels=None, decim=None,
@@ -50,15 +134,17 @@ class Dataset(object):
             discriminate between these classes, without changing the parameters
             of the whole dataset (e.g. y_shape=5)
 
-        sample_subset : list of int
-            NOT IMPLEMENTED
+        pick_channels : array of int, optional
+            Pick a subset of channels. Defaults to None, in which case all
+            channels are used (or, if already set in ``meta.data``, the
+            previously stored ``channel_subset`` is kept).
 
-        pick_channels : array of int
-            Pick a subset of channels
-
-        decim : int
+        decim : int, optional
             Apply decimation in time. Note this feature does not check for
             aliasing effects.
+
+        sample_subset : list of int
+            NOT IMPLEMENTED
 
         crop : tuple, optional
             Indices along the time axis to crop. Can be int or None.
@@ -66,6 +152,10 @@ class Dataset(object):
         rebalance_classes : bool
             Apply rejection sampling to oversample underrepresented classes.
             Defaults to False.
+
+        **kwargs : dict
+            Additional keyword arguments. Accepted for interface
+            compatibility with other constructors; currently unused.
 
         """
         self.h_params = meta.data
@@ -83,7 +173,7 @@ class Dataset(object):
             self.h_params['train_batch'] = train_batch
         if not test_batch:
             test_batch = train_batch
-            
+
         if not 'test_batch' in self.h_params.keys() or self.h_params['test_batch'] == None:
             self.h_params['test_batch'] = test_batch
         if rebalance_classes or not 'rebalance_classes' in self.h_params.keys():
@@ -113,6 +203,55 @@ class Dataset(object):
         """Produce a tf.Dataset object and apply preprocessing
         functions if specified.
 
+        Parameters
+        ----------
+        path : str or list of str
+            Path(s) to the TFRecords file(s) to load.
+
+        split : bool, optional
+            Whether to split the resulting dataset into training and
+            validation folds using ``self.h_params['folds']``.
+            Defaults to True.
+
+        train_batch : int, optional
+            Training mini-batch size. Defaults to 100.
+
+        test_batch : int, None, optional
+            Test/validation mini-batch size. Defaults to None, in
+            which case the validation batch size falls back to
+            ``train_batch`` when a ``sample_subset`` is set, or to
+            the full size of the validation fold otherwise.
+
+        repeat : bool, optional
+            Reserved for future use (dataset repetition control).
+            Defaults to True. Currently unused.
+
+        val_fold_ind : int, optional
+            Index of the fold (within ``self.h_params['folds']``) to
+            use as the validation fold. Defaults to 0.
+
+        holdout : bool, optional
+            Reserved for future use (held-out set handling). Defaults
+            to False. Currently unused.
+
+        rebalance_classes : bool, optional
+            Apply rejection sampling to oversample underrepresented
+            classes. Defaults to False.
+
+        Returns
+        -------
+        train_dataset : tf.data.Dataset
+            Preprocessed training dataset. Only returned if
+            ``split`` is True.
+
+        val_dataset : tf.data.Dataset
+            Preprocessed validation dataset. Only returned if
+            ``split`` is True.
+
+        dataset : tf.data.Dataset
+            Preprocessed dataset. Only returned if ``split`` is
+            False.
+
         """
         # import and process parent dataset
         dataset = tf.data.TFRecordDataset(path)
@@ -124,7 +263,7 @@ class Dataset(object):
             val_folds = []
             train_inds = []
             val_inds = []
-            
+
             # split into training and validation folds for each tfrecord file
             # and concatenate
 
@@ -136,7 +275,7 @@ class Dataset(object):
                 if 'indices' in self.h_params.keys():
                     inds = self.h_params['indices'][i].copy()
                     v_inds = inds.pop(val_fold_ind)
-                    
+
                     val_inds.extend(v_inds)
                     train_inds.extend(np.concatenate(inds))
                     self.val_inds = np.array(val_inds)
@@ -158,8 +297,6 @@ class Dataset(object):
 
             self.validation_steps = max(1, len(self.val_fold) // self.validation_batch)
             self.training_steps = max(1, len(self.train_fold) // self.training_batch)
-
-            print(self.training_batch, self.validation_batch)
 
         else:
 
@@ -205,7 +342,27 @@ class Dataset(object):
 
 
     def _preprocess(self, dataset, dataset_type='test'):
+        """Apply class subsetting, class rebalancing, batching and
+        feature subsetting to a raw parsed dataset.
 
+        Parameters
+        ----------
+        dataset : tf.data.Dataset
+            Parsed dataset (as produced by :meth:`_parse_function`)
+            to preprocess.
+
+        dataset_type : str {'train', 'val', 'test'}, optional
+            Which batch size and shuffling/repeat behaviour to use.
+            Defaults to 'test'.
+
+        Returns
+        -------
+        dataset : tf.data.Dataset
+            Batched dataset of ``(X, y)`` pairs, with class subset,
+            channel subset, sample subset, and timepoint subset
+            applied as configured in ``self.h_params``.
+
+        """
         if self.h_params['class_subset'] is not None and self.h_params['target_type'] == 'int':
             dataset = dataset.filter(self._select_classes)
             dataset = dataset.map(self._select_class_subset)
@@ -232,7 +389,7 @@ class Dataset(object):
         elif dataset_type == 'val':
             dataset = dataset.shuffle(5).batch(self.validation_batch).repeat()
         elif dataset_type == 'test':
-            dataset = dataset.shuffle(5).batch(self.test_batch)
+            dataset = dataset.shuffle(5).batch(self.test_batch).repeat()
 
         if self.h_params['channel_subset'] is not None:
             dataset = dataset.map(self._select_channels)
@@ -247,21 +404,62 @@ class Dataset(object):
         return dataset
 
     def _select_class_subset(self, example_proto):
-        """Pick classes defined in self.h_params['class_subset'] from y"""
+        """Pick classes defined in self.h_params['class_subset'] from y.
+
+        Parameters
+        ----------
+        example_proto : dict
+            Parsed example with an ``'y'`` entry to subset.
+
+        Returns
+        -------
+        example_proto : dict
+            The input dict with ``example_proto['y']`` replaced by
+            the gathered class subset.
+
+        """
         example_proto['y'] = tf.gather(example_proto['y'],
                                        tf.constant(self.h_params['class_subset']),
                                        axis=0)
         return example_proto
 
     def _select_channels(self, example_proto):
-        """Pick a subset of channels specified by self.channel_subset."""
+        """Pick a subset of channels specified by self.h_params['channel_subset'].
+
+        Parameters
+        ----------
+        example_proto : dict
+            Parsed example with an ``'X'`` entry to subset along the
+            channel axis (axis 3).
+
+        Returns
+        -------
+        example_proto : dict
+            The input dict with ``example_proto['X']`` replaced by
+            the gathered channel subset.
+
+        """
         example_proto['X'] = tf.gather(example_proto['X'],
                                         tf.constant(self.h_params['channel_subset']),
                                         axis=3)
         return example_proto
 
     def _select_samples(self, example_proto):
-        """Pick a subset of channels specified by self.channel_subset."""
+        """Pick a subset of samples specified by self.sample_subset.
+
+        Parameters
+        ----------
+        example_proto : dict
+            Parsed example with an ``'X'`` entry to subset using
+            ``self.sample_subset``.
+
+        Returns
+        -------
+        example_proto : dict
+            The input dict with ``example_proto['X']`` replaced by
+            the gathered sample subset.
+
+        """
         example_proto['X'] = tf.gather_nd(example_proto['X'],
                                         indices=tf.constant(self.sample_subset)
                                             )
@@ -269,24 +467,76 @@ class Dataset(object):
 
 
     def class_weights(self):
-        """Weights take class proportions into account."""
+        """Weights take class proportions into account.
+
+        Returns
+        -------
+        weights : ndarray
+            Per-class weights, inversely proportional to
+            ``self.h_params['class_ratio']`` and normalized so that
+            their mean weighted by the class ratios equals 1.
+
+        """
         weights = np.array(
                 [v for k, v in self.h_params['class_ratio'].items()])
         return (1./np.mean(weights))/weights
 
     def _select_timepoints(self, example_proto):
-        """Downsample data."""
+        """Downsample data.
+
+        Parameters
+        ----------
+        example_proto : dict
+            Parsed example with an ``'X'`` entry to subset along the
+            time axis (axis 2) using ``self.timepoint_subset``.
+
+        Returns
+        -------
+        example_proto : dict
+            The input dict with ``example_proto['X']`` replaced by
+            the gathered timepoint subset.
+
+        """
         example_proto['X'] = tf.gather(example_proto['X'],
                                        self.timepoint_subset,
                                        axis=2)
 
     def _crop(self, example_proto):
-        """Crop data on the time axis."""
+        """Crop data on the time axis.
+
+        Parameters
+        ----------
+        example_proto : dict
+            Parsed example with an ``'X'`` entry to crop along the
+            time axis (axis 2) using ``self.timepoints``.
+
+        Returns
+        -------
+        example_proto : dict
+            The input dict with ``example_proto['X']`` replaced by
+            the cropped data.
+
+        """
         example_proto['X'] = tf.gather(example_proto['X'],
                                         self.timepoints,
                                         axis=2)
     def _parse_function(self, example_proto):
         """Restore data shape from serialized records.
+
+        Parameters
+        ----------
+        example_proto : tf.Tensor
+            A serialized ``tf.train.Example`` read from a TFRecords
+            file.
+
+        Returns
+        -------
+        parsed_features : dict
+            Dictionary with keys ``'X'``, ``'y'``, and ``'n'``,
+            containing the deserialized input data, target, and
+            example index, respectively, with shapes and dtypes
+            determined by ``self.h_params['input_type']`` and
+            ``self.h_params['target_type']``.
 
         Raises:
         -------
@@ -323,7 +573,22 @@ class Dataset(object):
         return parsed_features
 
     def _select_classes(self, sample):
-        """Pick a subset of classes specified in self.h_params['class_subset']."""
+        """Filter examples to keep only those in self.h_params['class_subset'].
+
+        Parameters
+        ----------
+        sample : dict
+            Parsed example with a ``'y'`` entry (one-hot encoded
+            target) to test against the class subset.
+
+        Returns
+        -------
+        out : tf.Tensor
+            Scalar boolean tensor, True if ``sample['y']`` belongs to
+            one of the classes in ``self.h_params['class_subset']``
+            (or if no class subset is set), False otherwise.
+
+        """
         if self.h_params['class_subset']:
             # TODO: fix subsetting
             onehot_subset = _onehot(self.h_params['class_subset'],
@@ -335,7 +600,22 @@ class Dataset(object):
             return tf.constant(True, dtype=tf.bool)
 
     def _cv_train_fold_filter(self, sample):
-        """Pick a subset of classes specified in self.h_params['class_subset']."""
+        """Filter examples to keep only those whose index falls in self.train_fold.
+
+        Parameters
+        ----------
+        sample : dict
+            Parsed example with an ``'n'`` entry (example index) to
+            test against ``self.train_fold``.
+
+        Returns
+        -------
+        out : tf.Tensor
+            Scalar boolean tensor, True if ``sample['n']`` is in
+            ``self.train_fold`` (or if ``self.train_fold`` is empty),
+            False otherwise.
+
+        """
         if np.any(self.train_fold):
             subset = tf.constant(self.train_fold, dtype=tf.int64)
             out = tf.reduce_any(tf.equal(sample['n'], subset))
@@ -344,7 +624,22 @@ class Dataset(object):
             return tf.constant(True, dtype=tf.bool)
 
     def _cv_val_fold_filter(self, sample):
-        """Pick a subset of classes specified in self.h_params['class_subset']."""
+        """Filter examples to keep only those whose index falls in self.val_fold.
+
+        Parameters
+        ----------
+        sample : dict
+            Parsed example with an ``'n'`` entry (example index) to
+            test against ``self.val_fold``.
+
+        Returns
+        -------
+        out : tf.Tensor
+            Scalar boolean tensor, True if ``sample['n']`` is in
+            ``self.val_fold`` (or if ``self.val_fold`` is empty),
+            False otherwise.
+
+        """
         if np.any(self.val_fold):
             subset = tf.constant(self.val_fold, dtype=tf.int64)
             out = tf.reduce_any(tf.equal(sample['n'], subset))
@@ -353,9 +648,41 @@ class Dataset(object):
             return tf.constant(True, dtype=tf.bool)
 
     def _unpack(self, sample):
+        """Extract the input data and target from a parsed example.
+
+        Parameters
+        ----------
+        sample : dict
+            Parsed example with ``'X'`` and ``'y'`` entries.
+
+        Returns
+        -------
+        X : tf.Tensor
+            Input data, ``sample['X']``.
+
+        y : tf.Tensor
+            Target, ``sample['y']``.
+
+        """
         return sample['X'], sample['y']#, sample['n']
 
     def assign_bin(self, sample):
+        """Assign each sample to a bin based on its target value.
+
+        Parameters
+        ----------
+        sample : dict
+            Parsed example with a ``'y'`` entry (regression target)
+            to bin according to ``self.h_params['bins']``.
+
+        Returns
+        -------
+        bin_id : tf.Tensor
+            Index of the bin (clipped to
+            ``[0, self.h_params['n_bins'] - 1]``) that ``sample['y']``
+            falls into.
+
+        """
         # Assign each sample to a bin
         bin_id = tf.searchsorted(self.h_params['bins'],
                                  sample['y'], side='left')
@@ -363,6 +690,28 @@ class Dataset(object):
         return bin_id
 
     def _resample(self, dataset):
+        """Rejection-resample a dataset to balance class/bin proportions.
+
+        For classification targets (``target_type == 'int'``),
+        resamples according to ``self.h_params['class_ratio']`` using
+        :func:`class_func` to derive the class of each example. For
+        regression targets (``target_type == 'float'``), bins the
+        target values (see :meth:`assign_bin`) using
+        ``self.h_params['bins']`` derived from
+        ``self.h_params['class_ratio']`` and resamples across bins.
+
+        Parameters
+        ----------
+        dataset : tf.data.Dataset
+            Dataset of parsed examples to resample.
+
+        Returns
+        -------
+        balanced_ds : tf.data.Dataset
+            Rejection-resampled dataset with (approximately) uniform
+            class/bin distribution, unwrapped back to plain examples.
+
+        """
         #print("Oversampling")
         n_classes = len(self.h_params['class_ratio'].items())
         target_dist = 1./n_classes*np.ones(n_classes)
@@ -376,7 +725,7 @@ class Dataset(object):
                                                      initial_dist=empirical_dist)
 
         elif self.h_params['target_type'] == 'float':
-            
+
             self.h_params['bins'] = np.array(list(self.h_params['class_ratio'].values())).astype(np.float32)
             target_dist = 1./len(self.h_params['bins'])*np.ones(len(self.h_params['bins']))
             print('n_bins {}, len(bins): {}'.format(self.h_params['n_bins'],
@@ -393,4 +742,21 @@ class Dataset(object):
         return balanced_ds
 
 def class_func(sample):
+    """Extract the class index from a one-hot encoded target.
+
+    Used as the ``class_func`` callback for
+    ``tf.data.Dataset.rejection_resample`` in :meth:`Dataset._resample`.
+
+    Parameters
+    ----------
+    sample : dict
+        Parsed example with a ``'y'`` entry (one-hot encoded class
+        label).
+
+    Returns
+    -------
+    class_index : tf.Tensor
+        Index of the argmax along the last axis of ``sample['y']``.
+
+    """
     return tf.argmax(sample['y'], -1)
