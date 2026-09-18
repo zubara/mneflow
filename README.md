@@ -50,6 +50,9 @@ The `target_type` argument similarly distinguishes classification (`'int'`), reg
 | `EEGNet` | Lawhern et al. (2018), *J. Neural Eng.* — [link](http://stacks.iop.org/1741-2552/15/i=5/a=056013) |
 | `FBCSP_ShallowNet` | Schirrmeister et al. (2017), *Human Brain Mapping* — [link](http://dx.doi.org/10.1002/hbm.23730) |
 | `Deep4` | Schirrmeister et al. (2017), *Human Brain Mapping* — [link](http://dx.doi.org/10.1002/hbm.23730) |
+| `SymmetricModel` | Ruuskanen, Saarro et al. (2026), *preprint* — [link](https://www.biorxiv.org/content/10.64898/2026.08.20.745932v1) |
+| `WeightedSum3dModel` | Ruuskanen, Saarro et al. (2026), *preprint* — [link](https://www.biorxiv.org/content/10.64898/2026.08.20.745932v1) |
+| `Conv3DModel` | Ruuskanen, Saarro et al. (2026), *preprint* — [link](https://www.biorxiv.org/content/10.64898/2026.08.20.745932v1) |
 
 The modular structure of the underlying `mneflow.layers` also makes it straightforward to define a custom architecture by combining existing layers or adding new ones — see the [custom-network example](https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb).
 
