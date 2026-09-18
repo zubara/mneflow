@@ -1,6 +1,8 @@
 MNEflow
 =======
-MNEflow provides a convenient way to apply neural networks implemmented in Tensorflow to EEG/MEG data. 
+MNEflow provides a convenient way to apply (deep) convolutional neural networks implemented in
+Tensorflow to EEG/MEG data, together with a streamlined pipeline for preprocessing, training,
+benchmarking, and interpreting them.
 
 
 Installation
@@ -9,13 +11,16 @@ Installation
 
 Dependencies
 ============
-* tensorflow > 2.12.0
-* mne > 0.19
+* tensorflow > 2.12.0, <= 2.16rc
+* mne >= 1.0, <= 1.7
 
 
 Examples
 ========
-* Data Import and `basic MNEflow pipeline <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb>`_.
+* Data import and the `basic MNEflow pipeline <https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb>`_.
+* `Working with continuous data <https://github.com/zubara/mneflow/blob/master/examples/continuous_example.py>`_.
+* `Sequence data <https://github.com/zubara/mneflow/blob/master/examples/sequence_data_example.ipynb>`_.
+* `Regression <https://github.com/zubara/mneflow/blob/master/examples/regression_example.ipynb>`_.
 * `How to build your own custom network <https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb>`_.
 * `Loading and saving mneflow models <https://github.com/zubara/mneflow/blob/master/examples/mneflow_save_restore.ipynb>`_.
 

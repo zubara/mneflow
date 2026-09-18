@@ -26,10 +26,10 @@ from matplotlib import collections
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from .layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling
-from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
-from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
-from tensorflow.keras.initializers import Constant
-from tensorflow.keras import regularizers as k_reg, constraints, layers
+from tf.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
+from tf.keras.layers import Flatten, Dropout, BatchNormalization
+from tf.keras.initializers import Constant
+from tf.keras import regularizers as k_reg, constraints, layers
 
 from .layers import LSTM
 import csv
@@ -40,6 +40,20 @@ from collections import defaultdict
 
 
 def uniquify(seq):
+    """Return the elements of a sequence in order, with duplicates removed.
+
+    Parameters
+    ----------
+    seq : sequence
+        Input sequence (of hashable-comparable elements).
+
+    Returns
+    -------
+    un : list
+        Elements of ``seq``, keeping only the first occurrence of
+        each, in their original order.
+
+    """
     un = []
     [un.append(i) for i in seq if not un.count(i)]
     return un
@@ -59,14 +73,25 @@ class BaseModel():
         """
         Parameters
         ----------
-        Dataset : mneflow.Dataset
-            `Dataset` object.
+        meta : mneflow.MetaData
+            Metadata object. ``meta.model_specs`` provides the
+            model-specific hyperparameters and, once this
+            constructor runs, is updated with a ``'model_path'`` key
+            - path for saving a trained model. See `Model` subclass
+            definitions for details on the expected hyperparameters;
+            unless otherwise specified, default hyperparameters are
+            used for each implemented model.
 
-        specs : dict
-            Dictionary of model-specific hyperparameters. Must include
-            at least `model_path` - path for saving a trained model
-            See `Model` subclass definitions for details. Unless otherwise
-            specified uses default hyperparameters for each implemented model.
+        dataset : mneflow.Dataset, optional
+            `Dataset` object to use. Defaults to None, in which case
+            a new ``Dataset`` is built from ``meta``.
+
+        specs_prefix : bool, optional
+            Whether to derive ``self.specs_prefix`` (used in the
+            saved model/weights file names) from the non-default
+            entries of ``meta.model_specs``. Defaults to False (empty
+            prefix).
+
         """
         self.specs = meta.model_specs
         meta.model_specs['model_path'] = os.path.join(meta.data['path'],
@@ -74,7 +99,7 @@ class BaseModel():
         self.current_fold = 0
 
         self.meta = meta
-        self.model_path = meta.model_specs['model_path'] #os.path.join(meta.data['path'], 'models')
+        self.model_path = meta.model_specs['model_path'] 
         if not os.path.exists(self.model_path):
             os.mkdir(self.model_path)
 
@@ -265,6 +290,29 @@ class BaseModel():
         noise_std : float, optional
             Standard deviation of the noise added to labels. (Experimental)
             Does not work with class_weights
+
+        shapley_order : int, optional
+            Passed through to :meth:`collect_patterns` (only used by
+            models that define it, e.g. LFCNN). Defaults to 1.
+
+        fold : int, optional
+            Fold index to start (or, with ``mode='single_fold'``,
+            train) from. Defaults to 0.
+
+        compute_pvalues : bool, optional
+            Whether to compute a permutation p-value (see
+            :meth:`permutation_p_value`) for each fold. Defaults to
+            False.
+
+        store_fold_predictions : bool, optional
+            Whether to store each fold's validation predictions
+            (``y_true``, ``y_pred``, and sample indices) in
+            ``self.cv_predictions``. Defaults to False.
+
+        Returns
+        -------
+        None
+
         """
 
 
@@ -481,6 +529,25 @@ class BaseModel():
 
 
     def prune_weights(self, increase_regularization=3.):
+        """Continue training with increased L1/L2 regularization to prune weights.
+
+        Multiplies ``self.specs['l1_lambda']`` and
+        ``self.specs['l2_lambda']`` by ``increase_regularization``
+        and fits the compiled model for up to 30 more epochs (with
+        early stopping on validation loss), storing the resulting
+        history in ``self.t_hist_p``.
+
+        Parameters
+        ----------
+        increase_regularization : float, optional
+            Factor by which to multiply the L1 and L2 regularization
+            strengths. Defaults to 3.
+
+        Returns
+        -------
+        None
+
+        """
         stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
                                                       min_delta=1e-6,
                                                       patience=10,
@@ -497,6 +564,16 @@ class BaseModel():
                                callbacks=[stop_early], verbose=2)
 
     def shuffle_weights(self):
+        """Randomly permute all of the model's weight tensors in place.
+
+        Used between cross-validation folds to re-randomize the
+        model before re-fitting from its initial weights.
+
+        Returns
+        -------
+        None
+
+        """
         print("Re-shuffling weights between folds")
         weights = self.km.get_weights()
         weights = [np.random.permutation(w.flat).reshape(w.shape) for w in weights]
@@ -514,13 +591,42 @@ class BaseModel():
         plt.show()
 
     def _confusion_matrix(self, y_true, y_pred):
-        """Compute unnormalizewd confusion matrix"""
+        """Compute an unnormalized confusion matrix.
+
+        Parameters
+        ----------
+        y_true : ndarray, shape (n_samples, n_classes)
+            One-hot encoded ground-truth labels.
+
+        y_pred : ndarray, shape (n_samples, n_classes)
+            Predicted class scores/probabilities.
+
+        Returns
+        -------
+        cm : ndarray, shape (n_classes, n_classes)
+            Unnormalized confusion matrix, ``one_hot(argmax(y_pred)).T
+            @ y_true``.
+
+        """
         y_p = _onehot(np.argmax(y_pred,1), n_classes=self.y_shape[-1])
         cm = np.dot(y_p.T, y_true)
         return cm
 
     def update_results(self):
-        """Add training results to training log"""
+        """Add training/validation/test results to ``self.meta.results``.
+
+        Aggregates cross-validation metrics/losses (from
+        ``self.cv_metrics``/``self.cv_losses`` if this model instance
+        trained them, otherwise from ``self.meta.results``), computes
+        train-set loss/metric via :meth:`evaluate`, and stores
+        everything (plus the confusion matrix ``self.cm``) into
+        ``self.meta.results`` via ``self.meta.update``.
+
+        Returns
+        -------
+        None
+
+        """
         results = dict()
         if hasattr(self, 'cv_metrics'):
             results['v_metric'] = np.mean(self.cv_metrics)
@@ -568,6 +674,36 @@ class BaseModel():
         self.meta.update(results=results)
 
     def permutation_p_value(self, dataset=None, n_perm=10000):
+        """Estimate a permutation-test p-value for the model's performance.
+
+        Compares the observed evaluation metric to two null
+        distributions built by shuffling the (mean-centered)
+        true/predicted targets across samples: ``perm_metrics``
+        (predictions held fixed, targets shuffled and compared to
+        predictions) and ``perm_metrics2`` (predictions replaced by
+        shuffled targets). Also plots histograms of both null
+        distributions.
+
+        Parameters
+        ----------
+        dataset : tf.data.Dataset, optional
+            Dataset to evaluate on. Defaults to None, in which case
+            ``self.dataset.val`` is used.
+
+        n_perm : int, optional
+            Number of permutations to draw. Defaults to 10000.
+
+        Returns
+        -------
+        metric_pvalue : float
+            Fraction of ``perm_metrics`` exceeding the observed
+            metric.
+
+        metric_pvalue2 : float
+            Fraction of ``perm_metrics2`` exceeding the observed
+            metric.
+
+        """
         perm_metrics2 = []
         perm_metrics = []
         if self.meta.data['target_type'] == 'float':
@@ -603,6 +739,22 @@ class BaseModel():
         """Logs experiment to self.model_path + self.scope + '_log.csv'.
 
         If the file exists, appends a line to the existing file.
+
+        Parameters
+        ----------
+        rms : dict, optional
+            Currently unused directly (regression metrics are instead
+            read from ``self.meta.results``); accepted for interface
+            consistency with callers such as :meth:`train`. Defaults
+            to None.
+
+        prefix : str, optional
+            Currently unused. Defaults to ''.
+
+        Returns
+        -------
+        None
+
         """
         savepath = os.path.join(self.model_path, self.scope + '_log.csv')
         appending = os.path.exists(savepath)
@@ -711,7 +863,18 @@ class BaseModel():
 
     def save(self):
         """
-        Saves the model and (optionally, patterns, confusion matrices)
+        Saves the model and (optionally, patterns, confusion matrices).
+
+        Calls :meth:`update_results`, stacks the collected
+        cross-validation weights (``self.cv_weights``), updates and
+        saves the metadata (``self.meta.update``), and saves the
+        Keras model (and encoder, if present) to
+        ``self.model_path``.
+
+        Returns
+        -------
+        None
+
         """
 
         self.update_results()
@@ -730,6 +893,21 @@ class BaseModel():
 
 
     def predict_sample(self, x):
+        """Run the model on a single (or batch of) raw input sample(s).
+
+        Parameters
+        ----------
+        x : array-like
+            Input array whose last two dimensions match
+            ``(n_t, n_ch)``. Expanded with leading singleton
+            dimensions as needed to reach 4 dimensions.
+
+        Returns
+        -------
+        out : tf.Tensor
+            Model output (``self.km(x, training=True)``).
+
+        """
         n_ch = self.dataset.h_params['n_ch']
         n_t = self.dataset.h_params['n_t']
         assert x.shape[-2:] == (n_t, n_ch),  "Shape mismatch! Expected {}x{}, \
@@ -746,6 +924,18 @@ class BaseModel():
 
     def predict(self, dataset=None, n_batches=1):
         """
+        Parameters
+        ----------
+        dataset : tf.data.Dataset, str, list of str, or None, optional
+            Dataset to predict on. Defaults to None, in which case
+            ``self.dataset.val`` is used. A string or list/tuple of
+            strings is treated as (a) path(s) to TFRecords and built
+            into a dataset via ``self.dataset._build_dataset``.
+
+        n_batches : int, optional
+            Number of batches to draw from ``dataset`` before
+            predicting. Defaults to 1.
+
         Returns
         -------
         y_true : np.array
@@ -783,6 +973,14 @@ class BaseModel():
 
     def evaluate(self, dataset=False):
         """
+        Parameters
+        ----------
+        dataset : tf.data.Dataset, str, list of str, or False, optional
+            Dataset to evaluate on. Defaults to False, in which case
+            ``self.dataset.val`` is used. A string or list/tuple of
+            strings is treated as (a) path(s) to TFRecords and built
+            into a dataset via ``self.dataset._build_dataset``.
+
         Returns
         -------
         losses : list
@@ -824,7 +1022,16 @@ class SourceNet(BaseModel):
         """
         Parameters
         ----------
-        Dataset : mneflow.Dataset
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters (see below) where
+            not already set.
+
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs_prefix : bool, optional
+            See :meth:`BaseModel.__init__`. Defaults to False.
 
         specs : dict
                 dictionary of model hyperparameters {
@@ -933,10 +1140,21 @@ class VARCNN(BaseModel):
         """
         Parameters
         ----------
-        Dataset : mneflow.Dataset
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters (see below) where
+            not already set.
 
-        specs : dict
-                dictionary of model hyperparameters {
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs_prefix : bool, optional
+            See :meth:`BaseModel.__init__`. Defaults to False.
+
+        specs : dict, optional
+                If provided, merged into ``meta.model_specs`` before
+                applying the defaults below. Dictionary of model
+                hyperparameters {
 
         n_latent : int
             Number of latent components.
@@ -1031,6 +1249,30 @@ class FBCSP_ShallowNet(BaseModel):
        Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
     """
     def __init__(self, meta, dataset=None, specs=None, specs_prefix=False):
+        """Initialize the FBCSP Shallow ConvNet model.
+
+        Parameters
+        ----------
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters where not already
+            set: ``filter_length`` (25), ``n_latent`` (40),
+            ``pooling`` (75), ``stride`` (15), ``pool_type`` ('avg'),
+            ``padding`` ('SAME'), ``nonlin`` (``tf.nn.relu``),
+            ``l1_lambda`` (3e-4), ``l2_lambda`` (3e-2), and the
+            regularization/constraint scopes.
+
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs : dict, optional
+            If provided, merged into ``meta.model_specs`` before
+            applying the defaults above. Defaults to None.
+
+        specs_prefix : bool, optional
+            See :meth:`BaseModel.__init__`. Defaults to False.
+
+        """
         self.scope = 'fbcsp-ShallowNet'
         if specs:
             meta.update(model_specs=specs)
@@ -1051,8 +1293,19 @@ class FBCSP_ShallowNet(BaseModel):
         super().__init__(meta, dataset, specs_prefix)
 
     def build_graph(self):
+        """Build computational graph using defined placeholder `self.X`
+        as input.
 
-        """Temporal conv_1 25 10x1 kernels"""
+        Temporal conv_1 25 10x1 kernels, followed by a spatial
+        (depth-multiplied) convolution, average pooling, and a
+        log-nonlinearity before the final fully-connected layer.
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
         #(self.inputs)
         inputs = tf.transpose(self.inputs,[0,3,2,1])
         #print(inputs.shape)
@@ -1123,6 +1376,16 @@ class LFLSTM(BaseModel):
     pooling : int
         pooling factor of the max pooling layer. Defaults to 2
 
+    pool_type : str {'avg', 'max'}
+        Type of pooling operation. Defaults to 'max'.
+
+    padding : str {'SAME', 'FULL', 'VALID'}
+        Convolution padding. Defaults to 'SAME'.
+
+    nonlin : callable
+        Activation function of the temporal convolution layer.
+        Defaults to tf.nn.relu.
+
     References
     ----------
         [1]  I. Zubarev, et al., Adaptive neural network classifier for
@@ -1133,9 +1396,21 @@ class LFLSTM(BaseModel):
 
         Parameters
         ----------
-        Dataset : mneflow.Dataset
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters (see below) where
+            not already set.
 
-        specs : dict
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs_prefix : bool, optional
+            See :meth:`BaseModel.__init__`. Defaults to False.
+
+        specs : dict, optional
+                If provided, merged into ``meta.model_specs`` before
+                applying the defaults below. Dictionary of model
+                hyperparameters {
                 dictionary of model hyperparameters {
 
         n_latent : int
@@ -1183,6 +1458,19 @@ class LFLSTM(BaseModel):
 
 
     def build_graph(self):
+        """Build computational graph using defined placeholder `self.X`
+        as input.
+
+        Spatial demixing, followed by a temporal convolution and
+        pooling, an LSTM over the pooled temporal features, and a
+        final projection to the output.
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
 
         self.return_sequence = True
         self.dmx = DeMixing(size=self.specs['n_latent'], nonlin=tf.identity,
@@ -1264,7 +1552,30 @@ class Deep4(BaseModel):
        Human Brain Mapping , Aug. 2017. Online: http://dx.doi.org/10.1002/hbm.23730
     """
     def __init__(self, meta, dataset=None, specs=None, specs_prefix=False):
+        """Initialize the Deep ConvNet model.
 
+        Parameters
+        ----------
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters where not already
+            set: ``filter_length`` (10), ``n_latent`` (25),
+            ``pooling`` (3), ``stride`` (3), ``pool_type`` ('max'),
+            ``padding`` ('SAME'), ``nonlin`` (``tf.nn.elu``),
+            ``l1_lambda`` (0), ``l2_lambda`` (0), and the
+            regularization/constraint scopes.
+
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs : dict, optional
+            If provided, merged into ``meta.model_specs`` before
+            applying the defaults above. Defaults to None.
+
+        specs_prefix : bool, optional
+            See :meth:`BaseModel.__init__`. Defaults to False.
+
+        """
         self.scope = 'deep4'
         if specs:
             meta.update(model_specs=specs)
@@ -1284,6 +1595,18 @@ class Deep4(BaseModel):
         super(Deep4, self).__init__(meta, dataset, specs_prefix)
 
     def build_graph(self):
+        """Build computational graph using defined placeholder `self.X`
+        as input.
+
+        Four stages of temporal/spatial convolution followed by
+        average pooling, then a final fully-connected layer.
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
         self.scope = 'deep4'
 
         inputs = tf.keras.ops.transpose(self.inputs,[0,3,2,1])
@@ -1430,7 +1753,18 @@ class EEGNet(BaseModel):
             Pooling factor of the average polling layers. Defaults to 4.
 
         dropout : float
-            Dropout coefficient.
+            Dropout coefficient. Defaults to 0.1.
+
+        depth_multiplier : int
+            Depth multiplier of the depthwise spatial convolution.
+            Defaults to 2.
+
+        padding : str
+            Convolution padding. Defaults to 'same'.
+
+        nonlin : str or callable
+            Activation function used after the convolutional blocks.
+            Defaults to 'elu'.
 
     References
     ----------
@@ -1442,6 +1776,26 @@ class EEGNet(BaseModel):
     https://github.com/vlawhern/arl-eegmodels
     """
     def __init__(self, meta, dataset=None, specs=None, specs_prefix=False):
+        """Initialize the EEGNet model.
+
+        Parameters
+        ----------
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters, see the class
+            docstring.
+
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs : dict, optional
+            If provided, merged into ``meta.model_specs`` before
+            applying the defaults. Defaults to None.
+
+        specs_prefix : bool, optional
+            See :meth:`BaseModel.__init__`. Defaults to False.
+
+        """
         self.scope = 'eegnet8'
         if specs:
             meta.update(model_specs=specs)
@@ -1459,7 +1813,20 @@ class EEGNet(BaseModel):
 
 
     def build_graph(self):
+        """Build computational graph using defined placeholder `self.X`
+        as input.
 
+        Two EEGNet convolutional blocks (temporal convolution,
+        depthwise spatial convolution, and separable convolution,
+        each with batch normalization, activation, average pooling,
+        and dropout), followed by a final fully-connected layer.
+
+        Returns
+        --------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
 
         inputs = tf.transpose(self.inputs,[0,3,2,1])
 
@@ -1502,15 +1869,42 @@ class EEGNet(BaseModel):
 
 
 class NoisyTrainer:
+    """Custom training loop that adds Gaussian noise to regression targets.
+
+    Trains a compiled Keras model with a manual (``tf.GradientTape``)
+    training loop, injecting Gaussian noise into the training labels
+    each step (an experimental regularization strategy), while
+    evaluating on clean validation labels and applying early stopping
+    based on validation loss. Used by :meth:`BaseModel.train` when
+    ``noisy_labels=True``.
+
+    """
     def __init__(self, model, model_path, noise_std=.1, patience=5, min_delta=0.001):
         """
-        Initialize the trainer with a model, noise parameters, and early stopping configuration
+        Initialize the trainer with a model, noise parameters, and early stopping configuration.
 
-        Args:
-            model: Keras model
-            noise_std: Standard deviation of Gaussian noise to add to labels
-            patience: Number of epochs with no improvement after which training will be stopped
-            min_delta: Minimum change in monitored metric to qualify as an improvement
+        Parameters
+        ----------
+        model : tf.keras.Model
+            Compiled Keras model to train. Its ``.loss`` is reused as
+            the training/validation loss function.
+
+        model_path : str
+            Base path (without extension) used to save the best
+            weights, as ``<model_path>_best.weights.h5``.
+
+        noise_std : float, optional
+            Standard deviation of Gaussian noise to add to labels.
+            Defaults to 0.1.
+
+        patience : int, optional
+            Number of epochs with no improvement after which training
+            will be stopped. Defaults to 5.
+
+        min_delta : float, optional
+            Minimum change in monitored metric to qualify as an
+            improvement. Defaults to 0.001.
+
         """
         self.model = model
         self.model_path = model_path + '_best.weights.h5'
@@ -1527,7 +1921,20 @@ class NoisyTrainer:
 
     @tf.function
     def add_noise_to_labels(self, labels):
-        """Add Gaussian noise to the labels"""
+        """Add Gaussian noise to the labels.
+
+        Parameters
+        ----------
+        labels : tf.Tensor
+            Target labels to perturb.
+
+        Returns
+        -------
+        noisy_labels : tf.Tensor
+            ``labels`` plus Gaussian noise with standard deviation
+            ``self.noise_std``.
+
+        """
         noise = tf.random.normal(shape=tf.shape(labels),
                                mean=0.0,
                                stddev=self.noise_std)
@@ -1535,7 +1942,23 @@ class NoisyTrainer:
 
     @tf.function
     def train_step(self, x, y):
-        """Single training step with noisy labels"""
+        """Single training step with noisy labels.
+
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input batch.
+
+        y : tf.Tensor
+            Target batch (noise is added internally before computing
+            the loss).
+
+        Returns
+        -------
+        loss : tf.Tensor
+            Training loss computed against the noisy labels.
+
+        """
         # Add noise to labels
         noisy_y = self.add_noise_to_labels(y)
 
@@ -1554,7 +1977,25 @@ class NoisyTrainer:
 
     @tf.function
     def validation_step(self, x, y):
-        """Validation step without noise and training mode"""
+        """Validation step without noise and training mode.
+
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input batch.
+
+        y : tf.Tensor
+            (Clean) target batch.
+
+        Returns
+        -------
+        val_loss : tf.Tensor
+            Validation loss.
+
+        metric : tf.Tensor
+            Validation metric (``self.metric``, an R2 score).
+
+        """
         predictions = self.model(x, training=False)
         val_loss = self.loss_fn(y, predictions)
         metric = self.metric(y, predictions)
@@ -1563,15 +2004,40 @@ class NoisyTrainer:
     def train(self, train_dataset, val_dataset=None, epochs=1000, eval_step=5,
               val_steps=1, restore_best_weights=True):
         """
-        Train the model with optional validation and early stopping
+        Train the model with optional validation and early stopping.
 
-        Args:
-            train_dataset: Training dataset
-            val_dataset: Optional validation dataset
-            epochs: Maximum number of training epochs
+        Parameters
+        ----------
+        train_dataset : tf.data.Dataset
+            Training dataset. Iterated ``eval_step`` batches at a
+            time per epoch, and shuffled after each epoch.
 
-        Returns:
-            Training history dictionary
+        val_dataset : tf.data.Dataset, optional
+            Validation dataset. Defaults to None (no validation or
+            early stopping).
+
+        epochs : int, optional
+            Maximum number of training epochs. Defaults to 1000.
+
+        eval_step : int, optional
+            Number of training batches per epoch, before validation
+            is run. Defaults to 5.
+
+        val_steps : int, optional
+            Number of validation batches to average over each epoch.
+            Only used if ``val_dataset`` is given. Defaults to 1.
+
+        restore_best_weights : bool, optional
+            Whether to save the best-so-far weights to
+            ``self.model_path`` and reload them when early stopping
+            triggers. Defaults to True.
+
+        Returns
+        -------
+        training_history : dict
+            Dictionary with keys ``'train_loss'`` and ``'val_loss'``,
+            each a list of per-epoch average losses.
+
         """
         training_history = {
             'train_loss': [],

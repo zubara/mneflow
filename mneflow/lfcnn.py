@@ -23,19 +23,12 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from time import time
         
 from mneflow.layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling, LFTConvTranspose
-from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D, LSTM
-from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
-from tensorflow.keras.initializers import Constant
-#from tensorflow.keras import regularizers as k_reg, constraints, layers
-
-#from .layers import LSTM
-#import csv
-#import os
+from tf.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D, LSTM
+from tf.keras.layers import Flatten, Dropout, BatchNormalization
+from tf.keras.initializers import Constant
 from mneflow.data import Dataset
-#from .utils import regression_metrics, _onehot
 from mneflow.models import BaseModel
 from collections import defaultdict
-#from mneflow.losses import riemann_loss, #Cos2MSE
 
 class LFCNN(BaseModel):
     """LF-CNN. Includes basic parameter interpretation options.
@@ -51,10 +44,22 @@ class LFCNN(BaseModel):
 
         Parameters
         ----------
-        Dataset : mneflow.Dataset
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters (see below) where
+            not already set.
 
-        specs : dict
-                dictionary of model hyperparameters {
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs_prefix : bool, optional
+            See :meth:`mneflow.models.BaseModel.__init__`. Defaults
+            to False.
+
+        specs : dict, optional
+                If provided, merged into ``meta.model_specs`` before
+                applying the defaults below. Dictionary of model
+                hyperparameters {
 
         n_latent : int
             Number of latent components.
@@ -153,28 +158,38 @@ class LFCNN(BaseModel):
                       #reconstruction_loss=tf.keras.losses.MAE
                       ):
         """Build computational graph for an interpretable Generator
+        (decoder) that reconstructs the input from either the model's
+        predictions or its latent activations.
 
-        Parameters:
+        Parameters
         ----------
-        inputs : str [y_pred, activations]
-
-
-        conv : str ['full', 'depthwise']
-
+        encoder_specs : dict
+            Dictionary of encoder hyperparameters. Expected keys
+            include 
+            ``inputs`` : str {'y_pred', 'activations'} 
+                - source of the signal fed into the encoder; 
+                ``conv`` : str {'full', 'depthwise'} 
+                - type of transposed convolution used to upsample 
+                the temporal dimension; 
+                ``nonlin`` : callable; 
+                ``filter_length`` : int; 
+                ``stride`` : int;
+                ``n_latent`` : int; 
+                ``l2_lambda`` : float; 
+                ``loss`` :  callable or str; 
+                ``learn_rate`` : float.
 
         Returns
-        --------
-        y_pred : tf.Tensor
-            Output of the forward pass of the computational graph.
-            Prediction of the target variable.
+        -------
+        None
+            This method does not return a value. It builds and
+            compiles the encoder graph in place, setting
+            ``self.enc_fc``, ``self.enc_tconv_activations_r``,
+            ``self.enc_tconv_trans``, ``self.de_dmx``,
+            ``self.X_pred`` and the compiled Keras model
+            ``self.km_enc``.
         """
         self.specs['dropout'] = 0.05
-
-        #encoder_specs = self.specs.copy()
-        #encoder_specs['l1_lambda'] = 1e-3
-        #encoder_specs['l1_scope'] = ['dede', 'dmx']
-        #encoder_specs['l2_lambda'] = 3e-6
-        #encoder_specs['l2_scope'] = ['tconv']
         self.encoder_specs = encoder_specs
 
         print("Freezing the decoder")
@@ -200,8 +215,6 @@ class LFCNN(BaseModel):
             n_pads=None
         elif self.dataset.h_params['n_t']%self.specs['stride'] == 1:
             n_pads = max(0, self.specs['stride'] - diff_padding)
-            #n_pads = 1
-            #enc_tconv_activations_r = enc_tconv_activations_r[:, :, :-1, :]
             padding = (n_pads, 1)
             print(padding)
         else :
@@ -212,8 +225,6 @@ class LFCNN(BaseModel):
         print("before upsampling: ", enc_tconv_activations_r.shape)
         enc_dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(enc_tconv_activations_r)
-
-
 
         if self.encoder_specs['conv'] == 'depthwise':
             enc_dropout_split = tf.keras.ops.split(enc_dropout,
@@ -277,7 +288,6 @@ class LFCNN(BaseModel):
                                specs=self.encoder_specs)
 
         self.X_pred = self.de_dmx(enc_deconv)
-        #print(self.X_pred.shape)
 
         self.km_enc = tf.keras.Model(inputs=self.inputs, outputs=self.X_pred)
 
@@ -294,31 +304,29 @@ class LFCNN(BaseModel):
 
 
     def enc_reconstruct(self, method='weight'):
+        """Compute and return the mean reconstructed input for each
+        class, obtained by propagating the class-conditional mean
+        activations through the trained encoder (decoder) graph.
+
+        Parameters
+        ----------
+        method : str, optional
+            Which patterns to use as the encoder's input; one of
+            {'full', 'weight', 'compwise_loss', 'output_corr',
+            'combined', 'shap'}. Defaults to 'weight'.
+
+        Returns
+        -------
+        reconstructed : np.array
+            Mean reconstructed input for each class.
         """
-        Compute and return mean reconstructed input for each class.
-        method : str
-            ['full', 'weight', 'compwise_loss', 'output_corr', 'combined', 'shap']
-        """
 
-        # F, names = self.meta.get_feature_relevances(sorting=method,
-        #                                        integrate=[],
-        #                                        diff=True)
-
-        # print("F:", F.shape)
-        # n_t, n_components, n_y, n_folds = F.shape
-
-        #W = self.weights['dmx'] #(n_ch, n_components, n_folds)
 
         patterns_struct = self.compute_patterns(shapley_order=0, methods=['weight'])
 
 
         #Get spatial encoder weights
-        # w_enc = tf.transpose(self.de_dmx.weights[0]) #(n_ch, n_components)
-        # #Get temoporal encoder weights
-        #
-        #     a_enc = tf.keras.ops.concatenate([x.weights[0] for x in self.enc_tconv_trans],
-        #                                      axis=1)# (n_taps, n_components, n_folds)
-
+  
         #Get mean activations of enc_fc for each class.
         if self.encoder_specs['inputs'] == 'activations':
             ccms = patterns_struct['ccms']['pooled'] # (n_t, n_comp, n_classes, n_folds)
@@ -350,8 +358,23 @@ class LFCNN(BaseModel):
 
 
     def compute_enc_patterns(self, inputs=None):
-        """
+        """Compute spatial patterns of the encoder (decoder) by
+        propagating inputs through the fitted encoder graph.
 
+        Parameters
+        ----------
+        inputs : np.array, optional
+            Inputs to the encoder's fully-connected layer. If not
+            provided, an identity matrix of shape
+            ``(self.out_dim, self.out_dim)`` is used, so that each
+            "sample" isolates the pattern associated with one output
+            unit.
+
+        Returns
+        -------
+        patterns : np.array
+            Encoder-derived spatial patterns, with singleton
+            dimensions removed.
         """
         if not np.any(inputs):
             print('Using fake inputs')
@@ -366,6 +389,46 @@ class LFCNN(BaseModel):
     def train_encoder(self, n_epochs, eval_step=None, min_delta=1e-6,
                       mode='single_fold', early_stopping=3,
                       collect_patterns=False):
+        """Train the encoder (decoder) graph built by
+        :meth:`build_encoder` to reconstruct the input, while keeping
+        the (already-trained) classifier/regressor weights frozen.
+
+        Parameters
+        ----------
+        n_epochs : int
+            Maximum number of training epochs.
+
+        eval_step : int, optional
+            Number of training steps (batches) per epoch. Defaults to
+            None (one epoch equals one full pass over the training
+            data).
+
+        min_delta : float, optional
+            Minimum change in the monitored validation loss to
+            qualify as an improvement for early stopping. Defaults to
+            1e-6.
+
+        mode : str {'single_fold', 'cv', 'loso'}, optional
+            Training regime. 'single_fold' trains on the current
+            fold only; 'cv' loops over all folds in
+            ``self.dataset.h_params['folds']``; 'loso' is not
+            implemented. Defaults to 'single_fold'.
+
+        early_stopping : int, optional
+            Patience (in epochs) for early stopping on the validation
+            loss. Defaults to 3.
+
+        collect_patterns : bool, optional
+            Currently unused placeholder for collecting patterns
+            during encoder training. Defaults to False.
+
+        Returns
+        -------
+        None
+            Populates ``self.cv_enc_losses`` and
+            ``self.cv_enc_metrics`` with the per-fold validation loss
+            and metric values.
+        """
         self.km.trainable = False
         if mode == 'single_fold':
             n_folds = 1
@@ -418,6 +481,18 @@ class LFCNN(BaseModel):
 
 
     def get_config(self):
+            """Return a minimal config dict referencing this model's
+            layer objects.
+
+            Returns
+            -------
+            config : dict
+                Dictionary with keys ``'dmx'``, ``'dmx_out'``,
+                ``'tocnv'`` (the temporal convolution layer, note the
+                key name), ``'tconv_out'``, ``'pool'``, ``'pooled'``,
+                ``'dropout'`` and ``'fin_fc'``, mapping to the
+                corresponding layer objects/tensors.
+            """
             # Do not call super.get_config!
             # This gave an error for me.
             config = {
@@ -433,14 +508,29 @@ class LFCNN(BaseModel):
             return config
 
     def _get_class_conditional_spatial_covariance(self, X, y):
-        """Compute spatial class-conditional covariance matrix from the dataset
+        """Compute the spatial (channel x channel) covariance matrices
+        of the input, separately for each class and for its
+        complement ("anti-class").
 
-        Parameters:
-        -----------
-        dataset : tf.data.Dataset
+        Parameters
+        ----------
+        X : tf.Tensor
+            Batch of input data, shape (n_epochs, 1, n_t, n_ch).
 
-        Returns : dcov [y_shape, n_ch, n_ch]
+        y : tf.Tensor
+            One-hot encoded batch of class labels, shape
+            (n_epochs, n_classes).
 
+        Returns
+        -------
+        dcovs : np.array
+            Class-conditional spatial covariance matrices, shape
+            (n_ch, n_ch, n_classes).
+
+        dcovs_n : np.array
+            Spatial covariance matrices computed over all samples
+            *not* belonging to each class ("anti-class"), shape
+            (n_ch, n_ch, n_classes).
         """
         #TODO: Fix regression case
         dcovs = []
@@ -463,12 +553,39 @@ class LFCNN(BaseModel):
 
 
     def patterns_cov_xx(self, y, weights, activations, dcov):
-        """
-        
-        X - [i,...,m]
-        y - [i,...,j] - used for cov[y]
-        w - [k,...,j]
-        Sx - [k,...,mj]
+        """Compute spatial patterns from the covariance of the input
+        and predicted output, using precomputed class-conditional
+        spatial covariance matrices.
+
+        Parameters
+        ----------
+        y : np.array
+            One-hot encoded target variable, shape
+            (n_epochs, n_classes). Referred to below as ``y``, shape
+            ``[i, ..., j]``.
+
+        weights : dict
+            Dictionary of extracted model weights, as returned by
+            :meth:`extract_weights`. Uses ``weights['out_weights']``
+            (referred to below as ``w``, shape ``[k, ..., j]``) and
+            ``weights['dmx']``.
+
+        activations : dict
+            Dictionary of layer activations, as computed in
+            :meth:`compute_patterns`. Uses
+            ``activations['pooled']`` (referred to below as ``X``,
+            shape ``[i, ..., m]``).
+
+        dcov : dict
+            Dictionary of covariance matrices, as returned by
+            :meth:`_get_class_conditional_spatial_covariance`. Uses
+            ``dcov['class_conditional']``.
+
+        Returns
+        -------
+        patterns : np.array
+            Spatial patterns, shape (n_ch, n_classes), computed as
+            ``Sx = [k, ..., mj]``.
         """
 
         x_shape = list(activations['pooled'].shape)
@@ -511,6 +628,36 @@ class LFCNN(BaseModel):
 
 
     def patterns_cov_xy_hat(self, X, y, activations, weights):
+        """Back-propagate the covariance between the input/latent
+        activations and the model's predictions through the temporal
+        convolution and demixing layers.
+
+        Parameters
+        ----------
+        X : tf.Tensor
+            Batch of input data.
+
+        y : tf.Tensor
+            One-hot encoded batch of class labels.
+
+        activations : dict
+            Dictionary of layer activations, as computed in
+            :meth:`compute_patterns`.
+
+        weights : dict
+            Dictionary of extracted model weights, as returned by
+            :meth:`extract_weights`.
+
+        Returns
+        -------
+        Sx_tconv : np.array
+            Back-propagated pattern at the temporal convolution
+            (pooled) layer, computed by :meth:`backprop_fc`.
+
+        Sx_dmx : np.array
+            Back-propagated pattern at the spatial demixing layer,
+            computed by :meth:`backprop_covxy`.
+        """
         Sx_tconv = self.backprop_fc(activations['pooled'],
                                     activations['fc'],
                                     y,
@@ -523,11 +670,33 @@ class LFCNN(BaseModel):
 
 
     def backprop_fc(self, X, y_hat, y, w):
+        """Back-propagate the covariance between an intermediate
+        activation ``X`` and the model output ``y`` through a linear
+        (fully-connected) layer with weights ``w``, to obtain a
+        pattern in the space of ``X``.
+
+        Parameters
+        ----------
+        X : np.array
+            Intermediate activation, shape ``[i, ..., m]``.
+
+        y_hat : np.array
+            Model prediction associated with ``X`` (e.g. the fully
+            connected layer's output), shape ``[i, ..., j]``.
+
+        y : np.array
+            True one-hot encoded target variable, shape
+            ``[i, ..., j]``.
+
+        w : np.array
+            Weights of the linear layer mapping ``X`` to ``y_hat``,
+            shape ``[k, ..., j]``.
+
+        Returns
+        -------
+        Sx : np.array
+            Back-propagated pattern, shape ``[k, ..., mj]`` (squeezed).
         """
-        X - [i,...,m]
-        y - [i,...,j]
-        w - [k,...,j]
-        Sx - [k,...,mj]"""
         x_shape = list(X.shape)
         y_shape = list(y_hat.shape)
 
@@ -559,6 +728,32 @@ class LFCNN(BaseModel):
         return Sx
 
     def backprop_covxy(self, X, Hx, Sx, w):
+        """Back-propagate a pattern ``Sx`` computed at an intermediate
+        layer ``Hx`` further back to the input space ``X``, using the
+        covariance between ``X`` and ``Hx`` and the spatial weights
+        ``w``.
+
+        Parameters
+        ----------
+        X : tf.Tensor or np.array
+            Input data.
+
+        Hx : tf.Tensor or np.array
+            Activation of the intermediate (demixing) layer computed
+            from ``X``.
+
+        Sx : np.array
+            Pattern already computed at the level of ``Hx`` (e.g. the
+            output of :meth:`backprop_fc`).
+
+        w : np.array
+            Spatial (demixing) weights, ``weights['dmx']``.
+
+        Returns
+        -------
+        a : np.array
+            Back-propagated pattern in the input (channel) space.
+        """
         xdmx = np.reshape(Hx, [-1, Hx.shape[-1]])
         xdmx = xdmx - xdmx.mean(0, keepdims=True)
         xinp = np.reshape(X, [-1, X.shape[-1]])
@@ -580,6 +775,35 @@ class LFCNN(BaseModel):
         return a
 
     def patterns_pinv_w(self, y, weights, activations, dcov):
+        """Compute spatial patterns via the pseudo-inverse of the
+        output, demixing and temporal-convolution weight matrices,
+        combined with class-conditional spatial covariances.
+
+        Parameters
+        ----------
+        y : tf.Tensor
+            One-hot encoded batch of class labels.
+
+        weights : dict
+            Dictionary of extracted model weights, as returned by
+            :meth:`extract_weights`. Uses ``weights['dmx']``,
+            ``weights['out_w_flat']`` and ``weights['tconv']``.
+
+        activations : dict
+            Dictionary of layer activations, as computed in
+            :meth:`compute_patterns`. Uses ``activations['fc']`` and
+            ``activations['pooled']``.
+
+        dcov : dict
+            Dictionary of covariance matrices, as returned by
+            :meth:`_get_class_conditional_spatial_covariance`. Uses
+            ``dcov['class_conditional']``.
+
+        Returns
+        -------
+        topos : np.array
+            Spatial patterns for each class, shape (n_ch, n_classes).
+        """
         combined_topos = []
         pinv_dmx = np.linalg.pinv(weights['dmx']).T#np.dot(spatial_filters, np.linalg.inv(np.dot(spatial_filters.T, spatial_filters)))
         pinv_wfc = np.linalg.pinv(weights['out_w_flat']).T#np.dot(out_w_flat, np.linalg.inv(np.dot(out_w_flat.T, out_w_flat)))
@@ -591,9 +815,7 @@ class LFCNN(BaseModel):
 
         #Reverse pooling and depthwise convolution for each class
         Sx_dmx = []
-        #dc = dcov['input_spatial']
-        #n_padding = self.dataset.h_params['n_t']%self.specs['stride']
-        for class_y in range(self.out_dim):
+         for class_y in range(self.out_dim):
             class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
             Sxm = np.squeeze(Sx_tconv[class_ind, :].mean(0, keepdims=True))
             Sxm = np.atleast_2d(Sxm)
@@ -607,10 +829,42 @@ class LFCNN(BaseModel):
 
 
     def patterns_wfc_mean(self, y, weights, activations, dcov):
+        """Compute spatial patterns from the class-conditional mean
+        activation of the final (fully-connected) layer, combined
+        with class-conditional spatial covariances. Uses the true
+        labels ``y`` directly rather than the covariance between
+        input and output, so it is accurate but less directly tied to
+        the model's computations than the other ``patterns_*``
+        methods.
+
+        Parameters
+        ----------
+        y : tf.Tensor
+            One-hot encoded batch of class labels.
+
+        weights : dict
+            Dictionary of extracted model weights, as returned by
+            :meth:`extract_weights`. Uses ``weights['out_w_flat']``
+            and ``weights['dmx']``.
+
+        activations : dict
+            Dictionary of layer activations, as computed in
+            :meth:`compute_patterns`. Uses ``activations['fc']`` and
+            ``activations['pooled']``.
+
+        dcov : dict
+            Dictionary of covariance matrices, as returned by
+            :meth:`_get_class_conditional_spatial_covariance`. Uses
+            ``dcov['class_conditional']``.
+
+        Returns
+        -------
+        topos : np.array
+            Spatial patterns for each class, shape (n_ch, n_classes).
+        """
         combined_topos = []
         #uses y explicitely instead of cov[x,y]
         #accurate but has little to do with the model
-        #dc = dcov['input_spatial']
         for class_y in range(self.out_dim):
             #compute mean activation of final layer for each class
             #TODO: -> to self.activations
@@ -622,7 +876,6 @@ class LFCNN(BaseModel):
                                            activations['pooled'].shape[3]],
                                            order='C')
             dc = dcov['class_conditional'][..., class_y]
-            #fc_bp_out = np.maximum(fc_bp_out, 0)
             class_patterns = np.dot(dc,
                                     weights['dmx'])
             cp = np.einsum('ck, ik -> c', class_patterns, fc_bp_out)
@@ -635,49 +888,65 @@ class LFCNN(BaseModel):
 
     def compute_patterns(self, data_path=None, verbose=False, shapley_order=1,
                          methods=['weight']):
-        """Computes spatial patterns from filter weights.
-        Required for visualization.
+        """Compute spatial and temporal patterns, weights, spectra and
+        feature-relevance metrics for the model's latent components.
+        Required for visualization and interpretation.
 
         Parameters
         ----------
-        data_path : str or list of str
-            Path to TFRecord files on which the patterns are estimated.
+        data_path : str, list of str, mneflow.Dataset, tf.data.Dataset, or None, optional
+            Data on which the patterns are estimated. If None
+            (default), the model's validation dataset
+            (``self.dataset.val``) is used. A string or list/tuple of
+            strings is interpreted as (a) path(s) to TFRecord file(s).
+            An ``mneflow.Dataset`` instance uses its ``test`` set if
+            present, otherwise its ``val`` set. A ``tf.data.Dataset``
+            is used directly.
 
-        output : str {'patterns, 'filters', 'full_patterns'}
-            String specifying the output.
+        verbose : bool, optional
+            If True, print the shapes of the extracted layer
+            activations. Defaults to False.
 
-            'filters' - extracts weights of the spatial filters
+        shapley_order : int, optional
+            Highest order of component-interaction (Shapley-like)
+            relevances to compute via
+            :meth:`compute_componentwise_loss`, when
+            ``'compwise_loss'`` is included in ``methods``. 0 skips
+            this computation; 1 computes single-component
+            relevances; 2 and 3 additionally compute pairwise and
+            triple-wise interaction relevances. Defaults to 1.
 
-            'patterns' - extracts activation patterns, obtained by
-            left-multipying the spatial filter weights by the (spatial)
-            data covariance.
-
-            'full-patterns' - additionally multiplies activation
-            patterns by the precision (inverse covariance) of the
-            latent sources
+        methods : list of str, optional
+            Which additional pattern/relevance metrics to compute, in
+            addition to the always-computed weights, spectra and
+            covariance-based patterns. Supported values are
+            ``'weight'``, ``'compwise_loss'`` (requires
+            ``shapley_order`` > 0) and ``'output_corr'``. Defaults to
+            ``['weight']``.
 
         Returns
         -------
-        self.patterns
-            spatial filters or activation patterns, depending on the
-            value of 'output' parameter.
+        patterns_struct : dict
+            Dictionary collecting all computed patterns and
+            statistics, with (among others) the keys ``'weights'``
+            (see :meth:`extract_weights`), ``'ccms'`` (class-
+            conditional mean activations of each layer), ``'dcov'``
+            (spatial covariance matrices, see
+            :meth:`_get_class_conditional_spatial_covariance`),
+            ``'spectra'`` (see :meth:`compute_spectra`), ``'freqs'``,
+            ``'cov_xx'``, ``'pinv_w'`` and ``'wfc_mean'`` (combined
+            patterns, see :meth:`_compute_combined_patterns`), and,
+            depending on ``methods``/``shapley_order``,
+            ``'compwise_loss'``, ``'shap_o2'``, ``'shap_o3'``,
+            ``'ind_top_o2'``, ``'ind_top_o3'`` and
+            ``'corr_to_output'`` (see
+            :meth:`get_output_correlations`).
 
-        self.lat_tcs
-            time courses of latent sourses.
-
-        self.filters
-            temporal convolutional filter coefficients.
-
-        self.out_weights
-            weights of the output layer.
-
-        self.rfocs
-            feature relevances for the output layer.
-            (See self.get_output_correlations)
-
-        Raises:
-        -------
-            AttributeError: If `data_path` is not specified.
+        Raises
+        ------
+        AttributeError
+            If ``data_path`` is not None and is not a string, list,
+            tuple, ``mneflow.Dataset`` or ``tf.data.Dataset``.
         """
         patterns_struct = {'weights' : {'dmx':[], 'tconv':[], 'fc':[],
                                         'tconv_freq_resposes':{}},
@@ -844,6 +1113,35 @@ class LFCNN(BaseModel):
 
 
     def _compute_combined_patterns(self, y, weights, activations, dcov):
+        """Compute the combined spatial patterns using the
+        ``'cov_xx'``, ``'pinv_w'`` and ``'wfc_mean'`` methods.
+
+        Parameters
+        ----------
+        y : tf.Tensor
+            One-hot encoded batch of class labels.
+
+        weights : dict
+            Dictionary of extracted model weights, as returned by
+            :meth:`extract_weights`.
+
+        activations : dict
+            Dictionary of layer activations, as computed in
+            :meth:`compute_patterns`.
+
+        dcov : dict
+            Dictionary of covariance matrices, as returned by
+            :meth:`_get_class_conditional_spatial_covariance`.
+
+        Returns
+        -------
+        patterns : dict
+            Dictionary with keys ``'cov_xx'``, ``'pinv_w'`` and
+            ``'wfc_mean'``, each mapping to a dict with key
+            ``'spatial'`` holding the corresponding spatial pattern
+            array (see :meth:`patterns_cov_xx`,
+            :meth:`patterns_pinv_w` and :meth:`patterns_wfc_mean`).
+        """
         patterns = {'cov_xx':{}, 'pinv_w':{}, 'wfc_mean':{}}
         patterns['cov_xx']['spatial'] = self.patterns_cov_xx(y, weights, activations, dcov)
 
@@ -853,6 +1151,30 @@ class LFCNN(BaseModel):
         return patterns
 
     def init_pattern_struct(self, n_folds, freqs, methods='all'):
+        """Pre-allocate ``self.cv_patterns``, a nested dictionary of
+        zero-filled arrays used to accumulate patterns, weights and
+        feature-relevance metrics across cross-validation folds.
+
+        Parameters
+        ----------
+        n_folds : int
+            Number of cross-validation folds to allocate storage for.
+
+        freqs : np.array
+            Frequency bins of the spectral estimates; stored as
+            ``self.cv_patterns['freqs']``.
+
+        methods : str or list of str, optional
+            Which feature-relevance methods to allocate storage for.
+            If 'all' (default), allocates storage for ``['weight',
+            'compwise_loss', 'weight_norm', 'output_corr',
+            'shap_o2', 'shap_o3']``.
+
+        Returns
+        -------
+        None
+            Populates ``self.cv_patterns`` in place.
+        """
         if methods == 'all':
             methods = ['weight', 'compwise_loss', 'weight_norm', 'output_corr',
                        'shap_o2','shap_o3']
@@ -927,9 +1249,39 @@ class LFCNN(BaseModel):
                          methods=['weight',
                                   'weight_norm',
                                   'output_corr']):
-        """
-        Compute and store patterns during cross-validation.
+        """Compute patterns for the current fold via
+        :meth:`compute_patterns` and store them into the
+        pre-allocated ``self.cv_patterns`` and ``self.cv_weights``
+        containers (see :meth:`init_pattern_struct`).
 
+        Parameters
+        ----------
+        fold : int, optional
+            Index of the current cross-validation fold, used to
+            index into ``self.cv_patterns``. Defaults to 0.
+
+        n_folds : int, optional
+            Total number of cross-validation folds. Currently unused
+            in this method. Defaults to 1.
+
+        n_comp : int, optional
+            Currently unused in this method. Defaults to 1.
+
+        shapley_order : int, optional
+            Highest order of component-interaction relevances to
+            compute and store; see :meth:`compute_patterns`.
+            Defaults to 0.
+
+        methods : list of str, optional
+            Base set of pattern/relevance methods to compute; see
+            :meth:`compute_patterns`. Defaults to
+            ``['weight', 'weight_norm', 'output_corr']``.
+
+        Returns
+        -------
+        None
+            Updates ``self.cv_patterns`` and ``self.cv_weights`` in
+            place.
         """
         print("Collecting patterns from fold {}".format(fold))
         methods = methods.copy()
@@ -974,9 +1326,27 @@ class LFCNN(BaseModel):
 
     def compute_spectra(self, activations, nfft=128):
         ##Psds
-        """
-        Returns PSDs of latent components after spatial filtering.
-        (n_fft, n_comonents)
+        """Compute power spectral densities (PSDs) of the latent
+        (demixed) components using Welch's method.
+
+        Parameters
+        ----------
+        activations : dict
+            Dictionary of layer activations, as computed in
+            :meth:`compute_patterns`. Uses ``activations['dmx']``.
+
+        nfft : int, optional
+            Length of the FFT used, passed to
+            :func:`scipy.signal.welch` (as ``nperseg``, with
+            ``nfft * 2`` used for ``nfft``). Defaults to 128.
+
+        Returns
+        -------
+        spectra : dict
+            Dictionary with keys ``'psds'`` (array of shape
+            (n_freqs, n_latent)), ``'freqs'`` (frequency bins) and
+            ``'nfft'`` (the possibly-reduced FFT length actually
+            used).
         """
         psds = []
         for i in range(self.specs['n_latent']):
@@ -1001,6 +1371,26 @@ class LFCNN(BaseModel):
 
 
     def extract_weights(self, verbose=False):
+        """Extract the trained weights of the spatial demixing,
+        temporal convolution and output (fully-connected) layers.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True, print the shapes of the extracted weight
+            arrays. Defaults to False.
+
+        Returns
+        -------
+        weights : dict
+            Dictionary with keys ``'dmx'`` (spatial demixing
+            weights), ``'dmx_b'`` (demixing biases), ``'tconv'``
+            (temporal convolution kernels), ``'tconv_b'`` (temporal
+            convolution biases), ``'out_w_flat'`` (flattened output
+            layer weights), ``'out_weights'`` (output layer weights
+            reshaped to (n_t_pooled, n_latent, n_classes)) and
+            ``'fc_b'`` (output layer biases).
+        """
         weights = {}
 
         # Extract weights
@@ -1033,8 +1423,47 @@ class LFCNN(BaseModel):
 
     def compute_componentwise_loss(self, X, y, order=1, verbose=False):
 
-        """
-        Compute component relevances by recursive elimination
+        """Estimate the relevance of each latent component (and,
+        optionally, of interactions between components) to the
+        model's loss, by recursively zeroing out the corresponding
+        output-layer weights and measuring the resulting change in
+        loss (a Shapley-like sensitivity analysis).
+
+        Parameters
+        ----------
+        X : tf.Tensor or np.array
+            Input data on which the model is evaluated.
+
+        y : tf.Tensor or np.array
+            True target values corresponding to ``X``.
+
+        order : int, optional
+            Highest interaction order to compute. 1 computes
+            single-component relevances only; 2 additionally
+            computes pairwise interactions among the top half of
+            components (by first-order relevance); 3 additionally
+            computes triple-wise interactions among the top half of
+            the order-2 candidates. Defaults to 1.
+
+        verbose : bool, optional
+            If True, print progress information for each evaluated
+            combination. Defaults to False.
+
+        Returns
+        -------
+        feature_relevance_loss : dict
+            Mapping from a hyphen-joined key of component indices
+            (and, for single components, the suffix ``'self'``) to
+            the resulting change in loss when the corresponding
+            weights are zeroed, for the last class processed.
+
+        best : list of dict
+            Per-class (length ``n_y``) list of dictionaries
+            summarizing the best-found relevances and combinations at
+            each computed order, with keys such as ``'o1'``,
+            ``'o1_ind'``, ``'o1_sorting'``, ``'o1_relevances'`` and,
+            when ``order`` > 1 or > 2, the corresponding ``'o2_*'``
+            and ``'o3_*'`` entries.
         """
         #Copy of the original weights
         original_weights = self.km.get_weights()
@@ -1047,8 +1476,7 @@ class LFCNN(BaseModel):
         n_components = self.specs['n_latent']
         n_y = self.out_dim
         best = [{} for _ in range(n_y)]
-        #n_out_t = weights['out_weights'].shape[0]
-        #n_out_y = weights['out_weights'].shape[-1]
+
         #output containers
 
         losses = np.zeros([self.specs['n_latent'], n_y])
@@ -1065,24 +1493,19 @@ class LFCNN(BaseModel):
             best[jj]['-'.join(['key', 'o1'])] = ''
             candidate_inds = np.arange(self.specs["n_latent"])
             print("Searching for best combo among {} components for class {}".format(len(candidate_inds), jj + 1))
-            #new_bias = weights['fc_b'].copy()
 
             mutable_weights = model_weights[-2].copy()
 
             #for each class
             for i in candidate_inds:
-                #zero all weights of i-th component
-                #print(flat_inds[jj, i, :], ' i:', i, ' jj:', jj)
                 old_weights = mutable_weights.flat[flat_inds[jj, i, :]].copy()
                 mutable_weights.flat[flat_inds[jj, i, :]] = 0.
                 model_weights[-2] = mutable_weights
-                #model_weights[-1] = mutable_bias
 
                 self.km.set_weights(model_weights)
                 new_loss = self.km.evaluate(X, y, verbose=0)[0]
 
                 losses[i, jj] = new_loss - base_loss
-                #loss_per_component.append(base_loss - loss)
                 basic_key = '-'.join([str(i), 'self'])
                 if new_loss - base_loss > best[jj]['o1']:
                     best[jj]['o1'] = new_loss - base_loss
@@ -1174,8 +1597,6 @@ class LFCNN(BaseModel):
                          out[k2].append(feature_relevance_loss[k])
                          out[k3].append(feature_relevance_loss[k])
 
-
-            #print(best[jj])
             relevances = np.zeros(self.specs['n_latent'])
 
             best[jj]['o1_ind'] = int(best[jj]['key-o1'].split('-')[0])
@@ -1199,17 +1620,34 @@ class LFCNN(BaseModel):
                 best[jj]['o3_inds'][o3_inds] = 1.
                 best[jj]['o3_sorting'] = candidate_inds3[np.argsort(shap3)]
 
-        #losses = np.repeat(losses[np.newaxis, ...], n_t, axis=0)
 
         self.km.set_weights(original_weights)
         return feature_relevance_loss, best
 
     def get_output_correlations(self, activations, y_true):
         """Computes a similarity metric between each of the extracted
-        features and the target variable.
+        (pooled) features and the target variable.
 
-        The metric is a Manhattan distance for dicrete targets, and
-        Spearman correlation for continuous targets.
+        The metric is the Spearman correlation for continuous
+        (``'float'``/``'signal'``) targets, and the Pearson
+        correlation for discrete (``'int'``) targets.
+
+        Parameters
+        ----------
+        activations : dict
+            Dictionary of layer activations, as computed in
+            :meth:`compute_patterns`. Uses ``activations['pooled']``.
+
+        y_true : tf.Tensor
+            True target values.
+
+        Returns
+        -------
+        corr_to_output : np.array
+            Correlation of each pooled feature with each column of
+            ``y_true``, reshaped to
+            (n_t_pooled, n_latent, n_targets). NaNs (e.g. from
+            constant inputs) are replaced with 0.
         """
         corr_to_output = []
         y_true = y_true.numpy()
@@ -1229,7 +1667,6 @@ class LFCNN(BaseModel):
 
 
         corr_to_output = np.concatenate(corr_to_output, 0).transpose([1, 2, 0])
-        #print(corr_to_output.shape)
         if np.any(np.isnan(corr_to_output)):
             corr_to_output[np.isnan(corr_to_output)] = 0
         return corr_to_output
@@ -1238,19 +1675,45 @@ class LFCNN(BaseModel):
 
     def plot_evoked_peaks(self, data=None, t=None, class_subset=None,
                           sensor_layout='Vectorview-mag', title=None, savefig=None):
-        """
-        Plot one spatial topography of class-conditional average of the input.
-        If timepoint is not specified it is picked as a maximum RMS for each
-        class.
-
+        """Plot one spatial topography of the class-conditional
+        average of the input (or of model-derived data). If a
+        timepoint is not specified, it is picked as the one
+        maximizing the RMS averaged over channels and classes.
 
         Parameters
         ----------
-        topos : np.array
-            [n_ch, n_t, n_classes]
-        sensor_layout : TYPE, optional
-            DESCRIPTION. The default is 'Vectorview-mag'.
+        data : np.array, optional
+            Data to plot, shape (n_classes, n_t, n_ch). If None
+            (default), ``self.true_evoked_data`` (the class-
+            conditional average input, set by :meth:`compute_patterns`)
+            is used.
 
+        t : int, optional
+            Timepoint index to plot. If None (default), it is picked
+            automatically as the timepoint with maximum mean squared
+            amplitude.
+
+        class_subset : np.array, optional
+            Subset of classes to plot. Defaults to None (all
+            classes).
+
+        sensor_layout : str, optional
+            Name of the MNE sensor layout used to plot the
+            topography. Defaults to 'Vectorview-mag'.
+
+        title : str, optional
+            Plot title. Defaults to None (a title is generated
+            automatically based on ``data``).
+
+        savefig : bool, optional
+            If truthy, save the resulting figure to an SVG file.
+            Defaults to None.
+
+        Returns
+        -------
+        topoplot : matplotlib.figure.Figure
+            The resulting topography figure, as returned by
+            :meth:`plot_topos`.
         """
         n = self.out_dim
 
@@ -1279,23 +1742,35 @@ class LFCNN(BaseModel):
 
     def plot_topos(self, topos, sensor_layout='Vectorview-mag', class_subset=None,
                    title="Class %g"):
-        """
-        Plot any spatial distribution in the sensor space.
-        TODO: Interpolation??
-
+        """Plot any spatial distribution in sensor space as a set of
+        topographic maps.
 
         Parameters
         ----------
         topos : np.array
-            [n_ch, n_classes, ...]
-        sensor_layout : TYPE, optional
-            DESCRIPTION. The default is 'Vectorview-mag'.
-        class_subset  : np.array, optional
+            Spatial distribution(s) to plot, shape
+            (n_ch, n_classes) or (n_ch, n_classes, ...) (in which
+            case it is averaged over the trailing dimension(s)
+            before plotting).
+
+        sensor_layout : str, optional
+            Name of the MNE sensor layout used to plot the
+            topography. Defaults to 'Vectorview-mag'.
+
+        class_subset : np.array, optional
+            Subset of classes (time-slots in the fake evoked object)
+            to plot. Defaults to None (all classes).
+
+        title : str, optional
+            Format string used as the per-map title (passed as
+            ``time_format`` to
+            :meth:`mne.Evoked.plot_topomap`). Defaults to
+            "Class %g".
 
         Returns
         -------
-        None.
-
+        ft : matplotlib.figure.Figure
+            The resulting topography figure.
         """
 
         if topos.ndim > 2:
@@ -1320,22 +1795,28 @@ class LFCNN(BaseModel):
         return ft
 
     def make_fake_evoked(self, topos, sensor_layout):
-        """
-        Create mne.evoked.Evoked obejct for plotting and source localizing
-        model activation patterns.
+        """Create an ``mne.evoked.Evoked`` object for plotting and
+        source-localizing model activation patterns.
 
-        Parameters:
+        Parameters
         ----------
-
-        topos : np.array (n_channels, n_patterns)
-            Spatial activation patterns
+        topos : np.array
+            Spatial activation patterns, shape
+            (n_channels, n_patterns).
 
         sensor_layout : str or mne.channels.Layout
+            Sensor layout used to build channel positions, if
+            ``'info'`` is not already present in
+            ``self.meta.data``.
 
+        Returns
+        -------
+        fake_evoked : mne.evoked.EvokedArray
+            Evoked object wrapping ``topos``, suitable for plotting
+            with ``plot_topomap``.
         """
         if 'info' not in self.meta.data.keys():
             lo = channels.read_layout(sensor_layout)
-            #lo = channels.generate_2d_layout(lo.pos)
             info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
             orig_xy = np.mean(lo.pos[:, :2], 0)
             for i, ch in enumerate(lo.names):
@@ -1345,7 +1826,6 @@ class LFCNN(BaseModel):
                 else:
                     print("Channel name mismatch. info: {} vs lo: {}".format(
                         info['chs'][i]['ch_name'], ch))
-        #info['sfreq'] = 1
         fake_evoked = evoked.EvokedArray(topos, info)
         return fake_evoked
 
@@ -1353,22 +1833,44 @@ class LFCNN(BaseModel):
     def explore_components(self, patterns_struct, sorting='output_corr',
                          integrate='max', info=None, sensor_layout='Vectorview-grad',
                          class_names=None):
-        """Plots the weights of the output layer.
+        """Delegate to :meth:`mneflow.meta.MetaData.explore_components`
+        to visualize/explore the latent components.
 
         Parameters
         ----------
+        patterns_struct : dict
+            Dictionary of computed patterns, as returned by
+            :meth:`compute_patterns`. Currently not forwarded to
+            ``self.meta.explore_components``, which is called with no
+            arguments.
 
-        pat : int [0, self.specs['n_latent'])
-            Index of the latent component to higlight
+        sorting : str, optional
+            Heuristic for sorting/selecting relevant components.
+            Currently not forwarded to
+            ``self.meta.explore_components``. Defaults to
+            'output_corr'.
 
-        t : int [0, self.h_params['n_t'])
-            Index of timepoint to highlight
+        integrate : str, optional
+            How to integrate relevances over time. Currently not
+            forwarded to ``self.meta.explore_components``. Defaults
+            to 'max'.
+
+        info : mne.Info, optional
+            Currently not forwarded to
+            ``self.meta.explore_components``. Defaults to None.
+
+        sensor_layout : str, optional
+            Currently not forwarded to
+            ``self.meta.explore_components``. Defaults to
+            'Vectorview-grad'.
+
+        class_names : list of str, optional
+            Currently not forwarded to
+            ``self.meta.explore_components``. Defaults to None.
 
         Returns
         -------
-        figure :
-            Imshow [n_latent, y_shape]
-
+        None
         """
         self.meta.explore_components()
 
@@ -1377,25 +1879,56 @@ class LFCNN(BaseModel):
 
     def plot_waveforms(self, patterns_struct, sorting='weight', tmin=0, class_names=None,
                        bp_filter=False, tlim=None, apply_kernels=False):
-        """Plots timecourses of latent components.
+        """Plot timecourses, temporal-convolution output and relative
+        power spectra of the latent components, highlighting the
+        components selected for each class.
 
         Parameters
         ----------
-        tmin : float
-            Beginning of the MEG epoch with regard to reference event.
-            Defaults to 0.
+        patterns_struct : dict
+            Dictionary of computed patterns, as returned by
+            :meth:`compute_patterns`. Uses
+            ``patterns_struct['ccms']['tconv']`` as the per-class
+            waveforms.
 
+        sorting : str, optional
+            Heuristic for selecting relevant components, passed to
+            ``self._sorting``. Defaults to 'weight'.
 
-        sorting : str
-            heuristic for selecting relevant components. See LFCNN._sorting
+        tmin : float, optional
+            Beginning of the MEG epoch with regard to the reference
+            event, in seconds. Defaults to 0.
+
+        class_names : list of str, optional
+            Names of the classes, used for the legend. Defaults to
+            None (auto-generated as "Class {i}").
+
+        bp_filter : tuple of float, or False, optional
+            If a ``(l_freq, h_freq)`` tuple, band-pass filter the
+            waveforms before plotting. Defaults to False (no
+            filtering).
+
+        tlim : tuple of float, optional
+            x-axis (time) limits applied to the waveform and
+            temporal-convolution-output subplots. Defaults to None
+            (no limit).
+
+        apply_kernels : bool, optional
+            If True, convolve each waveform with its corresponding
+            temporal filter kernel before plotting, instead of just
+            scaling it. Defaults to False.
+
+        Returns
+        -------
+        None
+            Displays the resulting figure with
+            ``matplotlib.pyplot.show``.
         """
 
         order, _ = self._sorting(patterns_struct, sorting)
         self.uorder = order.ravel()
         waveforms = patterns_struct['ccms']['tconv']
 
-            #self.uorder = np.squeeze(order)
-        #print(self.uorder)
         if not class_names:
             class_names = ["Class {}".format(i) for i in range(self.y_shape[-1])]
 
@@ -1410,10 +1943,7 @@ class LFCNN(BaseModel):
             if apply_kernels:
                 scaled_waveforms = np.array([np.convolve(kern, wf, 'same')
                             for kern, wf in zip(self.filters, self.waveforms)])
-                #scaled_waveforms =(scaled_waveforms - scaled_waveforms.mean(-1, keepdims=True))  / (2*scaled_waveforms.std(-1, keepdims=True))
             else:
-                #scaling = 3*np.mean(np.std(self.waveforms, -1))
-
                 scaled_waveforms = (waveforms - waveforms.mean(-1, keepdims=True))  / (2*waveforms.std(-1, keepdims=True))
             if bp_filter:
                 scaled_waveforms = scaled_waveforms.astype(np.float64)
@@ -1470,8 +2000,6 @@ class LFCNN(BaseModel):
                 flt -= flt.mean()
                 h = self.freq_responses[i, :]
                 psd = self.psds[i, :]
-
-                #rpss.append(h/np.sum(h))
                 rpss.append((psd*h)) #%)/np.sum(psd*h)
 
             [ax[1, 1].plot(self.freqs, rpss[uo], linewidth=2.5, label=class_names[i])
@@ -1486,12 +2014,45 @@ class LFCNN(BaseModel):
     def plot_combined_pattern(self, method='weight', sensor_layout=None,
                               names=None, n_comp=1, plot_true_evoked=False,
                               savefig=None):
+        """Plot the mean (cross-validation-averaged) spatial pattern
+        for each class as a topographic map.
+
+        Parameters
+        ----------
+        method : str, optional
+            Which pattern to plot. If patterns have been collected
+            across folds (``self.cv_patterns``), the corresponding
+            entry is averaged over folds; otherwise, for
+            ``'weight'`` or ``'compwise_loss'``,
+            ``self.single_pattern`` is used. Defaults to 'weight'.
+
+        sensor_layout : str
+            Name of the MNE sensor layout used to plot the
+            topography.
+
+        names : list of str, optional
+            Class names used as topomap labels. Defaults to None
+            (auto-generated as "Class {i}").
+
+        n_comp : int, optional
+            Number of components used when falling back to
+            ``self.single_pattern``. Defaults to 1.
+
+        plot_true_evoked : bool, optional
+            If True, additionally plot the true (data-derived) evoked
+            pattern via :meth:`plot_evoked_peaks`. Defaults to False.
+
+        savefig : bool, optional
+            If truthy, save the resulting figure(s) to SVG file(s).
+            Defaults to None.
+
+        Returns
+        -------
+        None
+        """
         if not names:
             names = ['Class {}'.format(i) for i in range(self.y_shape[-1])]
 
-
-#        cc = np.array([np.corrcoef(self.cv_patterns[:, i, :].T)[i,:]
-#               for i in range(self.cv_patterns.shape[1])])
         if len(self.cv_patterns.items()) > 0:
             print("Restoring from:", method )
             topos = np.mean(self.cv_patterns[method]['spatial'],
@@ -1500,7 +2061,6 @@ class LFCNN(BaseModel):
                                        -1)
             psds = np.mean(self.cv_patterns[method]['psds'],
                                     -1)
-            #freqs = self.freqs
 
 
         elif method in ['weight', 'compwise_loss']:
@@ -1521,7 +2081,6 @@ class LFCNN(BaseModel):
         for i, ch in enumerate(lo.names):
             if info['chs'][i]['ch_name'] == ch:
                 info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/4.5
-                #info['chs'][i]['loc'][4:] = 0
             else:
                 print("Channel name mismatch. info: {} vs lo: {}".format(
                     info['chs'][i]['ch_name'], ch))
@@ -1540,14 +2099,10 @@ class LFCNN(BaseModel):
                                           #size=1,
                                           outlines='head',
                                           )
-        #method = "paternnet_rect_cc_covdif_cc_fcactdif"
-        #ft.set_size_inches([15, 3.5])
         if savefig:
             figname = '-'.join([self.meta.data['path'] + method, "topos.svg"])
             ft.savefig(figname, format='svg', transparent=True)
         if plot_true_evoked:
-            #true_times = np.argmax(np.mean(self.true_evoked_data**2, -1),1)
-            #ed = np.stack([self.true_evoked_data[i, tt, :] for i, tt in enumerate(true_times)])
             t = self.plot_evoked_peaks(None, sensor_layout=sensor_layout,
                                        title='True evoked')
             figname = '-'.join([self.meta.data['path'] + self.scope, self.meta.data['data_id'], 'true', "topos.svg"])
@@ -1562,6 +2117,30 @@ class EnvelopNet(LFCNN):
         https://doi.org/10.1088/1741-2552/abe20e
     """
     def __init__(self, meta, dataset=None, specs=None, specs_prefix=False):
+        """Initialize an EnvelopNet model (Petrosyan et al., 2021), a
+        two-stage variant of LF-CNN that separately convolves and
+        pools the temporal and envelope information.
+
+        Parameters
+        ----------
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters (the same defaults
+            as :meth:`LFCNN.__init__`) where not already set.
+
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs : dict, optional
+            If provided, merged into ``meta.model_specs`` before
+            applying the defaults. Dictionary of model
+            hyperparameters; see :meth:`LFCNN.__init__` for the
+            supported keys and their defaults.
+
+        specs_prefix : bool, optional
+            See :meth:`mneflow.models.BaseModel.__init__`. Defaults
+            to False.
+        """
         if specs:
             meta.update(model_specs=specs)
         #specs = meta.model_specs
@@ -1581,10 +2160,23 @@ class EnvelopNet(LFCNN):
         self.scope = 'envelopnet_lv'
         meta.model_specs['scope'] = self.scope
         self.specs = meta.model_specs
-        
+
 
     def build_graph(self):
-        self.dmx = DeMixing(size=self.specs['n_latent'], 
+        """Build the computational graph using the defined
+        placeholder ``self.X`` as input: spatial demixing, followed
+        by a temporal convolution/pooling stage on the raw signal
+        (``tconv``/``tpool``) and a second temporal
+        convolution/pooling stage on its envelope (``envconv``/
+        ``envpool``), then dropout and a final fully-connected layer.
+
+        Returns
+        -------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
+        self.dmx = DeMixing(size=self.specs['n_latent'],
                             nonlin=tf.keras.activations.linear,
                             axis=3, specs=self.specs)
         self.dmx_out = self.dmx(self.inputs)
@@ -1622,13 +2214,6 @@ class EnvelopNet(LFCNN):
         self.pooled = self.envpool(self.envconv_out)
 
         self.dropout = Dropout(self.specs['dropout'], noise_shape=None)(self.pooled)
-
-        # self.fc1 = FullyConnected(size=self.specs['n_latent'], 
-        #                           nonlin=tf.keras.activations.tanh,
-        #                           specs=self.specs)
-        # fc1 = self.fc1(self.dropout)
-        
-        # dropout2 = Dropout(self.specs['dropout'], noise_shape=None)(fc1)
         
         self.fin_fc = FullyConnected(size=self.out_dim, 
                                      nonlin=tf.keras.activations.linear,
@@ -1639,6 +2224,47 @@ class EnvelopNet(LFCNN):
         return self.y_pred
 
     def compute_patterns(self, data_path=None, *, output='patterns'):
+        """Compute spatial patterns, temporal filters and feature
+        relevances for an EnvelopNet model. Overrides
+        :meth:`LFCNN.compute_patterns` with a different signature and
+        different computation, storing its results as instance
+        attributes rather than returning a dict.
+
+        Parameters
+        ----------
+        data_path : str, list of str, mneflow.Dataset, tf.data.Dataset, or None, optional
+            Data on which the patterns are estimated. If None
+            (default), the model's validation dataset
+            (``self.dataset.val``) is used. See
+            :meth:`LFCNN.compute_patterns` for the other accepted
+            types.
+
+        output : str, optional
+            If it contains ``'patterns'``, spatial patterns are
+            computed by convolving the input with each component's
+            temporal filter and left-multiplying by the spatial
+            (demixing) weights; if it additionally contains
+            ``'old'``, patterns are instead computed as the dot
+            product of the data covariance and the demixing weights.
+            If it does not contain ``'patterns'``, the raw demixing
+            weights are used as patterns. Defaults to 'patterns'.
+
+        Returns
+        -------
+        None
+            Sets ``self.out_w_flat``, ``self.out_weights``,
+            ``self.out_biases``, ``self.feature_relevances``,
+            ``self.branch_relevance_loss`` (via
+            :meth:`branchwise_loss`), ``self.dcov``,
+            ``self.patterns``, ``self.lat_tcs``, ``self.filters``,
+            ``self.tc_out`` and ``self.corr_to_output``.
+
+        Raises
+        ------
+        AttributeError
+            If ``data_path`` is not None and is not a string, list,
+            tuple, ``mneflow.Dataset`` or ``tf.data.Dataset``.
+        """
 
         if not data_path:
             print("Computing patterns: No path specified, using validation dataset (Default)")
@@ -1721,75 +2347,27 @@ class EnvelopNet(LFCNN):
         self.tc_out = np.squeeze(tc_out)
         self.corr_to_output = self.get_output_correlations(y)
 
-    # def plot_patterns(
-    #     self, sensor_layout=None, sorting='l2', percentile=90,
-    #     scale=False, class_names=None, info=None
-    # ):
-    #     order, ts = self._sorting(sorting)
-    #     self.uorder = order.ravel()
-    #     l_u = len(self.uorder)
-    #     if info:
-    #         info.__setstate__(dict(_unlocked=True))
-    #         info['sfreq'] = 1.
-    #         self.fake_evoked = evoked.EvokedArray(self.patterns, info, tmin=0)
-    #         if l_u > 1:
-    #             self.fake_evoked.data[:, :l_u] = self.fake_evoked.data[:, self.uorder]
-    #         elif l_u == 1:
-    #             self.fake_evoked.data[:, l_u] = self.fake_evoked.data[:, self.uorder[0]]
-    #         self.fake_evoked.crop(tmax=float(l_u))
-    #         if scale:
-    #             _std = self.fake_evoked.data[:, :l_u].std(0)
-    #             self.fake_evoked.data[:, :l_u] /= _std
-    #     elif sensor_layout:
-    #         lo = channels.read_layout(sensor_layout)
-    #         info = create_info(lo.names, 1., sensor_layout.split('-')[-1])
-    #         orig_xy = np.mean(lo.pos[:, :2], 0)
-    #         for i, ch in enumerate(lo.names):
-    #             if info['chs'][i]['ch_name'] == ch:
-    #                 info['chs'][i]['loc'][:2] = (lo.pos[i, :2] - orig_xy)/3.
-    #                 #info['chs'][i]['loc'][4:] = 0
-    #             else:
-    #                 print("Channel name mismatch. info: {} vs lo: {}".format(
-    #                     info['chs'][i]['ch_name'], ch))
-
-    #         self.fake_evoked = evoked.EvokedArray(self.patterns, info)
-
-    #         if l_u > 1:
-    #             self.fake_evoked.data[:, :l_u] = self.fake_evoked.data[:, self.uorder]
-    #         elif l_u == 1:
-    #             self.fake_evoked.data[:, l_u] = self.fake_evoked.data[:, self.uorder[0]]
-    #         self.fake_evoked.crop(tmax=float(l_u))
-    #         if scale:
-    #             _std = self.fake_evoked.data[:, :l_u].std(0)
-    #             self.fake_evoked.data[:, :l_u] /= _std
-    #     else:
-    #         raise ValueError("Specify sensor layout")
-
-
-    #     if np.any(self.uorder):
-    #         nfilt = max(self.out_dim, 8)
-    #         nrows = max(1, l_u//nfilt)
-    #         ncols = min(nfilt, l_u)
-    #         f, ax = plt.subplots(nrows, ncols, sharey=True)
-    #         plt.tight_layout()
-    #         f.set_size_inches([16, 3])
-    #         ax = np.atleast_2d(ax)
-
-    #         for ii in range(nrows):
-    #             fake_times = np.arange(ii * ncols,  (ii + 1) * ncols, 1.)
-    #             vmax = np.percentile(self.fake_evoked.data[:, :l_u], 95)
-    #             self.fake_evoked.plot_topomap(
-    #                 times=fake_times,
-    #                 axes=ax[ii],
-    #                 colorbar=False,
-    #                 vmax=vmax,
-    #                 scalings=1,
-    #                 time_format="Branch #%g",
-    #                 title='Patterns ('+str(sorting)+')',
-    #                 outlines='head',
-    #             )
 
     def branchwise_loss(self, X, y):
+        """Estimate the relevance of each latent component (branch)
+        to the model's loss, by zeroing out its spatial and temporal
+        weights/biases and measuring the resulting change in loss.
+
+        Parameters
+        ----------
+        X : tf.Tensor or np.array
+            Input data on which the model is evaluated.
+
+        y : tf.Tensor or np.array
+            True target values corresponding to ``X``.
+
+        Returns
+        -------
+        None
+            Sets ``self.branch_relevance_loss``, the per-component
+            decrease in loss (baseline loss minus loss with that
+            component's weights zeroed).
+        """
         model_weights_original = self.km.get_weights().copy()
         base_loss, _ = self.km.evaluate(X, y, verbose=0)
 
@@ -1815,10 +2393,35 @@ class EnvelopNet(LFCNN):
 
 
 class SourceNet(BaseModel):
-    """
-
+    """Source-space variant of LF-CNN: applies the temporal
+    convolution before spatial demixing (LFTConv -> DeMixing ->
+    TempPooling), followed by a second temporal-convolution/pooling
+    stage on the envelope (LFTConv -> TempPooling), dropout and a
+    final fully-connected layer.
     """
     def __init__(self, meta, dataset=None, specs=None, specs_prefix=False):
+        """Initialize a (source-space) SourceNet model.
+
+        Parameters
+        ----------
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters (the same defaults
+            as :meth:`LFCNN.__init__`, but with
+            ``l1_scope`` defaulting to
+            ``['fc', 'demix', 'lf_conv']``) where not already set.
+
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs : dict, optional
+            If provided, merged into ``meta.model_specs`` before
+            applying the defaults.
+
+        specs_prefix : bool, optional
+            See :meth:`mneflow.models.BaseModel.__init__`. Defaults
+            to False.
+        """
         self.nfft = 128
         if specs:
             meta.update(model_specs=specs)
@@ -1843,7 +2446,20 @@ class SourceNet(BaseModel):
 
 
     def build_graph(self):
+        """Build the computational graph using the defined
+        placeholder ``self.X`` as input: a temporal convolution
+        (``tconv``) followed by spatial demixing (``dmx``), a
+        temporal-convolution/pooling stage on the result
+        (``tpool``), a second temporal convolution/pooling stage
+        (``envconv``/``envpool``), dropout and a final
+        fully-connected layer.
 
+        Returns
+        -------
+        y_pred : tf.Tensor
+            Output of the forward pass of the computational graph.
+            Prediction of the target variable.
+        """
 
         self.tconv = LFTConv(
             size=self.specs['n_latent'],
@@ -1953,23 +2569,34 @@ class SourceNet(BaseModel):
     #     return fig
 
 class WFNet(LFCNN):
-    """LF-CNN. Includes basic parameter interpretation options.
-
-    For details see [1].
-    References
-    ----------
-        [1] I. Zubarev, et al., Adaptive neural network classifier for
-        decoding MEG signals. Neuroimage. (2019) May 4;197:425-434
+    """Temporal-convolution + LSTM model. Applies a temporal
+    convolution (LFTConv) to the input, then feeds the result to an
+    LSTM layer followed by a fully-connected output layer. Unlike
+    :class:`LFCNN`, it does not perform spatial demixing and does
+    not include the pattern-interpretation methods of the LF-CNN
+    family.
     """
     def __init__(self, meta, dataset=None, specs=None, specs_prefix=False):
-        """
+        """Initialize a WFNet model.
 
         Parameters
         ----------
-        Dataset : mneflow.Dataset
+        meta : mneflow.MetaData
+            Metadata object; ``meta.model_specs`` is populated with
+            this model's default hyperparameters (see below) where
+            not already set.
 
-        specs : dict
-                dictionary of model hyperparameters {
+        dataset : mneflow.Dataset, optional
+            Dataset object. Defaults to None (built from ``meta``).
+
+        specs_prefix : bool, optional
+            See :meth:`mneflow.models.BaseModel.__init__`. Defaults
+            to False.
+
+        specs : dict, optional
+                If provided, merged into ``meta.model_specs`` before
+                applying the defaults below. Dictionary of model
+                hyperparameters {
 
         n_latent : int
             Number of latent components.
@@ -1981,7 +2608,7 @@ class WFNet(LFCNN):
 
         filter_length : int
             Length of spatio-temporal kernels in the temporal
-            convolution layer. Defaults to 7.
+            convolution layer. Defaults to 16.
 
         pooling : int
             Pooling factor of the max pooling layer. Defaults to 2
@@ -2021,7 +2648,8 @@ class WFNet(LFCNN):
 
     def build_graph(self):
         """Build computational graph using defined placeholder `self.X`
-        as input.
+        as input: a temporal convolution (LFTConv) followed by an
+        LSTM layer and a final fully-connected output layer.
 
         Returns
         --------

@@ -1,28 +1,89 @@
 # MNEflow
-Neural networks for EEG-MEG decoding with MNE-python and Tensorflow.
 
-# Installation
+Neural networks for EEG/MEG decoding and interpretation, built on [MNE-Python](https://mne.tools) and TensorFlow.
+
+MNEflow provides neuroscientists with a robust, reproducible, and time-efficient way to apply (deep) convolutional neural networks (CNNs) to EEG and MEG data. It implements several published CNN architectures for M/EEG decoding, a streamlined pipeline for preprocessing, training, and benchmarking them, and a growing set of tools for inspecting the patterns a trained model has learned to rely on.
+
+## Installation
+
 ```
 pip install mneflow
 ```
 
-# Dependencies
+## Dependencies
 
-- tensorflow >= 2.1.0
-- mne > 0.24.0
+- Python 3
+- `tensorflow > 2.12.0, <= 2.16rc`
+- `mne >= 1.0, <= 1.7`
+- `numpy`, `scipy`, `matplotlib`
 
-# Documentation
+See [`setup.py`](setup.py) for the exact, currently enforced version constraints.
 
-API reference is avalable in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
+## Software architecture
 
-Also check the [example notebooks](https://mneflow.readthedocs.io/en/latest/intro.html#examples).
+The functionality of MNEflow is organized around two blocks, mirroring the everyday workflow of a decoding study:
 
-# References 
-Zubarev I, Vranou G, Parkkonen L. MNEflow: Neural networks for EEG/MEG decoding and interpretation [link](https://www.sciencedirect.com/science/article/pii/S2352711021001795)
+- **Preprocessing** — converts EEG/MEG data into [TFRecord](https://www.tensorflow.org/tutorials/load_data/tfrecord) files, applying filtering, scaling, resampling, channel selection, and partitioning into training/validation/test folds. This step also handles machine-learning-specific transformations such as segmenting continuous recordings, producing sequences for recurrent/sequence models, augmenting the data, and transforming target variables.
+- **Experimentation** — covers model design, training, hyperparameter optimization, logging, and interpretation.
 
-When using the implemented models please cite: 
+Storing the preprocessed data and metadata on disk (rather than recomputing them for every run) avoids unnecessary repetition of preprocessing, keeps memory usage low, and lets different models be trained and benchmarked on exactly the same data partitions. A trained model is likewise saved to disk and can be reloaded, applied to a new dataset, or used to inspect the patterns behind its predictions.
 
-###  for LF-CNN or VAR-CNN 
+## Functionality
+
+**Import.** EEG/MEG data can be imported directly from MNE-Python by passing an `mne.Epochs` object to `mneflow.produce_tfrecords`. Data exported from other signal-processing software can be provided as a NumPy array with shape `[trials, sensors, time points]`, or as paths to `.fif`, `.mat`, or `.npz` files.
+
+**Preprocessing.** `mneflow.produce_tfrecords` builds the TFRecords dataset and its accompanying `mneflow.MetaData`, and exposes the basic preprocessing utilities (filtering, scaling, channel selection, resampling) as well as machine-learning-specific ones. The `input_type` argument controls how each input is treated:
+
+- `'trials'` — each input is an i.i.d. sample, producing a dataset of shape `(n, 1, t, ch)`;
+- `'seq'` — each input is a sequence of shorter segments, for sequence/RNN-type models;
+- `'continuous'` — inputs are treated as one continuous recording and segmented with a configurable stride (augmentation);
+- `'fconn'` — inputs are treated as functional-connectivity data.
+
+The `target_type` argument similarly distinguishes classification (`'int'`), regression of a scalar variable (`'float'`), and regression or classification against a continuous, possibly multichannel signal (`'signal'`, e.g. reconstructing a continuous source-level or envelope signal), the latter via a user-supplied `transform_targets` function.
+
+**Model development.** MNEflow implements several published CNN architectures for EEG/MEG decoding, all inheriting from the same parent class (`mneflow.models.BaseModel`) and sharing the same datasets, optimizers, and validation routines, which makes them directly comparable and easy to benchmark against one another:
+
+| Model | Reference |
+| --- | --- |
+| `LFCNN` | Zubarev et al. (2019), *NeuroImage* — [link](https://www.sciencedirect.com/science/article/pii/S1053811919303544) |
+| `VARCNN` | Zubarev et al. (2019), *NeuroImage* — [link](https://www.sciencedirect.com/science/article/pii/S1053811919303544) |
+| `EEGNet` | Lawhern et al. (2018), *J. Neural Eng.* — [link](http://stacks.iop.org/1741-2552/15/i=5/a=056013) |
+| `FBCSP_ShallowNet` | Schirrmeister et al. (2017), *Human Brain Mapping* — [link](http://dx.doi.org/10.1002/hbm.23730) |
+| `Deep4` | Schirrmeister et al. (2017), *Human Brain Mapping* — [link](http://dx.doi.org/10.1002/hbm.23730) |
+
+The modular structure of the underlying `mneflow.layers` also makes it straightforward to define a custom architecture by combining existing layers or adding new ones — see the [custom-network example](https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb).
+
+**Training and evaluation.** Training and evaluation are configured through `model.build()`: the optimizer, objective function, and performance metrics. All models are trained with Adam by default, using categorical cross-entropy for classification and mean-squared error for regression, with early stopping. `mneflow.losses` additionally provides objective functions for continuous multichannel targets, combining cosine-similarity, MSE/MAE, spectral (FFT-based), and Riemannian-distance terms. Training runs, logs, and trained models are kept on disk, making it easy to reproduce, inspect, and compare results across runs.
+
+**Model inspection.** MNEflow provides tools to inspect the patterns a model has learned to rely on when making its predictions. At present, this is available for the `LFCNN` family of models, which impose a conditional-independence assumption on the latent components learned from the data: the input is decomposed into a small number of spatial (de-mixing) and temporal (convolution kernel) filter pairs, each treated as a conditionally-independent latent component, which makes their spatio-temporal properties directly interpretable. `model.compute_patterns()` computes spatial and temporal patterns, weights, spectra, and feature-relevance metrics for each latent component; `model.plot_topos()`, `model.plot_waveforms()`, and `model.plot_combined_pattern()` visualize them. Component relevance can be ranked by several complementary methods:
+
+- **Weight-based contributions** — feature relevance ranked directly by the magnitude of the component's weights (e.g. the ℓ2 norm).
+- **Correlation with the target variable** — feature relevance ranked by (absolute) Spearman correlation with the target for regression, or by categorical cross-entropy for classification.
+- **Component-interaction (Shapley-like) relevances** — `shapley_order` in `model.compute_patterns()` controls whether single-component (order 1), pairwise (order 2), or triple-wise (order 3) interactions between latent components are evaluated for their effect on the loss, extending the single-component recursive-elimination approach to higher-order component interactions.
+
+`mneflow.MetaData.get_feature_relevances()`, `get_spatial_patterns()`, and `get_spectra()` provide programmatic access to the computed patterns for further analysis.
+
+## Examples
+
+- [Data import and the basic MNEflow pipeline](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb)
+- [Working with continuous data](https://github.com/zubara/mneflow/blob/master/examples/continuous_example.py)
+- [Sequence data](https://github.com/zubara/mneflow/blob/master/examples/sequence_data_example.ipynb)
+- [Regression](https://github.com/zubara/mneflow/blob/master/examples/regression_example.ipynb)
+- [Building a custom network](https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb)
+- [Saving and restoring models](https://github.com/zubara/mneflow/blob/master/examples/mneflow_save_restore.ipynb)
+
+## Documentation
+
+API reference is available in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
+
+## References
+
+Zubarev I, Vranou G, Parkkonen L. MNEflow: Neural networks for EEG/MEG decoding and interpretation. *SoftwareX* [link](https://www.sciencedirect.com/science/article/pii/S2352711021001795)
+
+When using the implemented models, please also cite the papers describing them:
+
+### for LF-CNN or VAR-CNN
+
 Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier for decoding MEG signals. Neuroimage. 2019 May 4;197:425-434. [link](https://www.sciencedirect.com/science/article/pii/S1053811919303544?via%3Dihub)
 
 ```
@@ -42,7 +103,8 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 }
 ```
 
-### for EEGNet 
+### for EEGNet
+
 ```
 @article{Lawhern2018,
   author={Vernon J Lawhern and Amelia J Solon and Nicholas R Waytowich and Stephen M Gordon and Chou P Hung and Brent J Lance},
@@ -56,8 +118,8 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 }
 ```
 
-
 ### for FBCSP-ShallowNet and Deep4
+
 ```
 @article{Schirrmeister2017DeepVisualization,
     title = {{Deep learning with convolutional neural networks for EEG decoding and visualization}},
@@ -72,4 +134,9 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
     doi = {10.1002/hbm.23730},
     issn = {10659471},
     keywords = {EEG analysis, brain, brain mapping, computer interface, electroencephalography, end‐to‐end learning, machine interface, machine learning, model interpretability}
-}```
+}
+```
+
+## License
+
+BSD-3. See [LICENSE.md](LICENSE.md).

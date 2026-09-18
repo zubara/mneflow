@@ -28,6 +28,40 @@ class MetaData():
 
     Attributes
     ----------
+    data : dict
+        Dataset metadata dictionary, populated by
+        mneflow.utils.produce_tfrecords and mneflow.Dataset. Its keys
+        include (but are not limited to) the entries described below.
+
+    preprocessing : dict
+        Preprocessing parameters used to produce the TFRecords.
+
+    model_specs : dict
+        Model architecture/hyperparameters, including ``'scope'``
+        (the model class name used by :meth:`restore_model`) and
+        ``'model_path'``.
+
+    train_params : dict
+        Training parameters (optimizer, number of epochs, etc.).
+
+    patterns : dict
+        Spatial/temporal interpretation patterns computed by a
+        trained model (e.g. via ``model.compute_patterns``), consumed
+        by :meth:`get_feature_relevances`, :meth:`get_spatial_patterns`,
+        :meth:`get_spectra`, and related plotting methods.
+
+    results : dict
+        Training/evaluation results (e.g. loss and metric histories).
+
+    weights : dict
+        Trained model weights relevant for interpretation (e.g.
+        ``'dmx'`` spatial demixing weights, ``'tconv'`` temporal
+        convolution kernels, ``'tconv_b'`` biases).
+
+    Notes
+    -----
+    The following keys are stored in ``self.data``:
+
     path : str
         A path where the output TFRecord (path + /tfrecrods/) files,
         models (path + /models/), and the corresponding metadata
@@ -74,13 +108,22 @@ class MetaData():
     fs : float, optional
          Sampling frequency, required only if inputs are not mne.Epochs
 
-    Notes
-    -----
-    See mneflow.produce_tfrecords and mneflow.utils.preprocess for more
+    See Also
+    --------
+    mneflow.produce_tfrecords and mneflow.utils.preprocess for more
     details and availble options.
     """
 
     def __init__(self):
+        """Initialize an empty MetaData instance.
+
+        Sets ``data``, ``preprocessing``, ``model_specs``,
+        ``train_params``, ``patterns``, ``results``, and ``weights``
+        to empty dicts, to be populated later (typically by
+        ``mneflow.utils.produce_tfrecords`` or by loading a saved
+        metadata file).
+
+        """
         self.data = dict()
         self.preprocessing = dict()
         self.model_specs = dict()
@@ -91,11 +134,31 @@ class MetaData():
 
 
     def copy(self):
+        """Return a copy of this MetaData instance.
 
+        NOT IMPLEMENTED.
+
+        Returns
+        -------
+        None
+
+        """
         return
 
     def save(self, verbose=True):
-        """Saves the metadata to self.data['path'] + self.data['data_id']"""
+        """Saves the metadata to self.data['path'] + self.data['data_id'].
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            Whether to print a confirmation message with the saved
+            filename and path. Defaults to True.
+
+        Returns
+        -------
+        None
+
+        """
         if 'path' in self.data.keys() and 'data_id' in self.data.keys():
             fname = self.data['data_id'] + '_meta.pkl'
             with open(os.path.join(self.data['path'], fname), 'wb') as f:
@@ -108,7 +171,33 @@ class MetaData():
                   Please specify meta.data['path'] and meta.data['data_id'']""")
 
     def restore_model(self, load_encoder=False, dataset=False):
-        """Restores previously saved model from metadata."""
+        """Restores previously saved model from metadata.
+
+        Instantiates the model class named in
+        ``self.model_specs['scope']``, builds it, and loads its saved
+        weights (and optionally its encoder weights) from
+        ``self.model_specs['model_path']``.
+
+        Parameters
+        ----------
+        load_encoder : bool, optional
+            If True and a saved encoder weights file exists, also
+            build and load the model's encoder. Defaults to False.
+
+        dataset : mneflow.Dataset or bool, optional
+            Dataset to attach to the restored model. Defaults to
+            False (no dataset attached).
+
+        Returns
+        -------
+        model : mneflow model instance
+            One of :class:`mneflow.LFCNN`, :class:`mneflow.VARCNN`,
+            :class:`mneflow.FBCSP_ShallowNet`, :class:`mneflow.Deep4`,
+            or :class:`mneflow.EEGNet`, depending on
+            ``self.model_specs['scope']``, built and with weights
+            restored.
+
+        """
         from mneflow import models, lfcnn
         if self.model_specs['scope'] == 'lfcnn':
             model = lfcnn.LFCNN(meta=self, dataset=dataset)
@@ -137,17 +226,40 @@ class MetaData():
         #TODO: set weights from self.km.weights
         #TODO: set val loss, patterns, etc, specs
         return model
-    
+
     def change_dataset(self, new_data_id, meta_path=None):
+        """Replace the dataset-related metadata with that of another dataset.
+
+        Loads a previously saved MetaData with id ``new_data_id`` and
+        copies over its dataset-identity keys (paths, folds,
+        indices, and shape information) into ``self.data``, in place.
+
+        Parameters
+        ----------
+        new_data_id : str
+            ``data_id`` of the dataset whose metadata file
+            (``<meta_path>/<new_data_id>_meta.pkl``) should be
+            loaded.
+
+        meta_path : str, optional
+            Directory containing the metadata file to load. Defaults
+            to None, in which case ``self.data['path']`` is used.
+
+        Returns
+        -------
+        self : MetaData
+            This instance, with ``self.data`` updated in place.
+
+        """
         if not meta_path:
             meta_path = self.data['path']
         if os.path.exists(meta_path + new_data_id + '_meta.pkl'):
             with open(meta_path + new_data_id + '_meta.pkl', 'rb') as f:
                 new_meta = pickle.load(f)
-        
-        keys = ['path', 'data_path', 'data_id', 
-                'test_set', 'train_paths', 'test_paths', 'folds', 'indices', 
-                'n_folds', 'test_fold', 'train_size', 'test_size', 'val_size', 
+
+        keys = ['path', 'data_path', 'data_id',
+                'test_set', 'train_paths', 'test_paths', 'folds', 'indices',
+                'n_folds', 'test_fold', 'train_size', 'test_size', 'val_size',
                 'n_seq', 'n_t', 'n_ch', 'y_shape']
         new_data = {k:new_meta.data[k] for k in keys}
         self.data.update(new_data)
@@ -155,7 +267,49 @@ class MetaData():
 
     def update(self, data=None, preprocessing=None, train_params=None,
                model_specs=None, patterns=None, results=None, weights=None):
-        """Updates metadata file"""
+        """Updates metadata file.
+
+        Merges each provided dict into the corresponding attribute
+        (``self.data``, ``self.preprocessing``, ``self.train_params``,
+        ``self.model_specs``, ``self.patterns``, ``self.results``,
+        ``self.weights``), then saves the metadata to disk via
+        :meth:`save`.
+
+        Parameters
+        ----------
+        data : dict, optional
+            Entries to merge into ``self.data``. Defaults to None
+            (no change).
+
+        preprocessing : dict, optional
+            Entries to merge into ``self.preprocessing``. Defaults to
+            None (no change).
+
+        train_params : dict, optional
+            Entries to merge into ``self.train_params``. Defaults to
+            None (no change).
+
+        model_specs : dict, optional
+            Entries to merge into ``self.model_specs``. Defaults to
+            None (no change).
+
+        patterns : dict, optional
+            Entries to merge into ``self.patterns``. Defaults to None
+            (no change).
+
+        results : dict, optional
+            Entries to merge into ``self.results``. Defaults to None
+            (no change).
+
+        weights : dict, optional
+            Entries to merge into ``self.weights``. Defaults to None
+            (no change).
+
+        Returns
+        -------
+        None
+
+        """
         if isinstance(data, dict):
             self.data.update(data)
             print("Updating: meta.data")
@@ -186,25 +340,25 @@ class MetaData():
         Creates an MNE Fake Evoked object from topographies and a sensor layout
         for plotting.
 
-            Parameters
-            ----------
-            topos : ndarray, shape (n_channels, n_components) or (n_channels, n_classes)
-                Topography pattern to be converted to Evoked object.
+        Parameters
+        ----------
+        topos : ndarray, shape (n_channels, n_components) or (n_channels, n_classes)
+            Topography pattern to be converted to Evoked object.
 
-            sensor_layout : str or mne.channels.layout.Layout
-                Sensor layout to create the topoplot.
+        sensor_layout : str or mne.channels.layout.Layout
+            Sensor layout to create the topoplot.
 
-            ch_type : str, optional
-                Channel type ('mag', 'grad', or 'eeg'). Defaults to 'mag'.
+        ch_type : str, optional
+            Channel type ('mag', 'grad', or 'eeg'). Defaults to 'mag'.
 
-            channel_subset : array, optional
-                Array of indices (int) of the channels to pick. Defaults to None.
-                If None, all channels are used.
+        channel_subset : array, optional
+            Array of indices (int) of the channels to pick. Defaults to None.
+            If None, all channels are used.
 
-            Returns
-            -------
-            fake_evoked : mne.Evoked
-                Evoked object with topography.
+        Returns
+        -------
+        fake_evoked : mne.Evoked
+            Evoked object with topography.
         """
 
 
@@ -243,13 +397,46 @@ class MetaData():
                                integrate=['timepoints'],
                                fold=0, diff=True):
         """
-        Returns the map of feature relevances for each interpretation method
+        Returns the map of feature relevances for each interpretation method.
+
+        Parameters
+        ----------
+        sorting : str, optional
+            Which interpretation method's feature relevance to use.
+            ``'combined'`` combines the ``'weight'`` feature
+            relevance with ``self.patterns['ccms']['pooled']`` and
+            subtracts the temporal convolution bias; any other value
+            is looked up as ``self.patterns[sorting]['feature_relevance']``.
+            Defaults to 'output_corr'.
+
+        integrate : list of str, optional
+            Which dimensions of the relevance array to collapse
+            before returning it. Any subset of ``'folds'`` (averages
+            over folds), ``'timepoints'`` (max-pools over time),
+            ``'vars'`` (sums over classes), and ``'components'``
+            (sums over latent components). Defaults to
+            ``['timepoints']``.
+
+        fold : int, optional
+            Currently unused. Defaults to 0.
+
+        diff : bool, optional
+            If True (and ``sorting != 'combined'``), multiplies the
+            feature relevance by ``self.patterns['ccms']['cov_y']``
+            per fold and clips negative values to zero. Defaults to
+            True.
 
         Returns
         -------
-
         F : np.array
-            (n_t_pooled, n_latent, n_classes, n_folds)
+            (n_t_pooled, n_latent, n_classes, n_folds), with any
+            dimensions requested via ``integrate`` collapsed (and
+            squeezed).
+
+        names : list of str
+            Names of the (non-collapsed) dimensions of ``F``, a
+            subset of ``['Time Points', 'Components', 'Classes',
+            'Folds']``.
 
         """
         # get feature relevance
@@ -304,7 +491,7 @@ class MetaData():
                            n_cols=1,
                            channel_subset=None):
         """
-        Ineractive plot of feature relevances for each fold/subplot
+        Interactive plot of feature relevances for each fold/subplot
         max-pooled over all timepoints.
 
         Clicking each non-zero square returns a new figure with:
@@ -315,17 +502,40 @@ class MetaData():
 
         Parameters
         ----------
+        sorting : str, optional
+            Interpretation method whose feature relevances to plot.
+            See :meth:`get_feature_relevances`. Defaults to
+            'output_corr'.
 
-        pat : int [0, self.specs['n_latent'])
-            Index of the latent component to higlight
+        info : mne.Info, optional
+            Currently unused. Defaults to None.
 
-        t : int [0, self.h_params['n_t'])
-            Index of timepoint to highlight
+        sensor_layout : str or mne.channels.layout.Layout, optional
+            Sensor layout passed to :meth:`make_fake_evoked` for the
+            per-component topography popup. Defaults to
+            'Vectorview-grad'.
+
+        class_names : list of str, optional
+            Currently unused. Defaults to None.
+
+        diff : bool, optional
+            Passed to :meth:`get_feature_relevances`. Defaults to
+            True.
+
+        n_cols : int, optional
+            Number of subplot columns to arrange the per-fold
+            relevance maps into. Defaults to 1.
+
+        channel_subset : array of int, optional
+            Subset of channel indices to use when constructing the
+            fake Evoked object for the topography popup. Defaults to
+            None (all channels).
 
         Returns
         -------
-        figure :
-            Imshow [n_latent, y_shape]
+        f : matplotlib.figure.Figure
+            Figure containing one relevance-map subplot per fold,
+            with an interactive click handler attached.
 
         """
         #TODO: joint colorbar
@@ -357,7 +567,7 @@ class MetaData():
             flt -= flt.mean()
             w, h = freqz(flt, 1, worN=128, fs = self.data['fs'])
             freq_response = np.array(np.abs(h))
-            freq_response = freq_response / np.sum(freq_response, 0, 
+            freq_response = freq_response / np.sum(freq_response, 0,
                                                    keepdims=True)
 
             ax[0, 1].plot(self.patterns['freqs'], freq_response,
@@ -435,24 +645,31 @@ class MetaData():
         Plot any spatial distribution in the sensor space.
         TODO: Interpolation??
 
-
         Parameters
         ----------
-        topos : np.array
-            [n_ch, n_classes, ...]
+        method : str, optional
+            Interpretation method whose spatial patterns to compute
+            and plot, passed to :meth:`get_spatial_patterns`.
+            Defaults to 'combined'.
 
-        sensor_layout : TYPE, optional
-            DESCRIPTION. The default is 'Vectorview-mag'.
+        sensor_layout : str or mne.channels.layout.Layout, optional
+            Sensor layout used to build the topography plot. Defaults
+            to 'Vectorview-mag'.
 
-        class_subset  : np.array, optional
+        class_subset : array-like, optional
+            Subset of class indices to plot. Defaults to None (all
+            classes).
 
-        channel_subset  : np.array, optional
-
-        diff : bool, True
+        channel_subset : array-like, optional
+            Subset of channel indices to plot. Defaults to None (all
+            channels).
 
         Returns
         -------
-        None.
+        ft : matplotlib.figure.Figure
+            Topomap figure (fold-averaged), with an interactive click
+            handler that opens a per-fold topomap for the clicked
+            class.
 
         """
         topos = self.get_spatial_patterns(method=method)
@@ -511,6 +728,25 @@ class MetaData():
 
 
     def aligned_mean(self, topos):
+        """Sign-align topographies across the last axis and average them.
+
+        For each component, flips the sign of each slice along the
+        last axis so that it agrees with the sign of the majority
+        (based on pairwise correlation with the first slice), then
+        averages across that axis.
+
+        Parameters
+        ----------
+        topos : ndarray, shape (n_channels, n_topos, n_reps)
+            Topographies to align and average over the last axis
+            (e.g. folds or repetitions).
+
+        Returns
+        -------
+        topos_aligned : ndarray, shape (n_channels, n_topos)
+            Sign-aligned, averaged topographies.
+
+        """
         n_topos = topos.shape[1]
         topos_aligned = []
         for i in range(n_topos):
@@ -532,21 +768,33 @@ class MetaData():
                              random_weights=False):
         """
 
-
         Parameters
         ----------
-        method : TYPE, optional
+        method : str, optional
             Compute spatial activation patterns using a combination of spatial
             weights, spatial covariance, feature relevance and target covariance.
             The default is 'combined'. Other options are 'weight', 'output_corr',
             'compwise loss'.
-        covariance_type : TYPE, optional
+
+        covariance_type : str, optional
             DESCRIPTION. The default is 'common'. Other options are
-            'class_conditional', and 'k-1'
+            'class_conditional', and 'k-1'.
+
+        use_y_cov : bool, optional
+            If True (only used when ``method == 'combined'``), weight
+            the per-component topographies by
+            ``F @ (cov_y @ inv(cov_y_hat))`` instead of by ``F``
+            alone. Defaults to False.
+
         diff : bool, optional
             If True feature relevance is computed as
             F[class, ...] - np.mean(F[class!=class, ...]).
             The default is True.
+
+        random_weights : bool, optional
+            If True, replace the learned spatial demixing weights
+            (``self.weights['dmx']``) with random values of the same
+            shape, for use as a control/baseline. Defaults to False.
 
         Returns
         -------
@@ -635,7 +883,38 @@ class MetaData():
 
 
     def get_timecourse(self, method='weight'):
+        """Reconstruct the per-class temporal activation and waveform.
 
+        For each class and fold, selects the latent component with
+        the highest feature relevance (per ``method``) and gathers
+        its temporal convolution activation, demixed waveform, and
+        temporal convolution kernel.
+
+        Parameters
+        ----------
+        method : str, optional
+            Interpretation method used to select, per class and
+            fold, the most relevant latent component (looked up in
+            ``self.patterns[method]['feature_relevance']``). Defaults
+            to 'weight'.
+
+        Returns
+        -------
+        cc_act : np.array, shape (n_t_pooled, n_classes, n_folds)
+            Temporal convolution activations of the selected
+            component.
+
+        cc_waveforms : np.array, shape (n_t, n_classes, n_folds)
+            Demixed waveforms of the selected component.
+
+        tconv_weights : np.array, shape (filter_length, n_classes, n_folds)
+            Temporal convolution kernel coefficients of the selected
+            component.
+
+        component_inds : np.array, shape (n_classes, n_folds)
+            Index of the selected component for each class and fold.
+
+        """
         activations = self.patterns['ccms']['tconv']
         waveforms = self.patterns['ccms']['dmx']
         #get relevances and corresponding filter coeffificents
@@ -663,17 +942,35 @@ class MetaData():
         Computes the filter frequency response and reconstructed component power
         spectrum from the weights of the temporal convolution kernel.
 
-        Returns:
-        --------
+        Parameters
+        ----------
+        n_fft : int, optional
+            Number of frequency bins used to evaluate each temporal
+            convolution kernel's frequency response (``worN`` passed
+            to ``scipy.signal.freqz``). Defaults to 128.
 
-        psds : np.array (n_freq, n_y, n_folds)
-            Relative power spectra of each component before temporal filtering.
+        method : str, optional
+            Interpretation method used to select, per class and
+            fold, the most relevant latent component. Only 'weight',
+            'compwise_loss', and 'output_corr' are currently
+            supported. Defaults to 'weight'.
+
+        diff : bool, optional
+            Passed to :meth:`get_feature_relevances`. Defaults to
+            False.
+
+        Returns
+        -------
+        class_psds : np.array (n_freq, n_y, n_folds)
+            Relative power spectra of each selected component before
+            temporal filtering.
 
         out : np.array (n_freq, n_y, n_folds)
-            Relative power spectra of each component after temporal filtering.
+            Relative power spectra of each selected component after
+            temporal filtering.
 
-        freq_responses : np.array (n_freq, n_y, n_folds)
-            Frequency responses of each convolutional kernel
+        freq_responses : np.array (n_fft, n_components, n_folds)
+            Frequency responses of each convolutional kernel.
 
         """
         #TODO: Implement 'combined'
@@ -733,17 +1030,35 @@ class MetaData():
 
         Parameters
         ----------
+        method : str, optional
+            Interpretation method passed to :meth:`get_spectra` to
+            select the most relevant component per class/fold.
+            Defaults to 'weight'.
 
-        patterns_struct :
-            instance of patterns_struct produced by model.compute_patterns
+        class_subset : array-like, optional
+            Subset of class indices to plot. Defaults to None (all
+            classes).
 
-        ax : axes
+        log : bool, optional
+            Apply log-transform to the spectra. Defaults to True.
 
-        fs : float
-            Sampling frequency.
+        fs : float, optional
+            Currently unused (sampling frequency is taken from
+            ``self.data['fs']`` inside :meth:`get_spectra`). Defaults
+            to None.
 
-        log : bool
-            Apply log-transform to the spectra.
+        freqs_lim : tuple of int, optional
+            ``(low, high)`` frequency bin range used both to set the
+            color/y-axis limits and, in :meth:`plot_temporal_pattern`,
+            the x-axis limits. Defaults to (1, 25).
+
+        Returns
+        -------
+        f : matplotlib.figure.Figure
+            Figure with one subplot per class, each showing the
+            input/output relative power spectra and frequency
+            response for that class's most relevant component.
+
         """
 
         psds, h, freq_responses = self.get_spectra(method=method)
@@ -763,7 +1078,7 @@ class MetaData():
             h_stds = np.std(h, -1)
             h /= np.sum(h, 0, keepdims=True)
             freq_responses /= np.sum(freq_responses, 0, keepdims=True)
-        
+
         if freqs_lim:
             #ax[i].set_xlim(freqs_lim[0], freqs_lim[1])
             vmin = .9*min(np.min(h[freqs_lim[0] : freqs_lim[1], :]), np.min(psds[freqs_lim[0] : freqs_lim[1], :]))
@@ -771,7 +1086,7 @@ class MetaData():
         else:
             vmin = 0.9*min(np.min(psds), np.min(h))
             vmax = 1.1*max(np.max(h), np.max(psds))
-       
+
         f, ax = plt.subplots(1, n_y, sharey=True, figsize=(3*n_y, 4))
         if isinstance(ax, plt.matplotlib.axes._axes.Axes):
             ax = [ax]
@@ -795,11 +1110,70 @@ class MetaData():
                               log=False, vlim=None,
                               freqs_lim=None, ax=None,
                               h_std = None, inp_std=None, size=16):
-        
+        """Plot input/output relative power spectra and frequency response.
+
+        Draws, on a single axes, the input power spectral density
+        (``psd``), the output power spectral density after temporal
+        filtering (``h``), and the filter's frequency response
+        (``freq_response``), optionally with shaded fold-variation
+        bands.
+
+        Parameters
+        ----------
+        psd : np.array, shape (n_freq,)
+            Relative power spectrum of the component before temporal
+            filtering.
+
+        h : np.array, shape (n_freq,)
+            Relative power spectrum of the component after temporal
+            filtering.
+
+        freq_response : np.array, shape (n_freq,)
+            Frequency response of the temporal convolution kernel.
+
+        log : bool, optional
+            If True, plot on a semi-log y-axis and skip the
+            normalization/std-band plotting used in the linear case.
+            Defaults to False.
+
+        vlim : tuple of float, optional
+            ``(vmin, vmax)`` y-axis limits. If None, computed from
+            ``freqs_lim`` or from the data. Defaults to None.
+
+        freqs_lim : tuple of int, optional
+            ``(low, high)`` frequency bin range used for the x-axis
+            limits, tick locations, and (if ``vlim`` is None) the
+            y-axis limits. Defaults to None.
+
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot into. If None, a new figure and axes are
+            created. Defaults to None.
+
+        h_std : np.array, optional
+            Standard deviation (across folds) of ``h``, used to draw
+            a shaded band. Only used when ``log`` is False. Defaults
+            to None.
+
+        inp_std : np.array, optional
+            Standard deviation (across folds) of ``psd``, used to
+            draw a shaded band. Only used when ``log`` is False.
+            Defaults to None.
+
+        size : int, optional
+            Font size for axis labels and tick labels. Defaults to
+            16.
+
+        Returns
+        -------
+        ax : matplotlib.axes.Axes
+            The axes the pattern was plotted into.
+
+        """
+
         if not ax:
             f = plt.figure()
             ax = f.gca()
-        
+
         if vlim:
             vmin = vlim[0]
             vmax = vlim[1]
@@ -810,7 +1184,7 @@ class MetaData():
         else:
             vmin = min(np.min(psd), np.min(h))
             vmax = max(np.max(h), np.max(psd))
-            
+
         if log:
             ax.semilogy(self.patterns['freqs'], psd,
                            label='Filter input RPS')
@@ -846,23 +1220,66 @@ class MetaData():
                             label='Freq response',
                             color='tab:green', linestyle='dotted')
 
-            
+
         ax.set_ylim(0.95*vmin, 1.05*vmax)
         if freqs_lim:
             ax.set_xlim(freqs_lim[0], freqs_lim[1])
-        
+
         ax.set_xlabel("Frequency, Hz", size=size)
         ax.set_xticks(np.arange(freqs_lim[0], freqs_lim[1], 3))
         ax.set_xticklabels(ax.get_xticklabels(), size=size)
         ax.set_yticklabels(ax.get_yticklabels(), size=size)
-        ax.vlines(np.arange(freqs_lim[0], freqs_lim[1], 3), 
-                  ymin=vmin, ymax=vmax, linestyle='dashed', alpha=0.25, 
+        ax.vlines(np.arange(freqs_lim[0], freqs_lim[1], 3),
+                  ymin=vmin, ymax=vmax, linestyle='dashed', alpha=0.25,
                   color='tab:grey')
         return ax
 
     def plot_timecourses(self, method='weight', average_over='folds',
                          class_names=None, tmin=0, class_subset=None,
                          freqs_lim=(1, 70)):
+        """Plot per-class temporal waveforms/activations and spectra.
+
+        For each class (or fold, depending on ``average_over``),
+        plots the demixed waveform and temporal convolution
+        activation of the most relevant component (see
+        :meth:`get_timecourse`) alongside its spectral pattern (see
+        :meth:`get_spectra` / :meth:`plot_temporal_pattern`).
+
+        Parameters
+        ----------
+        method : str, optional
+            Interpretation method used to select the most relevant
+            component per class/fold. Passed to
+            :meth:`get_timecourse` and :meth:`get_spectra`. Defaults
+            to 'weight'.
+
+        average_over : str {'folds', other}, optional
+            If 'folds', average waveforms/activations/spectra over
+            folds (with standard-error shading) and plot one row per
+            class. Any other value plots one row per fold instead.
+            Defaults to 'folds'.
+
+        class_names : list of str, optional
+            Currently unused. Defaults to None.
+
+        tmin : float, optional
+            Start time (in seconds) of the plotted waveform x-axis.
+            Defaults to 0.
+
+        class_subset : array-like, optional
+            Subset of class indices to plot. Defaults to None (all
+            classes).
+
+        freqs_lim : tuple of int, optional
+            ``(low, high)`` frequency bin range passed to
+            :meth:`plot_temporal_pattern` for the spectral subplot.
+            Defaults to (1, 70).
+
+        Returns
+        -------
+        None
+
+        """
         tcs = self.get_timecourse(method=method)
         cc_activations, cc_waveforms, tconv_weights, comp_inds = tcs
         print(cc_activations.shape, cc_waveforms.shape, tconv_weights.shape)

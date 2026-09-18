@@ -566,6 +566,25 @@ class SymmetricModel(BaseModel):
         return y_pred
 
     def extract_weights(self, verbose=False):
+        """Extract the trained weights relevant for interpretation.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            Whether to print the shapes of the extracted weights.
+            Defaults to False.
+
+        Returns
+        -------
+        weights : dict
+            Dictionary with keys 
+            ``'ssum1'`` and ``'ssum1b'`` 
+                the `SquareSum3d` layer's weights and bias,
+            ``'pointwise'`` the pointwise convolution kernel, 
+            ``'fc1_w_flat'`` the first dense layer's weights, if present, and 
+            ``'out_w_flat'`` the output layer's weights.
+
+        """
         weights = {}
 
         # Extract weights
@@ -604,19 +623,44 @@ class SymmetricModel(BaseModel):
 
         Parameters
         ----------
-        data_path : str or list of str
-            Path to TFRecord files on which the patterns are estimated.
+        data_path : str, list of str, or tf.data.Dataset, optional
+            Path(s) to TFRecord files (or an already-built
+            ``tf.data.Dataset``) on which the patterns are estimated.
+            Defaults to None, in which case the model's own
+            validation dataset (``self.dataset.val``) is used.
 
-        Returns:
-        --------
-        patterns_struct : dict
-            keys
-            'weights' - model weighs {layer : array}
-            'ccms' - mean activations of each layer per class {layer:array}
+        verbose : bool, optional
+            Whether to print the shapes of the computed activations.
+            Defaults to False.
 
-        Raises:
+        shapley_order : int, optional
+            Currently unused. Defaults to 1.
+
+        methods : list of str, optional
+            Which interpretation methods to additionally compute.
+            Only ``'output_corr'`` has an effect (adds
+            ``corr_to_output`` via :meth:`get_output_correlations`).
+            Defaults to ``['weight', 'compwise_loss', 'output_corr']``.
+
+        Returns
         -------
-            AttributeError: If `data_path` is not specified.
+        patterns_struct : dict
+            Dictionary with keys 
+                ``'weights'`` model weights, see:meth:`extract_weights`, 
+                ``'ccms'`` mean activation of each layer, per class, over one batch, 
+                ``'dcov'`` sample covariance of the input, 
+                ``'covs'`` covariance of selected layer activations, 
+                ``'patterns'`` and ``'spectra'`` (currently unused, left empty), 
+                ``'freqs'`` (currently unused, left None), and, if 
+                ``'output_corr'`` is in ``methods``, ``'corr_to_output'`` (see
+                :meth:`get_output_correlations`).
+
+        Raises
+        ------
+        AttributeError
+            If ``data_path`` is not a string, list/tuple of strings,
+            or ``tf.data.Dataset``.
+
         """
         patterns_struct = {'weights' : {'squaresym':[], 'pointwise':[],
                                         'fin_fc':[], 'fc1':[]},
@@ -714,13 +758,18 @@ class SymmetricModel(BaseModel):
             Inclusion threshold top (100 - percetile)% active sources across
             all folds based on selection_method. Default 80
 
-        selection_method : str, optional
-            How to integrate across folds. Possible arguments 'count' or
-            'activation'. Default 'activation'
-
         patterns : dict, optional
             Output of self.extract_patterns, if not provided computed.
             Default None.
+
+        methods : list of str, optional
+            Which spatial pattern keys (``patterns['spatial_patterns']``)
+            to compute ROI labels for. Defaults to
+            ``['row', 'col', 'diag']``.
+
+        selection_method : str, optional
+            How to integrate across folds. Possible arguments 'count' or
+            'activation'. Default 'activation'
 
         Returns
         ------
@@ -786,7 +835,16 @@ class SymmetricModel(BaseModel):
     #     return
 
     def ablation_analysis(self, name, label_inds, hyperparameters):
-        """
+        """Build a new SymmetricModel restricted to a subset of samples/labels.
+
+        Deep-copies this model's metadata, restricts it to
+        ``label_inds`` via ``meta.data['sample_subset']``, gives it a
+        new ``data_id`` tagged with ``name``, and builds a new
+        :class:`Dataset` and :class:`SymmetricModel` from it, reusing
+        this model's ``model_specs``. Used to evaluate the effect of
+        ablating (restricting to) a subset of ROIs/labels identified
+        by an interpretation method.
+
         Parameters
         ----------
         name : 'str'
@@ -794,16 +852,19 @@ class SymmetricModel(BaseModel):
         label_inds : list of int
             Label Indices
         hyperparameters : dict
-            Hyperparameters for the ablation model.
+            Hyperparameters for the ablation model. Must contain
+            ``'batch_size'``.
 
         Returns
         -------
         meta_abl : mneflow.MetaData
-            DESCRIPTION.
-        model_abl : mneflow.model.BaseModel
-            DESCRIPTION.
-        dataset : mneflow.dataset
-            DESCRIPTION.
+            Metadata for the ablation dataset/model, with
+            ``sample_subset``, ``data_id``, and ``model_specs`` set.
+        model_abl : SymmetricModel
+            A newly constructed (unbuilt) SymmetricModel using
+            ``meta_abl`` and ``dataset``.
+        dataset : mneflow.Dataset
+            Dataset restricted to ``label_inds``.
 
         """
         meta_abl = deepcopy(self.meta)
@@ -830,8 +891,28 @@ class SymmetricModel(BaseModel):
         """Computes a similarity metric between each of the extracted
         features and the target variable.
 
-        The metric is a Manhattan distance for dicrete targets, and
-        Spearman correlation for continuous targets.
+        The metric is the Pearson correlation for discrete
+        (``target_type == 'int'``) targets, and the Spearman
+        correlation for continuous (``target_type in ['float',
+        'signal']``) targets.
+
+        Parameters
+        ----------
+        activations : dict
+            Layer activations as returned within
+            :meth:`compute_patterns`; only ``activations['fc1']`` is
+            used here.
+
+        y_true : tf.Tensor, shape (n_samples, y_shape)
+            Target values for the same batch as ``activations``.
+
+        Returns
+        -------
+        corr_to_output : ndarray, shape (y_shape, n_features)
+            Per-target, per-feature correlation between the flattened
+            ``'fc1'`` activations and ``y_true``, with any NaNs (e.g.
+            from constant features) replaced by 0.
+
         """
         corr_to_output = []
         y_true = y_true.numpy()
@@ -861,11 +942,38 @@ class SymmetricModel(BaseModel):
                                   #'compwise_loss',
                                   'output_corr'
                                   ]):
-        """Collects patterns computed for each fold during corss-validation
-        Returns:
-        --------
-        cv_patterns : dict
-            Dictionary containing at least 'dcov', 'feature_relevance', 'weights', and 'ccms'
+        """Collects patterns computed for each fold during cross-validation.
+
+        Calls :meth:`compute_patterns` for the current fold and
+        accumulates its results, in place, into ``self.cv_patterns``
+        (keyed by ``'dcov'``, ``'ccms'``, and, per method in
+        ``methods``, ``'feature_relevance'``) and ``self.cv_weights``.
+        On the first fold (``fold == 0`` or ``self.cv_patterns`` still
+        empty), these arrays are (re-)allocated with a trailing
+        ``n_folds`` axis.
+
+        Parameters
+        ----------
+        fold : int, optional
+            Index of the current cross-validation fold, used to
+            select the slice of ``self.cv_patterns``/``self.cv_weights``
+            to write into. Defaults to 0.
+
+        n_folds : int, optional
+            Number of folds; only used as a fallback before
+            ``self.meta.data['n_folds']`` is read on the first fold.
+            Defaults to 1.
+
+        n_comp : int, optional
+            Currently unused. Defaults to 1.
+
+        methods : list of str, optional
+            Which feature-relevance keys of ``self.cv_patterns`` to
+            allocate/update. Defaults to ``['weight', 'output_corr']``.
+
+        Returns
+        -------
+        None
 
         """
         patterns_struct = self.compute_patterns()
@@ -909,12 +1017,29 @@ class SymmetricModel(BaseModel):
 
     def extract_patterns(self):
         """
-        Extracts activation patterns from a trained model.
+        Extracts spatial connectivity patterns from a cross-validated model.
+
+        For each fold, identifies the row, column, and diagonal
+        components of the flattened pointwise-layer output that most
+        strongly drive the output (via
+        ``self.meta.weights['fc1_w_flat']`` and
+        ``self.meta.weights['out_w_flat']``), then reconstructs each
+        component's spatial connectivity pattern from
+        ``self.cv_patterns['dcov']`` and the corresponding
+        :class:`~mneflow.layers.SquareSum3d` spatial weight
+        (``self.meta.weights['ssum1']``).
 
         Returns
         -------
         out : dict
-            DESCRIPTION.
+            Nested dict with keys 
+            ``'spatial_patterns'``,
+            ``'freq_inds'``, and 
+            ``'comp_inds'``, 
+            each itself a dict with sub-keys ``'row'``, ``'col'``, and ``'diag'``.
+            ``spatial_patterns[key]`` has shape
+            ``(n_parcels, n_parcels, n_folds)``; ``freq_inds[key]``
+            and ``comp_inds[key]`` have shape ``(n_folds,)``.
 
         """
         out = defaultdict(dict)

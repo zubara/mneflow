@@ -56,6 +56,10 @@ def load_meta(path, data_id=''):
     path : str
         Path to TFRecord folder
 
+    data_id : str, optional
+        Filename prefix of the metadata file (the file loaded is
+        ``<path>/<data_id>_meta.pkl``). Defaults to ''.
+
     Returns
     -------
     meta : MetaData
@@ -66,10 +70,6 @@ def load_meta(path, data_id=''):
         print(f)
         meta = dill.load(f)
     return meta
-
-# def load_model(model_path):
-
-#     return model
 
 
 
@@ -98,7 +98,6 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
         Scaled data array.
 
     """
-    #X = X_.copy()
 
     if baseline is None:
         print("No baseline interval specified, scaling based on the whole epoch")
@@ -119,7 +118,33 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
 
 def _make_example(X, y, n, target_type='int'):
     """Construct a serializable example proto object from data and
-    target pairs."""
+    target pairs.
+
+    Parameters
+    ----------
+    X : ndarray
+        Data array for a single example, flattened and stored as a
+        float feature.
+
+    y : ndarray
+        Target array for a single example. Stored as an int64
+        feature if ``target_type == 'int'``, otherwise as a float
+        feature.
+
+    n : ndarray
+        Example index, flattened and stored as an int64 feature.
+
+    target_type : str {'int', 'float', 'signal'}, optional
+        Type of the target variable, determining how ``y`` is
+        encoded. Defaults to 'int'.
+
+    Returns
+    -------
+    example : tf.train.Example
+        Serializable example proto containing the ``'X'``, ``'y'``,
+        and ``'n'`` features.
+
+    """
 
     feature = {}
     feature['X'] = tf.train.Feature(
@@ -160,6 +185,15 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
 
     output_file : str
         Name of the TFRecords file.
+
+    target_type : str {'int', 'float', 'signal'}, optional
+        Type of the target variable, passed to :func:`_make_example`.
+        Defaults to 'int'.
+
+    Returns
+    -------
+    None
+
     """
     writer = tf.io.TFRecordWriter(output_file)
 
@@ -177,8 +211,24 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
 
 
 def _split_indices(n_samples, n_folds=5):
-    """Generate indices for n-fold cross-validation"""
-    
+    """Generate indices for n-fold cross-validation.
+
+    Parameters
+    ----------
+    n_samples : int
+        Total number of samples to split.
+
+    n_folds : int, optional
+        Number of folds to split the samples into. Defaults to 5.
+
+    Returns
+    -------
+    folds : list of ndarrays
+        ``n_folds`` arrays of (shuffled) sample indices, each of
+        length ``n_samples // n_folds``.
+
+    """
+
     shuffle = np.random.permutation(n_samples)
     subset_proportion = 1./float(n_folds)
     fold_size = int(subset_proportion*n_samples)
@@ -193,37 +243,28 @@ def _split_sets(X, test_fold):
     Parameters
     ----------
     X : ndarray
-        (Preprocessed) data matrix.
+        (Preprocessed) data (or target) array.
         shape (n_epochs, ...)
 
-    y : ndarray
-        Class labels.
-        shape (n_epochs, ...)
-
-    folds : list of arrays
-        fold indices
-
-    ind : index of the selected fold, defaults to -1
+    test_fold : array-like of int
+        Indices (along the first axis of ``X``) of the samples to
+        hold out.
 
     Returns
     -------
-    X_train, y_train, X_test, y_test : ndarray
-        Pairs of data / targets split in Training and Validation sets.
+    X_train : ndarray
+        ``X`` with the samples in ``test_fold`` removed.
 
-    test_fold : np.array
-        Array of indices of data samples in the held out fold
-
+    X_test : ndarray
+        The samples in ``test_fold``.
 
     """
 
-    #fold = fold_split.pop(ind) - sample_counter
+
     X_test = X[test_fold, ...]
-    #y_test = y[fold, ...]
+
     X_train = np.delete(X, test_fold, axis=0)
-    #y_train = np.delete(y, fold, axis=0)
-    #test_fold = fold + sample_counter
-    # return X_train, np.squeeze(y_train), X_val, np.squeeze(y_val)
-    #return X_train, y_train, X_test, y_test, test_fold
+
     return X_train, X_test
 
 
@@ -370,16 +411,17 @@ def produce_tfrecords(inputs,
         data. Requires "transform_targets" function to be applied to target
         variables
 
+    array_keys : dict, optional
+        Dictionary mapping {'X':'data_matrix','y':'labels'},
+        where 'data_matrix' and 'labels' are names of the
+        corresponding variables if the input is paths to .mat or .npz
+        files. Defaults to {'X':'X', 'y':'y'}
+
     n_folds : int, optional
         Number of folds to split the data for training/validation/testing.
         One fold of the n_folds is used as a validation set.
         If test_set == 'holdout' generates one extra fold
         used as test set. Defaults to 5
-
-    predefined_split : list or lists, optional
-        Pre-defined split of the dataset into training/validation folds.
-        Should match exactly the size and type of MetaData.data['folds'],
-        size of the dataset, and contain n_folds.
 
     test_set : str {'holdout', 'loso', None}, optional
         Defines if a separate holdout test set is required.
@@ -387,21 +429,6 @@ def produce_tfrecords(inputs,
         'loso' saves the whole dataset in original order for
         leave-one-subject-out cross-validation.
         None does not leave a separate test set. Defaults to None.
-
-
-    segment : bool, int, optional
-        If specified, splits the data into smaller segments of specified
-        number of time points. Defaults to False
-
-    aug_stride : int, optional
-        Sliding window agumentation stride parameter.
-        If specified, sets the stride (in time points) for 'segment'
-        allowing to extract overalapping segments. Has to be <= segment.
-        Only applied within each fold to prevent data leakeage. Only applied
-        if 'segment' is not False. If None, then it is set equal to length of
-        the 'segment' returning non-overlapping segments.
-        Defaults to None.
-
 
     scale : bool, optional
         Whether to perform scaling to baseline. Defaults to False.
@@ -412,30 +439,63 @@ def produce_tfrecords(inputs,
         If tuple, then baseline is data[tuple[0] : tuple[1]].
         Only used if scale == True.
 
-    crop_baseline : bool, optional
-        Whether to crop baseline specified by 'scale_interval'
-        after scaling. Defaults to False.
-
-    array_keys : dict, optional
-        Dictionary mapping {'X':'data_matrix','y':'labels'},
-        where 'data_matrix' and 'labels' are names of the
-        corresponding variables if the input is paths to .mat or .npz
-        files. Defaults to {'X':'X', 'y':'y'}
-
-    transform_targets : callable, optional
-        custom function used to transform target variables
-
-    seq_length : int, optional
-        Length of segment sequence.
+    segment : bool, int, optional
+        If specified, splits the data into smaller segments of specified
+        number of time points. Defaults to False
 
     overwrite : bool, optional
         Whether to overwrite the metafile if it already exists at the
         specified path.
-    
+
+    transform_targets : callable, optional
+        custom function used to transform target variables
+
+    scale_y : bool, optional
+        Whether to standardize (zero mean, unit variance) the target
+        variable after applying ``transform_targets``. Passed to
+        :func:`preprocess_targets`. Defaults to False.
+
+    predefined_split : list or lists, optional
+        Pre-defined split of the dataset into training/validation folds.
+        Should match exactly the size and type of MetaData.data['folds'],
+        size of the dataset, and contain n_folds.
+
     t_index : array-like, optional
         Index of timestamps associated with each training example. Must be
-        of the same size as each of inputs. 
+        of the same size as each of inputs.
         Implemented only for type(inputs) == [tuple]
+
+    crop_baseline : bool, optional
+        Whether to crop baseline specified by 'scale_interval'
+        after scaling. Defaults to False.
+
+    aug_stride : int, optional
+        Sliding window agumentation stride parameter.
+        If specified, sets the stride (in time points) for 'segment'
+        allowing to extract overalapping segments. Has to be <= segment.
+        Only applied within each fold to prevent data leakeage. Only applied
+        if 'segment' is not False. If None, then it is set equal to length of
+        the 'segment' returning non-overlapping segments.
+        Defaults to None.
+
+    seq_length : int, optional
+        Length of segment sequence.
+
+    n_bins : int, optional
+        Number of bins used downstream (by
+        :meth:`mneflow.Dataset._resample`) to discretize a regression
+        target for class rebalancing. Stored in the produced
+        metadata but not otherwise used by this function. Defaults
+        to 3.
+
+    train_batch : int, optional
+        Default training mini-batch size, stored in the produced
+        metadata (see ``mneflow.Dataset``). Defaults to 50.
+
+    test_batch : int, optional
+        Default test/validation mini-batch size, stored in the
+        produced metadata (see ``mneflow.Dataset``). Defaults to
+        None.
 
     Returns
     -------
@@ -460,7 +520,7 @@ def produce_tfrecords(inputs,
 
     assert input_type in ['trials', 'seq', 'continuous', 'fconn'], "Unknown input type: {}".format(input_type)
     assert target_type in ['int', 'float', 'signal'], "Unknown target type."
-    
+
     if not os.path.exists(path):
         os.mkdir(path)
     data_path = os.path.join(path, 'tfrecords')
@@ -481,18 +541,13 @@ def produce_tfrecords(inputs,
         if test_set == 'holdout':
             n_folds += 1
 
-        #meta['fs'] = fs
-
         if not isinstance(inputs, list):
             inputs = [inputs]
-        #print("inputs:", inputs, len(inputs), type(inputs))
+
         if len(inputs) == 0:
             print("Cannot process Input: {} of type {}".format(inputs, type(inputs)))
             return
         for i, inp in enumerate(inputs):
-            #print("inp:", inp, len(inp), type(inp))
-
-
             data, events = import_data(inp, array_keys=array_keys)
 
             if np.any(data) == None:
@@ -515,9 +570,9 @@ def produce_tfrecords(inputs,
                     segment_y = False
                 else:
                     segment_y = True
-                
-                
-                
+
+
+
                 if input_type == 'fconn':
                     assert data.shape[1] == data.shape[2], "data.shape incompatible with fconn input type"
                     print('Input shapes: X (n, ch, ch, freq) : ', data.shape,
@@ -539,7 +594,7 @@ def produce_tfrecords(inputs,
                     assert len(t_index[i]) == len(events), "t_index size ({}) mismatches the size of  the data ({})".format(len(t_index[i]), len(events))
                 else:
                     t_index = np.arange(len(events))
-                    
+
                 X, Y, fold_split = preprocess(
                         data, events,
                         sample_counter=train_size,
@@ -569,7 +624,7 @@ def produce_tfrecords(inputs,
                     assert np.all([len(fpd) == len(fa) for fpd, fa in zip(predefined_split[jj], fold_split)]), "Number of samples in predefined folds does not match the original split!"
                     print("Using Predefined Train/Validation Split....")
                     fold_split = predefined_split[jj]
-                    
+
                 if test_set == 'holdout':
                     test_fold = fold_split.pop(-1) - train_size
                     X, x_test = _split_sets(X, test_fold)
@@ -594,18 +649,16 @@ def produce_tfrecords(inputs,
                 else:
                     y_shape = Y[-1].shape
 
-                
-                
+
+
                 n = np.arange(_n) + train_size
 
                 folds.append(fold_split)
                 if t_index is not None:
-                    # import pdb
-                    # pdb.set_trace()
                     indices.append([t_index[i][f - train_size] for f in fold_split])
                 else:
                     indices.append([n[f - train_size]  for f in fold_split])
-                
+
                 train_size += _n
 
                 val_size += len(fold_split[0])
@@ -614,7 +667,7 @@ def produce_tfrecords(inputs,
                 print('Target shape actual/metadata: ', Y[0].shape, y_shape)
 
                 print('Saving TFRecord# {}'.format(jj))
-                
+
                 trname = ''.join([data_id, '_train_', str(jj), '.tfrecord'])
                 train_filename = os.path.join(data_path, trname)
                 train_paths.append(train_filename)
@@ -736,8 +789,10 @@ def _combine_labels(labels, new_mapping):
     labels : ndarray
         Label vector
 
-    combine_dict : dict
-        Mapping {new_label1: [old_label1, old_label2], ...}
+    new_mapping : dict
+        Mapping {new_label1: [old_label1, old_label2], ...}. Values
+        that are not already a list or tuple are wrapped in a
+        single-element list in place.
 
     Returns
     -------
@@ -782,14 +837,12 @@ def _segment(data, segment_length=200,
     data : ndarray
         Data array of shape (n_epochs, n_channels, n_times)
 
-    labels : ndarray
-        Array of labels (n_epochs, y_shape)
-
-    seq_length: int or None
-        Length of segment sequence.
-
     segment_length : int or False
         Length of segment into which to split the data in time samples.
+
+    seq_length: int or None
+        Length of segment sequence. Only used if ``input_type ==
+        'seq'``.
 
     stride : int, optional
         If specified, sets the stride (in time points) for 'segment'
@@ -798,6 +851,12 @@ def _segment(data, segment_length=200,
         if 'segment' is not False. If None, then it is set equal to length of
         the 'segment' returning non-overlapping segments.
         Defaults to None.
+
+    input_type : str {'trials', 'seq', 'continuous', 'fconn'}, optional
+        Type of input data. If 'trials', ``seq_length`` is forced to
+        1. If 'seq', consecutive segments are additionally grouped
+        into sequences of length ``seq_length``. Defaults to
+        'trials'.
 
     Returns
     -------
@@ -830,8 +889,6 @@ def _segment(data, segment_length=200,
             x_new = np.array(segments)
         else:
             x_new = np.stack(segments, axis=0)
-#            if not events:
-#                x_new = np.expand_dims(x_new, 1)
 
         x_out.append(x_new)
     if len(x_out) > 1:
@@ -843,11 +900,17 @@ def _segment(data, segment_length=200,
 
 
 def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
-    """
+    """Split continuous data into non-overlapping segments and cross-validation folds.
+
     Parameters
     ----------
     data : ndarray
             3d data array (n, ch, t)
+
+    events : ndarray
+            Target variable array aligned with ``data`` along the
+            first two axes, sliced into the same non-overlapping
+            segments as ``data``.
 
     n_folds : int
              number of folds
@@ -905,6 +968,9 @@ def preprocess_realtime(data, decimate=False, picks=None,
 
     Returns
     -------
+    data : np.array
+        Preprocessed data array, after (optionally) band-pass
+        filtering, channel picking, and decimation.
     """
     if bp_filter:
         print('Filtering')
@@ -941,14 +1007,14 @@ def preprocess(data, events, sample_counter,
     events : np.array
             input array of target variables (n_epochs, ...)
 
+    sample_counter : int
+            Number of traning examples in the dataset
+
     input_type : str {trials, continuous}
             See produce_tfrecords.
 
     n_folds : int
             Number of folds defining the train/validation/test split.
-
-    sample_counter : int
-            Number of traning examples in the dataset
 
     scale : bool, optional
         Whether to perform scaling to baseline. Defaults to False.
@@ -992,12 +1058,15 @@ def preprocess(data, events, sample_counter,
         Label arrays of dimensions [n_epochs, *(y_shape)]
 
     folds : list of np.arrays
+        Sample indices (offset by ``sample_counter``) belonging to
+        each of the ``n_folds`` cross-validation folds (or to each
+        segmented fold, if ``segment`` is set).
     """
     print("Preprocessing:")
 
     # TODO: remove scale_y and transform targets?
     n_samples = events.shape[0]
-    
+
     if scale:
         data = scale_to_baseline(data, baseline=scale_interval,
                                  crop_baseline=crop_baseline)
@@ -1014,8 +1083,6 @@ def preprocess(data, events, sample_counter,
 
     else:
         shuffle = np.random.permutation(np.arange(n_samples))
-        # data = data[shuffle]
-        # events = events[shuffle]
         batch_folds = _split_indices(n_samples, n_folds=n_folds)
 
     print("Splitting into: {} folds x {}".format(len(batch_folds), len(batch_folds[0])))
@@ -1027,7 +1094,6 @@ def preprocess(data, events, sample_counter,
         segmented_folds = []
         jj = 0
         for fold in batch_folds:
-            #print(data[fold, ...].shape)
             x = _segment(data[fold, ...], segment_length=segment,
                          stride=aug_stride, input_type=input_type,
                          seq_length=seq_length)
@@ -1073,6 +1139,28 @@ def preprocess(data, events, sample_counter,
     return X, Y, folds
 
 def preprocess_targets(y, scale_y=False, transform_targets=None):
+    """Optionally transform and/or standardize target variables.
+
+    Parameters
+    ----------
+    y : np.array
+        Target array.
+
+    scale_y : bool, optional
+        If True, standardize ``y`` (zero mean, unit variance) along
+        the first axis, applied after ``transform_targets``. Defaults
+        to False.
+
+    transform_targets : callable, optional
+        If callable, applied to ``y`` before scaling. Defaults to
+        None (no transform).
+
+    Returns
+    -------
+    y : np.array
+        (Optionally transformed and/or scaled) target array.
+
+    """
 
     if callable(transform_targets):
         y = transform_targets(y)
@@ -1086,27 +1174,99 @@ def preprocess_targets(y, scale_y=False, transform_targets=None):
 
 
 def regression_metrics(y_true, y_pred):
+    """Compute standard regression evaluation metrics.
+
+    Parameters
+    ----------
+    y_true : ndarray, shape (n_samples, y_shape)
+        Ground-truth target values.
+
+    y_pred : ndarray, shape (n_samples, y_shape)
+        Predicted target values.
+
+    Returns
+    -------
+    metrics : dict
+        Dictionary with keys ``'cc'`` (per-target Pearson
+        correlation, see :func:`np.corrcoef`), ``'r2'`` (per-target
+        coefficient of determination, see :func:`r2_score`), ``'cs'``
+        (per-target cosine similarity, see :func:`cosine_similarity`),
+        and ``'bias'`` (per-target mean difference,
+        ``mean(y_true) - mean(y_pred)``).
+
+    """
     y_shape = y_true.shape[-1]
 
     cc = np.diag(np.corrcoef(y_true.T, y_pred.T)[:y_shape,-y_shape:])
     r2 =  r2_score(y_true, y_pred)
     cs = cosine_similarity(y_true, y_pred)
     bias = np.mean(y_true, axis=0) - np.mean(y_pred, axis=0)
-    #ve = pve(y_true, y_pred)
     return dict(cc=cc, r2=r2, cs=cs, bias=bias)
 
 def cosine_similarity(y_true, y_pred):
-    # y_true -= y_true.mean()
-    # y_pred -= y_pred.mean()
+    """Compute per-column cosine similarity between two arrays.
+
+    Parameters
+    ----------
+    y_true : ndarray, shape (n_samples, y_shape)
+        First array.
+
+    y_pred : ndarray, shape (n_samples, y_shape)
+        Second array, same shape as ``y_true``.
+
+    Returns
+    -------
+    cs : ndarray, shape (y_shape,)
+        Cosine similarity between ``y_true`` and ``y_pred``, computed
+        column-wise (without mean-centering).
+
+    """
+
 
     return np.dot(y_pred.T, y_true) / (np.sqrt(np.sum(y_pred**2,axis=0)) * np.sqrt(np.sum(y_true**2, axis=0)))
 
 def pve(y_true, y_pred):
+    """Compute the (mean-centered) proportion of variance explained.
+
+    Parameters
+    ----------
+    y_true : ndarray, shape (n_samples, y_shape)
+        Ground-truth target values (mean-centered in place along the
+        first axis).
+
+    y_pred : ndarray, shape (n_samples, y_shape)
+        Predicted target values (mean-centered in place along the
+        first axis).
+
+    Returns
+    -------
+    pve : ndarray, shape (y_shape,)
+        Per-target proportion of variance explained,
+        ``dot(y_pred, y_true) / sum(y_pred ** 2)``.
+
+    """
     y_true -= y_true.mean(axis=0)
     y_pred -= y_pred.mean(axis=0)
     return np.dot(y_pred.T, y_true) / np.sum(y_pred**2, axis=0)
 
 def r2_score(y_true, y_pred):
+    """Compute the per-target coefficient of determination (R^2).
+
+    Parameters
+    ----------
+    y_true : ndarray, shape (n_samples, y_shape)
+        Ground-truth target values.
+
+    y_pred : ndarray, shape (n_samples, y_shape)
+        Predicted target values.
+
+    Returns
+    -------
+    r2 : ndarray, shape (y_shape,)
+        ``1 - sum((y_true - y_pred) ** 2) / sum((y_true - mean(y_true)) ** 2)``,
+        computed per target.
+
+    """
     res = np.sum((y_true - y_pred)**2, axis=0)
     tot = np.sum((y_true - np.mean(y_true, axis=0, keepdims=True))**2, axis=0)
     return 1 - res/tot
@@ -1120,6 +1280,37 @@ def plot_confusion_matrix(cm,
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
+
+    Parameters
+    ----------
+    cm : ndarray, shape (n_classes, n_classes)
+        Confusion matrix to plot.
+
+    classes : list of str, optional
+        Class names used as tick labels. Defaults to None, in which
+        case labels ``'Class 0'``, ``'Class 1'``, ... are generated.
+
+    normalize : bool, optional
+        Whether to row-normalize the confusion matrix before
+        plotting. Defaults to True.
+
+    title : str, optional
+        Plot title. Defaults to None, in which case a title is
+        generated based on ``normalize``.
+
+    cmap : matplotlib colormap, optional
+        Colormap used for the confusion matrix image. Defaults to
+        ``plt.cm.Blues``.
+
+    vmax : float, optional
+        Upper limit of the colormap. Defaults to None (autoscaled by
+        matplotlib).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Figure containing the confusion matrix plot.
+
     """
     if not title:
         if normalize:
@@ -1129,14 +1320,11 @@ def plot_confusion_matrix(cm,
 
     # Compute confusion matrix
     # Only use the labels that appear in the data
-    #classes = classes[unique_labels(y_true, y_pred)]
     if not classes:
         classes = [' '.join(["Class", str(i)]) for i in range(cm.shape[0])]
     if normalize:
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-    #if not vmax:
-    #    vmax = np.max(cm)
-    #print(cm)
+
     fig, ax = plt.subplots()
     im = ax.imshow(cm, interpolation='nearest', cmap=cmap, vmax=vmax)
     ax.figure.colorbar(im, ax=ax)
@@ -1165,4 +1353,3 @@ def plot_confusion_matrix(cm,
     fig.tight_layout()
     #fig.show()
     return fig
-
