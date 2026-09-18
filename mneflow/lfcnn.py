@@ -23,9 +23,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from time import time
         
 from mneflow.layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling, LFTConvTranspose
-from tf.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D, LSTM
-from tf.keras.layers import Flatten, Dropout, BatchNormalization
-from tf.keras.initializers import Constant
+from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D, LSTM
+from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
+from tensorflow.keras.initializers import Constant
 from mneflow.data import Dataset
 from mneflow.models import BaseModel
 from collections import defaultdict
@@ -165,19 +165,20 @@ class LFCNN(BaseModel):
         ----------
         encoder_specs : dict
             Dictionary of encoder hyperparameters. Expected keys
-            include 
-            ``inputs`` : str {'y_pred', 'activations'} 
-                - source of the signal fed into the encoder; 
-                ``conv`` : str {'full', 'depthwise'} 
-                - type of transposed convolution used to upsample 
-                the temporal dimension; 
-                ``nonlin`` : callable; 
-                ``filter_length`` : int; 
-                ``stride`` : int;
-                ``n_latent`` : int; 
-                ``l2_lambda`` : float; 
-                ``loss`` :  callable or str; 
-                ``learn_rate`` : float.
+            include:
+
+            - ``inputs`` : str {'y_pred', 'activations'} -- source of
+              the signal fed into the encoder
+            - ``conv`` : str {'full', 'depthwise'} -- type of
+              transposed convolution used to upsample the temporal
+              dimension
+            - ``nonlin`` : callable
+            - ``filter_length`` : int
+            - ``stride`` : int
+            - ``n_latent`` : int
+            - ``l2_lambda`` : float
+            - ``loss`` : callable or str
+            - ``learn_rate`` : float
 
         Returns
         -------
@@ -815,7 +816,7 @@ class LFCNN(BaseModel):
 
         #Reverse pooling and depthwise convolution for each class
         Sx_dmx = []
-         for class_y in range(self.out_dim):
+        for class_y in range(self.out_dim):
             class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
             Sxm = np.squeeze(Sx_tconv[class_ind, :].mean(0, keepdims=True))
             Sxm = np.atleast_2d(Sxm)

@@ -400,7 +400,7 @@ def produce_tfrecords(inputs,
         produces dataset with dimensions (n, seq_length, segment, ch)
 
         'continuous' - treats inputs as a single continuous sequence,
-        produces dataset with dimensions (n*(t-segment)//aug_stride, 1, segment, ch)
+        produces dataset with dimensions ``(n*(t-segment)//aug_stride, 1, segment, ch)``
 
     target_type : str {'int', 'float'}
         Type of target variable.
@@ -1055,7 +1055,7 @@ def preprocess(data, events, sample_counter,
         Data array of dimensions [n_epochs, n_seq, n_t, n_ch]
 
     Y : np.array
-        Label arrays of dimensions [n_epochs, *(y_shape)]
+        Label arrays of dimensions ``[n_epochs, *(y_shape)]``
 
     folds : list of np.arrays
         Sample indices (offset by ``sample_counter``) belonging to

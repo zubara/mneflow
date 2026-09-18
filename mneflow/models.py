@@ -26,10 +26,10 @@ from matplotlib import collections
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from .layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling
-from tf.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
-from tf.keras.layers import Flatten, Dropout, BatchNormalization
-from tf.keras.initializers import Constant
-from tf.keras import regularizers as k_reg, constraints, layers
+from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
+from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
+from tensorflow.keras.initializers import Constant
+from tensorflow.keras import regularizers as k_reg, constraints, layers
 
 from .layers import LSTM
 import csv
