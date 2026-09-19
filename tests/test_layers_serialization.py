@@ -11,7 +11,7 @@ is exercised only if something calls tf.keras.models.load_model()
 directly on a saved .h5, but every custom layer is decorated
 `@saving.register_keras_serializable`, which promises that path works.
 
-Two bugs were found and fixed here:
+Three bugs were found and fixed here:
 
 1. (FIXED) Every custom layer's from_config() did
    `return cls(nonlin, **config)`, passing the deserialized activation
@@ -35,9 +35,31 @@ Two bugs were found and fixed here:
    this is currently harmless (its docstring notes 'size' is unused by
    the layer's own weights); for VARConv it is not -- 'size' sets the
    number of output convolution filters and is used directly in
-   build(). Tracked below as test_varconv_from_config_still_loses_size
-   (LFTConv is exempt from an equivalent assertion since a wrong
-   'size' there has no observable effect).
+   build(). Tracked below as test_varconv_from_config_still_loses_size.
+
+3. (FIXED) get_config() stored `'nonlin': self.nonlin` -- the raw,
+   live Python function object -- directly in the config dict, and
+   from_config() unconditionally called
+   `saving.deserialize_keras_object(nonlin_config)` on it, which
+   expects a *serialized* representation (a string or a config dict),
+   not a live function. Calling get_config() then from_config()
+   directly (as these tests do, and as tf.keras.models.load_model()
+   effectively does once the saved JSON has been parsed back into
+   Python) raised `TypeError: Could not parse config: <function relu
+   at 0x...>` for every layer, regardless of bug 1. This was masked
+   during development because the sandbox this fix was written in has
+   no TensorFlow installed, so nothing exercised it end to end until
+   run for real. Fixed by serializing/deserializing `nonlin` properly,
+   the way Keras activations are meant to be round-tripped:
+   `'nonlin': tf.keras.activations.serialize(self.nonlin)` in
+   get_config(), and
+   `nonlin = tf.keras.activations.deserialize(nonlin_config)` in
+   from_config(). One consequence: `tf.keras.activations.deserialize`
+   returns Keras's OWN function object for a built-in name (e.g.
+   `tf.keras.activations.relu`), not the exact object that was passed
+   in (`tf.nn.relu`) -- they compute the same thing but are not the
+   same Python object, so tests below compare by serialized name
+   rather than by identity/`is`.
 
 Two classes were deliberately left out of the fix in layers.py and
 have no tests here:
@@ -47,17 +69,17 @@ have no tests here:
   `target_shape`, not `scope` -- a different, unrelated bug in a class
   whose scope/nonlin/specs constructor arguments are commented out
   entirely. Left alone.
-- LSTM's from_config() also has the same shape, but a deeper bug on
-  top of it: get_config() merges the base tf.keras.layers.LSTM config
-  (which already has 'units'/'activation') with the custom
+- LSTM's from_config() also has the same shape (and got the same bug-3
+  nonlin serialization fix, applied for consistency), but a deeper bug
+  on top of it: get_config() merges the base tf.keras.layers.LSTM
+  config (which already has 'units'/'activation') with the custom
   'size'/'nonlin' keys, so the same dict carries both names for the
   same value. Passing that combined dict back into `cls(**config)` --
-  whether nonlin lands positionally or by keyword -- always raises
-  `TypeError: got multiple values for keyword argument 'units'` once
-  the leftover 'units'/'activation' keys reach LSTM.__init__'s
-  **args and collide with its own explicit `units=size,
-  activation=nonlin` passed to super(). This predates the fix here
-  and isn't addressed by it.
+  regardless of bugs 1 or 3 -- always raises `TypeError: got multiple
+  values for keyword argument 'units'` once the leftover
+  'units'/'activation' keys reach LSTM.__init__'s **args and collide
+  with its own explicit `units=size, activation=nonlin` passed to
+  super(). This predates the fixes here and isn't addressed by them.
 """
 import numpy as np
 import pytest
@@ -85,10 +107,19 @@ def _built(layer, input_shape):
     return layer
 
 
+def _same_activation(a, b):
+    """True if two activation callables are the same Keras activation,
+    even if they're different Python objects (e.g. tf.nn.relu vs.
+    tf.keras.activations.relu) -- compared by their canonical
+    serialized name rather than by identity."""
+    return tf.keras.activations.serialize(a) == tf.keras.activations.serialize(b)
+
+
 # --- Layers whose get_config() captures every constructor argument ---
 # (DeMixing, FullyConnected, SquareSymm, WeightedSum, WeightSum3d,
 # SquareSum3d) -- so a full round trip through get_config()/from_config()
-# should now reproduce the layer's scope and nonlin exactly.
+# should now reproduce the layer's scope and nonlin exactly (nonlin
+# compared by activation identity, not object identity -- see bug 3).
 
 @pytest.mark.parametrize("cls,kwargs,input_shape", [
     (DeMixing, dict(scope='dmx', size=8, nonlin=tf.nn.relu, axis=-1), (2, 1, 16, 6)),
@@ -103,21 +134,23 @@ def test_from_config_round_trips_scope_and_nonlin(cls, kwargs, input_shape):
     config = layer.get_config()
 
     assert config['scope'] == kwargs['scope']
-    assert config['nonlin'] is kwargs['nonlin']
+    # nonlin is now stored serialized (e.g. the string 'relu'), not as
+    # the raw function object -- see bug 3.
+    assert config['nonlin'] == tf.keras.activations.serialize(kwargs['nonlin'])
 
     restored = cls.from_config(config)
 
     # from_config() now passes scope/nonlin back in by keyword
     # (`cls(scope=scope, nonlin=nonlin, **config)`), so both survive
-    # the round trip intact.
+    # the round trip.
     assert restored.scope == kwargs['scope']
-    assert restored.nonlin is kwargs['nonlin']
+    assert _same_activation(restored.nonlin, kwargs['nonlin'])
     assert restored.size == kwargs['size']
 
 
-# --- LFTConv / VARConv: scope/nonlin now round-trip correctly (bug 1,
-# fixed), but get_config() still never includes 'size' (bug 2, not
-# fixed) -- from_config() still reconstructs with the class default.
+# --- LFTConv / VARConv: scope/nonlin now round-trip correctly (bugs 1
+# and 3, fixed), but get_config() still never includes 'size' (bug 2,
+# not fixed) -- from_config() still reconstructs with the class default.
 
 @pytest.mark.parametrize("cls", [LFTConv, VARConv])
 def test_lftconv_varconv_from_config_round_trips_scope_and_nonlin(cls):
@@ -134,9 +167,9 @@ def test_lftconv_varconv_from_config_round_trips_scope_and_nonlin(cls):
 
     restored = cls.from_config(config)
 
-    # Bug 1 (fixed): scope/nonlin now survive the round trip.
+    # Bugs 1 and 3 (fixed): scope/nonlin now survive the round trip.
     assert restored.scope == kwargs['scope']
-    assert restored.nonlin is kwargs['nonlin']
+    assert _same_activation(restored.nonlin, kwargs['nonlin'])
     assert restored.filter_length == kwargs['filter_length']
     assert restored.padding == kwargs['padding']
 

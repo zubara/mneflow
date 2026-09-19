@@ -172,7 +172,7 @@ class FullyConnected(BaseLayer, tf.keras.layers.Layer):
         """
         base_config = super(FullyConnected, self).get_config()
         config = {'scope': self.scope, 'size': self.size,
-                  'nonlin': self.nonlin, 'specs': self.specs}
+                  'nonlin': tf.keras.activations.serialize(self.nonlin), 'specs': self.specs}
 
         return {**base_config, **config}
 
@@ -193,7 +193,7 @@ class FullyConnected(BaseLayer, tf.keras.layers.Layer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -317,7 +317,7 @@ class DeMixing(BaseLayer):
         """
         config = super(DeMixing, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                        'nonlin': self.nonlin, 'axis': self.axis,
+                        'nonlin': tf.keras.activations.serialize(self.nonlin), 'axis': self.axis,
                         'specs':self.specs})
         return config
 
@@ -338,7 +338,7 @@ class DeMixing(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -486,7 +486,7 @@ class SquareSymm(BaseLayer):
         """
         config = super(SquareSymm, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                        'nonlin': self.nonlin, 'axis': self.axis,
+                        'nonlin': tf.keras.activations.serialize(self.nonlin), 'axis': self.axis,
                         'specs':self.specs})
         return config
 
@@ -507,7 +507,7 @@ class SquareSymm(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -656,7 +656,7 @@ class LFTConv(BaseLayer):
         config = super(LFTConv, self).get_config()
         config.update({'scope': self.scope,
                         'filter_length': self.filter_length,
-                        'nonlin': self.nonlin, 'padding': self.padding,
+                        'nonlin': tf.keras.activations.serialize(self.nonlin), 'padding': self.padding,
                         'specs':self.specs})
         return config
 
@@ -677,7 +677,7 @@ class LFTConv(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1001,7 +1001,7 @@ class VARConv(BaseLayer):
         config = super(VARConv, self).get_config()
         config.update({'scope': self.scope,
                         'filter_length': self.filter_length,
-                        'nonlin': self.nonlin, 'padding': self.padding,
+                        'nonlin': tf.keras.activations.serialize(self.nonlin), 'padding': self.padding,
                         'specs':self.specs})
         return config
 
@@ -1022,7 +1022,7 @@ class VARConv(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1327,7 +1327,7 @@ class LSTM(tf.keras.layers.LSTM):
         """
         config = super(LSTM, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                        'nonlin': self.nonlin})
+                        'nonlin': tf.keras.activations.serialize(self.nonlin)})
         return config
 
     @classmethod
@@ -1347,7 +1347,7 @@ class LSTM(tf.keras.layers.LSTM):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1455,7 +1455,7 @@ class WeightedSum(BaseLayer):
         config = super().get_config()
         config.update({'scope': self.scope,
                        'size': self.size,
-                       'nonlin': self.nonlin,
+                       'nonlin': tf.keras.activations.serialize(self.nonlin),
                        'axis': self.axis,
                        'specs': self.specs})
         return config
@@ -1477,7 +1477,7 @@ class WeightedSum(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1615,7 +1615,7 @@ class WeightSum3d(BaseLayer):
         config = super(WeightSum3d, self).get_config()
         config.update({'scope': self.scope,
                        'size': self.size,
-                       'nonlin': self.nonlin,
+                       'nonlin': tf.keras.activations.serialize(self.nonlin),
                        'axis': self.axis,
                        'specs': self.specs})
         return config
@@ -1637,7 +1637,7 @@ class WeightSum3d(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1779,7 +1779,7 @@ class SquareSum3d(BaseLayer):
         """
         config = super(SquareSum3d, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': self.nonlin, 'axis': self.axis,
+                       'nonlin': tf.keras.activations.serialize(self.nonlin), 'axis': self.axis,
                        'specs': self.specs})
         return config
 
@@ -1800,7 +1800,7 @@ class SquareSum3d(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = saving.deserialize_keras_object(nonlin_config)
+        nonlin = tf.keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
