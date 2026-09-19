@@ -416,7 +416,27 @@ class DeMixing(BaseLayer):
 @saving.register_keras_serializable(package="mneflow")
 class SquareSymm(BaseLayer):
     """
-    SquaredSymmetric Layer
+    Squared-symmetric (congruence transform) layer.
+
+    Applies the same weight matrix along two dimensions of a
+    per-sample square matrix, i.e. computes ``w.T @ X @ w`` for each
+    sample ``X`` (see :meth:`call`). Commonly used to project a square
+    spatial covariance/connectivity matrix of shape
+    ``(n_channels, n_channels)`` onto a smaller, still-square
+    ``(size, size)`` matrix while preserving symmetry.
+
+    Shape contract
+    --------------
+    Expects a 3-D input of shape ``(batch, N, N)`` where the two
+    non-batch dimensions are equal, i.e.
+    ``input_shape[1] == input_shape[-1]``. This is a constraint on the
+    *input* only -- ``size`` is independent of ``N`` and may be
+    smaller, equal to, or larger than it. Passing a non-square input
+    raises an error from the second ``tf.tensordot`` call in
+    :meth:`call`, since its two contracted axes would then have
+    mismatched sizes.
+
+    Output shape: ``(batch, size, size)``.
 
     """
     def __init__(self, scope='ssym', size=None, nonlin=tf.identity, axis=1,

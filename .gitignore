@@ -7,6 +7,10 @@ examples/.ipynb_checkpoints/
 build
 datasets
 dist
-tests
 mneflow.egg-info
 tfr
+.pytest_cache
+.coverage
+coverage.xml
+htmlcov
+_to_delete

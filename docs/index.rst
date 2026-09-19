@@ -10,7 +10,7 @@ Welcome to MNEflow's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   intro
+   readme
    models	
    mneflow_api
    changelog
