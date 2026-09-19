@@ -253,8 +253,9 @@ class MetaData():
         """
         if not meta_path:
             meta_path = self.data['path']
-        if os.path.exists(meta_path + new_data_id + '_meta.pkl'):
-            with open(meta_path + new_data_id + '_meta.pkl', 'rb') as f:
+        meta_file = os.path.join(meta_path, new_data_id + '_meta.pkl')
+        if os.path.exists(meta_file):
+            with open(meta_file, 'rb') as f:
                 new_meta = pickle.load(f)
 
         keys = ['path', 'data_path', 'data_id',
