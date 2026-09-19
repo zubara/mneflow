@@ -194,7 +194,7 @@ class FullyConnected(BaseLayer, tf.keras.layers.Layer):
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Create the layer's weights.
@@ -339,7 +339,7 @@ class DeMixing(BaseLayer):
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Create the layer's demixing weights and bias.
@@ -508,7 +508,7 @@ class SquareSymm(BaseLayer):
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Create the layer's weights and bias.
@@ -678,7 +678,7 @@ class LFTConv(BaseLayer):
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Create the layer's depthwise convolution filters and bias.
@@ -1023,7 +1023,7 @@ class VARConv(BaseLayer):
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Create the layer's convolution filters and bias.
@@ -1056,7 +1056,7 @@ class VARConv(BaseLayer):
                                        name='tconv_weights',
                                        dtype=tf.float32)
 
-        self.b = self.add_weight(shape=([input_shape[-1]]),
+        self.b = self.add_weight(shape=([self.size]), 
                                  initializer=Constant(bias_const),
                                  regularizer=None,
                                  trainable=bias_traiable,
@@ -1348,7 +1348,7 @@ class LSTM(tf.keras.layers.LSTM):
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Build the underlying ``tf.keras.layers.LSTM``.
@@ -1476,9 +1476,9 @@ class WeightedSum(BaseLayer):
 
         """
         nonlin_config = config.pop("nonlin")
-        cls.scope = config.pop("scope")
+        scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Create the layer's weights and bias.
@@ -1636,9 +1636,9 @@ class WeightSum3d(BaseLayer):
 
         """
         nonlin_config = config.pop("nonlin")
-        cls.scope = config.pop("scope")
+        scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Create the layer's per-channel weights and biases.
@@ -1801,7 +1801,7 @@ class SquareSum3d(BaseLayer):
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
-        return cls(nonlin, **config)
+        return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
         """Create the layer's per-channel weights and biases.
