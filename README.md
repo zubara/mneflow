@@ -1,5 +1,7 @@
 # MNEflow
 
+[![Tests](https://github.com/zubara/mneflow/actions/workflows/tests.yml/badge.svg)](https://github.com/zubara/mneflow/actions/workflows/tests.yml)
+
 Neural networks for EEG/MEG decoding and interpretation, built on [MNE-Python](https://mne.tools) and TensorFlow.
 
 MNEflow provides neuroscientists with a robust, reproducible, and time-efficient way to apply (deep) convolutional neural networks (CNNs) to EEG and MEG data. It implements several published CNN architectures for M/EEG decoding, a streamlined pipeline for preprocessing, training, and benchmarking them, and a growing set of tools for inspecting the patterns a trained model has learned to rely on.
