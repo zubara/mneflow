@@ -154,3 +154,30 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 ## License
 
 BSD-3. See [LICENSE.md](LICENSE.md).
+
+### Supported / tested versions
+
+MNEflow sits on top of a fast-moving scientific-Python + deep-learning
+stack, and the packages it depends on don't always coordinate breaking
+changes with each other. The combination below is what CI actually
+installs and runs against; combinations outside it may work but aren't
+verified.
+
+| Component | Tested range | Why the bound is there |
+| --- | --- | --- |
+| Python | 3.9 – 3.11 | 3.12/3.13 run as a non-blocking canary job in CI (see below); not yet officially supported |
+| NumPy | >=1.23.5, <2.0 | `tensorflow<=2.16rc` is compiled against the NumPy 1.x ABI; importing it under NumPy 2.x fails with `AttributeError: _ARRAY_API not found` |
+| SciPy | <1.15 | SciPy 1.15 removed `scipy.special.sph_harm`, which `mne<=1.7` still calls |
+| MNE-Python | >=1.0, <=1.7 | Newer MNE releases require SciPy >=1.15, which conflicts with the pin above |
+| TensorFlow | >=2.12.0, <=2.16rc | Later 2.16+ releases move to standalone Keras 3, which changes model-building APIs MNEflow relies on |
+
+If you hit an import or install error with a newer release of any of
+these, it's most likely a version-compatibility issue rather than a bug
+in your setup — please check [open issues](https://github.com/zubara/mneflow/issues)
+or file a new one with `pip list` output attached.
+
+CI (`.github/workflows/tests.yml`) runs on every push/PR against the
+supported matrix above, plus a weekly scheduled run so a new upstream
+release that breaks compatibility is caught even between commits, and a
+non-blocking canary job against newer Python versions to give advance
+warning before they're adopted.
