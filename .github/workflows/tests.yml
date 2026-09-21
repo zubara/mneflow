@@ -1,0 +1,53 @@
+# .github/workflows/tests.yml
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master, dev]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        env:
+          MPLBACKEND: Agg   # headless plotting -- no display on CI runners
+          TF_ENABLE_ONEDNN_OPTS: "0"  # oneDNN's CPU depthwise-conv kernel can
+                                       # SIGFPE on some runner CPUs for certain
+                                       # filter sizes (e.g. LFTConv filter_length=15)
+        run: pytest -m "not slow" --cov=mneflow --cov-report=xml
+
+      - name: Register Jupyter kernel for notebook execution
+        run: python -m ipykernel install --user --name python3
+
+      - name: Run CI integration notebooks (synthetic data, 3 epochs)
+        env:
+          MPLBACKEND: Agg
+          TF_ENABLE_ONEDNN_OPTS: "0"
+        run: pytest -v -m slow tests/test_nb_examples.py
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: coverage.xml

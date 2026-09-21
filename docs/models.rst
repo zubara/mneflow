@@ -4,7 +4,7 @@ Implemented models
 LFCNN
 -----
 
-.. autoclass:: mneflow.models.LFCNN
+.. autoclass:: mneflow.lfcnn.LFCNN
     :members:
     :undoc-members:
     :show-inheritance:

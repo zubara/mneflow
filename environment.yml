@@ -1,0 +1,23 @@
+# Minimal, cross-platform conda environment for installing mneflow.
+#
+# Deliberately does NOT re-pin numpy/scipy/mne/tensorflow here -- those
+# bounds already live in pyproject.toml, and duplicating them in a second
+# file is exactly how they drift out of sync (see the numpy/scipy issue
+# fixed 2026-09-21). This file just gets a compatible Python interpreter
+# in place and lets pip -- which is what mneflow's dependencies are
+# actually published and tested through -- resolve and install everything
+# else from PyPI, the same way `pip install mneflow` does on its own.
+#
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate mneflow
+#
+# Supported Python: 3.9 - 3.11 (see README.md "Supported / tested versions").
+name: mneflow
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.9,<3.12
+  - pip
+  - pip:
+      - mneflow
