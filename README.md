@@ -83,7 +83,7 @@ API reference is available in the [Documentation](https://mneflow.readthedocs.io
 
 ## Publications using MNEflow
 
-A selection of peer-reviewed papers and preprints that use MNEflow for EEG/MEG decoding or interpretation (compiled from [Google Scholar](https://scholar.google.com/citations?user=xWRyzr4AAAAJ); not necessarily exhaustive):
+A selection of peer-reviewed papers and preprints that use MNEflow for EEG/MEG decoding or interpretation:
 
 - Zubarev I, Nurminen M, Parkkonen L. Robust discrimination of multiple naturalistic same-hand movements from MEG signals with convolutional neural networks. *Imaging Neuroscience* 2, imag-2-00178 (2024). [link](https://doi.org/10.1162/imag_a_00178)
 - Ruuskanen S, Saarro E, Caivano CM, Parkkonen L, Zubarev I. Interpretable Decoding of Frequency-Resolved Functional Connectivity. *bioRxiv* (2026). [link](https://www.biorxiv.org/content/10.64898/2026.08.20.745932v1)
@@ -171,13 +171,3 @@ verified.
 | MNE-Python | >=1.0, <=1.7 | Newer MNE releases require SciPy >=1.15, which conflicts with the pin above |
 | TensorFlow | >=2.12.0, <=2.16rc | Later 2.16+ releases move to standalone Keras 3, which changes model-building APIs MNEflow relies on |
 
-If you hit an import or install error with a newer release of any of
-these, it's most likely a version-compatibility issue rather than a bug
-in your setup — please check [open issues](https://github.com/zubara/mneflow/issues)
-or file a new one with `pip list` output attached.
-
-CI (`.github/workflows/tests.yml`) runs on every push/PR against the
-supported matrix above, plus a weekly scheduled run so a new upstream
-release that breaks compatibility is caught even between commits, and a
-non-blocking canary job against newer Python versions to give advance
-warning before they're adopted.
