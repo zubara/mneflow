@@ -166,7 +166,7 @@ verified.
 | Component | Tested range | Why the bound is there |
 | --- | --- | --- |
 | Python | 3.9 – 3.11 | 3.12/3.13 run as a non-blocking canary job in CI (see below); not yet officially supported |
-| NumPy | >=1.23.5, <2.0 | `tensorflow<=2.16rc` is compiled against the NumPy 1.x ABI; importing it under NumPy 2.x fails with `AttributeError: _ARRAY_API not found` |
+| NumPy | >=1.23.5, <2.0 | `tensorflow<=2.16rc` is compiled against the NumPy 1.x ABI; |
 | SciPy | <1.15 | SciPy 1.15 removed `scipy.special.sph_harm`, which `mne<=1.7` still calls |
 | MNE-Python | >=1.0, <=1.7 | Newer MNE releases require SciPy >=1.15, which conflicts with the pin above |
 | TensorFlow | >=2.12.0, <=2.16rc | Later 2.16+ releases move to standalone Keras 3, which changes model-building APIs MNEflow relies on |

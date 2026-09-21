@@ -458,7 +458,6 @@ class BaseModel():
 
             if collect_patterns and hasattr(self, 'collect_patterns'):
                 self.collect_patterns(fold=self.current_fold, n_folds=n_folds,
-                                      n_comp=int(collect_patterns),
                                       shapley_order=shapley_order)
             if store_fold_predictions:
                 self.cv_predictions.append({'y_true':y_true,

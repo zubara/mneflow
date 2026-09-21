@@ -937,15 +937,17 @@ class LFCNN(BaseModel):
         -------
         patterns_struct : dict
             Dictionary collecting all computed patterns and
-            statistics, with (among others) the keys ``'weights'``
-            (see :meth:`extract_weights`), ``'ccms'`` (class-
-            conditional mean activations of each layer), ``'dcov'``
-            (spatial covariance matrices, see
+            statistics, with (among others) the keys 
+            ``'weights'`` (see :meth:`extract_weights`), 
+            ``'ccms'`` (class-conditional mean activations of each layer), 
+            ``'dcov'`` (spatial covariance matrices, see
             :meth:`_get_class_conditional_spatial_covariance`),
-            ``'spectra'`` (see :meth:`compute_spectra`), ``'freqs'``,
-            ``'cov_xx'``, ``'pinv_w'`` and ``'wfc_mean'`` (combined
-            patterns, see :meth:`_compute_combined_patterns`), and,
-            depending on ``methods``/``shapley_order``,
+            ``'spectra'`` (see :meth:`compute_spectra`), 
+            ``'freqs'``,
+            ``'cov_xx'``, 
+            ``'pinv_w'`` and 
+            ``'wfc_mean'`` (combined patterns, see :meth:`_compute_combined_patterns`), and,
+            depending on ``methods``/``shapley_order``, 
             ``'compwise_loss'``, ``'shap_o2'``, ``'shap_o3'``,
             ``'ind_top_o2'``, ``'ind_top_o3'`` and
             ``'corr_to_output'`` (see
@@ -1254,7 +1256,7 @@ class LFCNN(BaseModel):
                                                          self.specs['n_latent'],
                                                          self.y_shape[0],
                                                          n_folds])
-    def collect_patterns(self, fold=0, n_folds=1, n_comp=1, shapley_order=0,
+    def collect_patterns(self, fold=0, n_folds=1, shapley_order=0,
                          methods=['weight',
                                   'weight_norm',
                                   'output_corr']):
@@ -1272,9 +1274,6 @@ class LFCNN(BaseModel):
         n_folds : int, optional
             Total number of cross-validation folds. Currently unused
             in this method. Defaults to 1.
-
-        n_comp : int, optional
-            Currently unused in this method. Defaults to 1.
 
         shapley_order : int, optional
             Highest order of component-interaction relevances to
