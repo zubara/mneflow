@@ -904,8 +904,11 @@ class BaseModel():
 
         Returns
         -------
-        out : tf.Tensor
-            Model output (``self.km(x, training=True)``).
+        out : np.ndarray
+            Predicted class index/indices if
+            ``target_type == 'int'`` (``argmax`` of the model's
+            output scores), otherwise the raw model output
+            (``self.km(x, training=False)``).
 
         """
         n_ch = self.dataset.h_params['n_ch']
@@ -916,9 +919,11 @@ class BaseModel():
         while x.ndim < 4:
             x = np.expand_dims(x, 0)
 
-        out = self.km(x, training=True)
-        # if self.dataset.h_params['target_type'] == 'int':
-        #     out = np.argmax(out, -1)
+        # training=False so that dropout/batchnorm run in inference mode;
+        # using training=True here made predictions noisy/non-reproducible.
+        out = self.km(x, training=False)
+        if self.dataset.h_params['target_type'] == 'int':
+            out = np.argmax(out, -1)
 
         return out
 
