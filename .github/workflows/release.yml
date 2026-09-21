@@ -1,0 +1,77 @@
+# Publish mneflow to PyPI via trusted publishing (OIDC) -- no API token
+# stored or entered anywhere, ever. Requires a one-time setup on PyPI's
+# side; see the comment block at the bottom of this file.
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Guard against forks accidentally inheriting this workflow and trying
+    # to publish under this project's name.
+    if: github.repository == 'zubara/mneflow'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mneflow
+    permissions:
+      id-token: write      # required by OIDC trusted publishing
+      attestations: write  # lets PyPI record build provenance (PEP 740)
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+# --- One-time setup (do this once, before the first release through this workflow) ---
+#
+# 1. Create a GitHub Environment named "pypi":
+#      repo Settings -> Environments -> New environment -> name it "pypi".
+#      Optionally add yourself as a required reviewer for extra protection
+#      (every publish then needs a manual approval click in the Actions tab).
+#
+# 2. Register this workflow as a trusted publisher on PyPI:
+#      https://pypi.org/manage/project/mneflow/settings/publishing/
+#      -> Add a new publisher, with:
+#           Owner:               zubara
+#           Repository name:     mneflow
+#           Workflow filename:   release.yml
+#           Environment name:    pypi
+#
+# After that, publishing a new version is just: bump the version in
+# pyproject.toml, commit, then create a GitHub Release (with a matching
+# tag, e.g. v0.6.2) and publish it. This workflow does the rest -- no
+# twine, no token, nothing to store on your machine.
