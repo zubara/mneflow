@@ -825,7 +825,7 @@ class LFCNN(BaseModel):
         #Reverse pooling and depthwise convolution for each class
         Sx_dmx = []
         for class_y in range(self.out_dim):
-            class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
+            class_ind = tf.reshape(tf.where(tf.argmax(y, 1)==class_y), [-1])  # 1-D regardless of match count (see _get_class_conditional_spatial_covariance)
             Sxm = np.squeeze(Sx_tconv[class_ind, :].mean(0, keepdims=True))
             Sxm = np.atleast_2d(Sxm)
             dc = dcov['class_conditional'][..., class_y]
@@ -877,7 +877,7 @@ class LFCNN(BaseModel):
         for class_y in range(self.out_dim):
             #compute mean activation of final layer for each class
             #TODO: -> to self.activations
-            class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
+            class_ind = tf.reshape(tf.where(tf.argmax(y, 1)==class_y), [-1])  # 1-D regardless of match count (see _get_class_conditional_spatial_covariance)
             fc_bp_out = (np.dot(activations['fc'].numpy()[class_ind, :],
                                weights['out_w_flat'].T)).mean(0)
 
@@ -1052,18 +1052,34 @@ class LFCNN(BaseModel):
 
         elif self.dataset.h_params['target_type'] == 'int':
             y_int = np.argmax(y, 1)
-            y_unique = np.unique(y_int)
-            evokeds = np.array([X.numpy()[y_int == i, ...].mean(0)
-                                for i in y_unique])
+            # Iterate over *all* declared classes (self.out_dim, e.g. from
+            # class_subset), not just np.unique(y_int) -- the batch used
+            # here (self.dataset.val by default) is not guaranteed to
+            # contain every class, and collect_patterns() always assigns
+            # into a pre-allocated array sized for self.out_dim classes.
+            # A class missing from this particular batch previously shrank
+            # y_unique and every ccm_*/evokeds array along with it, which
+            # broke that assignment with a shape mismatch (e.g. (..., 6)
+            # into (..., 7)). Missing classes are filled with zeros instead.
+            n_classes = self.out_dim
+
+            def _class_means(arr, axis=-1):
+                arr = arr.numpy() if hasattr(arr, 'numpy') else arr
+                means = [arr[y_int == i, ...].mean(0) if np.any(y_int == i)
+                         else np.zeros(arr.shape[1:], dtype=arr.dtype)
+                         for i in range(n_classes)]
+                return np.stack(means, axis)
+
+            # evokeds/true_evoked_data keep classes on axis 0 (as before,
+            # and as plot_evoked_peaks' docstring expects: shape
+            # (n_classes, n_t, n_ch)); the ccm_* arrays keep classes on the
+            # last axis, matching collect_patterns()'s pre-allocated shapes.
+            evokeds = _class_means(X, axis=0)
             self.true_evoked_data = np.squeeze(evokeds)
-            ccm_dmx = np.stack([activations['dmx'].numpy()[y_int == i, ...].mean(0)
-                                for i in y_unique], -1)
-            ccm_tconv = np.stack([activations['tconv'].numpy()[y_int == i, ...].mean(0)
-                                for i in y_unique], -1)
-            ccm_pooled = np.stack([activations['pooled'].numpy()[y_int == i, ...].mean(0)
-                                for i in y_unique], -1)
-            ccm_fc = np.stack([activations['fc'].numpy()[y_int == i, ...].mean(0)
-                                for i in y_unique], -1)
+            ccm_dmx = _class_means(activations['dmx'])
+            ccm_tconv = _class_means(activations['tconv'])
+            ccm_pooled = _class_means(activations['pooled'])
+            ccm_fc = _class_means(activations['fc'])
             cov_y_hat = np.cov(tf.transpose(activations['fc'], perm=[1, 0]))
             cov_y = np.cov(tf.transpose(y, perm=[1, 0]))
 
