@@ -23,17 +23,17 @@ import pytest
 from nbclient import NotebookClient
 from nbclient.exceptions import CellExecutionError
 
-EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
+EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "tests/notebooks"
 
 # Execution order matters: mneflow_save_restore.ipynb and
 # own_graph_example.ipynb both reload the tfrecords (and, for
 # save_restore, the trained model) that mneflow_example_tf2.ipynb writes
 # to MNEFLOW_DATA_PATH, so it must run first.
 NOTEBOOKS = [
-    "mneflow_example_tf2.ipynb",
-    "mneflow_save_restore.ipynb",
-    "own_graph_example.ipynb",
-    "regression_example.ipynb",
+    "mneflow_example_tf2_ci.ipynb",
+    "mneflow_save_restore_ci.ipynb",
+    "own_graph_example_ci.ipynb",
+    "regression_example_ci.ipynb",
 ]
 
 SKIP_CI_TAG = "skip-ci"
