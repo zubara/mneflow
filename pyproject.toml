@@ -40,6 +40,7 @@ dev = [
     "nbformat",   # for tests/test_examples.py, which executes the example notebooks
     "nbclient",
     "ipykernel",
+    "nibabel",
 ]
 
 [project.urls]
