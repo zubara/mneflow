@@ -81,6 +81,15 @@ The modular structure of the underlying `mneflow.layers` also makes it straightf
 
 API reference is available in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
 
+## Publications using MNEflow
+
+A selection of peer-reviewed papers and preprints that use MNEflow for EEG/MEG decoding or interpretation (compiled from [Google Scholar](https://scholar.google.com/citations?user=xWRyzr4AAAAJ); not necessarily exhaustive):
+
+- Zubarev I, Nurminen M, Parkkonen L. Robust discrimination of multiple naturalistic same-hand movements from MEG signals with convolutional neural networks. *Imaging Neuroscience* 2, imag-2-00178 (2024). [link](https://doi.org/10.1162/imag_a_00178)
+- Ruuskanen S, Saarro E, Caivano CM, Parkkonen L, Zubarev I. Interpretable Decoding of Frequency-Resolved Functional Connectivity. *bioRxiv* (2026). [link](https://www.biorxiv.org/content/10.64898/2026.08.20.745932v1)
+- Matsuda RH, Makkonen M, Zubarev I, Kahilakoski OP, Kinnunen LA, et al. Automated robotic control system for EEG-BCI-guided closed-loop TMS. *bioRxiv* (2026). [link](https://www.biorxiv.org/content/10.64898/2026.05.15.725366v1)
+- Pultsina K, Zubarev I, Ronkainen P, Parviainen T. Cortical Oscillatory Dynamics Track Sympathetic Arousal and Index Individual Differences in Anxiety. Preprint (2026). [link](https://doi.org/10.21203/rs.3.rs-10208090/v1)
+
 ## References
 
 Zubarev I, Vranou G, Parkkonen L. MNEflow: Neural networks for EEG/MEG decoding and interpretation. *SoftwareX* [link](https://www.sciencedirect.com/science/article/pii/S2352711021001795)
