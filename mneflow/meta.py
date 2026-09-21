@@ -211,16 +211,23 @@ class MetaData():
             model = models.EEGNet(meta=self, dataset=dataset)
 
         model.build()
-        model.model_name = "_".join([self.model_specs['scope'],
+        # NOTE: model.model_name (set by build() to "<scope>_<data_id>",
+        # matching the *_init.weights.h5 file it saves) must NOT be
+        # overwritten here: model.train()'s per-fold weight reset (e.g. in
+        # 'cv'/'loso' mode) reuses model.model_name to rebuild that
+        # filename, so mutating it to end in '.h5' broke continued
+        # training after a restore. Use a separate local variable for the
+        # saved-model filename instead.
+        saved_model_name = "_".join([self.model_specs['scope'],
                                self.data['data_id'] + '.h5'])
         model.km.load_weights(os.path.join(self.model_specs['model_path'],
-                                           model.model_name))
+                                           saved_model_name))
         if load_encoder and os.path.exists(os.path.join(self.model_specs['model_path'],
-                                           model.model_name[:-3] + 'encoder_.h5')):
+                                           saved_model_name[:-3] + 'encoder_.h5')):
           print("Loading encoder")
           model.build_encoder()
           model.km_enc.load_weights(os.path.join(self.model_specs['model_path'],
-                                                 model.model_name[:-3] + 'encoder_.h5'))
+                                                 saved_model_name[:-3] + 'encoder_.h5'))
 
         model.cv_patterns = self.patterns
         #TODO: set weights from self.km.weights
@@ -378,7 +385,19 @@ class MetaData():
         else:
             channel_subset = np.arange(0,  topos.shape[0], 1, dtype=int)
 
-        lo = layout.copy().pick(channel_subset)
+        if hasattr(layout, 'copy') and hasattr(layout, 'pick'):
+            # Older mne.channels.layout.Layout API.
+            lo = layout.copy().pick(channel_subset)
+        else:
+            # Current mne.channels.layout.Layout no longer has
+            # copy()/pick(); subset the layout's arrays by hand.
+            idx = np.asarray(channel_subset)
+            lo = mne.channels.layout.Layout(
+                box=layout.box,
+                pos=layout.pos[idx],
+                names=[layout.names[i] for i in idx],
+                ids=[layout.ids[i] for i in idx],
+                kind=layout.kind)
         info = mne.create_info(lo.names, 1., ch_type)
 
         #TODO: use mne.channels.find_layout
@@ -589,14 +608,20 @@ class MetaData():
                                                integrate=['timepoints'],
                                                diff=diff)
 
-        n_folds = len(self.data['folds'][0])
+        # As in get_timecourse/plot_timecourses: derive n_folds from the
+        # relevances actually collected (F's last axis), not the
+        # dataset's total cross-validation fold count, which over-counts
+        # whenever fewer folds were collected (e.g. mode='single_fold').
+        n_folds = F.shape[-1]
         if n_folds%n_cols != 0:
             n_rows = n_folds//n_cols + 1
         else:
             n_rows = n_folds//n_cols
 
         f, ax = plt.subplots(n_rows, n_cols)
-        ax = ax.flatten()
+        # plt.subplots returns a bare Axes (no .flatten()) rather than an
+        # ndarray when n_rows == n_cols == 1 (e.g. a single collected fold).
+        ax = np.atleast_1d(ax).flatten()
 
 
         for jj in range(n_folds):
@@ -924,9 +949,20 @@ class MetaData():
 
         #get component index for each fold
         component_inds = np.argmax(np.max(relevances, axis=0), axis=0)
-        n_y = np.prod(self.data['y_shape'])
+        # `self.data['y_shape']` reflects the full dataset's class count,
+        # which over-counts when patterns were collected with a narrower
+        # `class_subset` (component_inds/activations/waveforms are only
+        # sized for the classes actually used), so derive n_y from the
+        # collected patterns themselves instead.
+        n_y = component_inds.shape[0]
         #aggregate over folds
-        n_folds = len(self.data['folds'][0])
+        # Likewise, `self.data['folds'][0]` reflects the dataset's total
+        # cross-validation fold count, which over-counts when patterns
+        # were only collected for some of them (e.g. mode='single_fold'
+        # only collects 1 fold's worth of patterns even though the
+        # dataset itself may have 5); derive n_folds from what was
+        # actually collected instead.
+        n_folds = component_inds.shape[-1]
         print("kernels: ", kernels.shape, 'inds: ', component_inds.shape)
         tconv_weights = np.stack([kernels[:, component_inds[:, i], i]
                                   for i in range(n_folds)], -1) #n_classes, n_folds, filter_length
@@ -1286,7 +1322,11 @@ class MetaData():
         print(cc_activations.shape, cc_waveforms.shape, tconv_weights.shape)
 
         if not class_subset:
-            class_subset = np.arange(0,  np.prod(self.data['y_shape']), 1)
+            # `self.data['y_shape']` is the full dataset's class count,
+            # which over-counts when patterns were collected with a
+            # narrower `class_subset`; use the shape of what
+            # get_timecourse() actually returned instead.
+            class_subset = np.arange(0, cc_waveforms.shape[1], 1)
         else:
             cc_waveforms = cc_waveforms[:, class_subset, :]
             cc_activations = cc_activations[ :, class_subset, :]
@@ -1295,7 +1335,9 @@ class MetaData():
         h /= np.sum(h, 0, keepdims=True)
         freq_responses /= np.sum(freq_responses, 0, keepdims=True)
         n_classes = len(class_subset)
-        n_folds = len(self.data['folds'][0])
+        # Likewise, derive n_folds from the collected patterns rather
+        # than the dataset's total fold count (see get_timecourse).
+        n_folds = cc_waveforms.shape[-1]
 
         if not class_names:
             class_names = ["Class {}".format(i) for i in range(n_classes)]
@@ -1317,6 +1359,11 @@ class MetaData():
             n_rows = n_folds
             h_std = np.zeros((1, n_rows))
             psds_std = np.zeros((1, n_rows))
+            # No fold-averaging requested, so there's no std to shade;
+            # this used to be left unset, which crashed the fill_between
+            # call below with an UnboundLocalError.
+            sd_waveforms = np.zeros_like(cc_waveforms)
+            sd_activations = np.zeros_like(cc_activations)
 
         f, ax = plt.subplots(n_rows, 2)
         ax = np.atleast_2d(ax)
@@ -1329,9 +1376,14 @@ class MetaData():
 
         for i in range(n_rows):
             ax[i, 0].plot(times, cc_waveforms[..., i], alpha=.75, color='tab:blue')
-            ax[i, 0].fill_between(times,
-                                  cc_waveforms[..., i] - sd_waveforms[..., i],
-                                  cc_waveforms[..., i] + sd_waveforms[..., i], alpha=.25, color='tab:blue')
+            if average_over == 'folds':
+                # Only meaningful (and only 1-D, as fill_between requires)
+                # when each row is a single class averaged over folds; with
+                # one row per fold plotting all classes at once, sd/mean
+                # are 2-D and there's no fold-std to shade anyway.
+                ax[i, 0].fill_between(times,
+                                      cc_waveforms[..., i] - sd_waveforms[..., i],
+                                      cc_waveforms[..., i] + sd_waveforms[..., i], alpha=.25, color='tab:blue')
             ax[i, 0].plot(times, cc_activations[..., i], alpha=.75, color='tab:orange')
 
             print(psds_std.shape)
