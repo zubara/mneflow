@@ -26,7 +26,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy",
-    "scipy",
+    "scipy<1.15",  # scipy 1.15 removed scipy.special.sph_harm, which mne<=1.7 still imports
     "mne>=1.0,<=1.7",
     "tensorflow>=2.12.0,<=2.16rc",
     "matplotlib",
@@ -34,7 +34,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov"]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "nbformat",   # for tests/test_examples.py, which executes the example notebooks
+    "nbclient",
+    "ipykernel",
+]
 
 [project.urls]
 Homepage = "https://github.com/zubara/mneflow"

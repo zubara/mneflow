@@ -537,14 +537,22 @@ class LFCNN(BaseModel):
         dcovs = []
         dcovs_n = []
         for class_y in range(self.out_dim):
-            class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)==class_y))#[0]
-            xs = np.squeeze(X.numpy()[class_ind, ...])
+            # `tf.reshape(..., [-1])` (rather than `tf.squeeze`) keeps the
+            # index array 1-D even when exactly one sample matches -- a
+            # plain `tf.squeeze` collapses a (1, 1) match down to a scalar,
+            # which then drops the batch dimension entirely on indexing and
+            # breaks the einsum below for that (fold, class) combination.
+            class_ind = tf.reshape(tf.where(tf.argmax(y, 1)==class_y), [-1])
+            # axis=1 targets only the model's singleton channel-group axis
+            # (see the `X` shape in the docstring above); squeezing with no
+            # axis would additionally collapse a batch of exactly 1 sample.
+            xs = np.squeeze(X.numpy()[class_ind, ...], axis=1)
             #xs -= np.mean(xs, axis=-2, keepdims=True)
             ddof_s = xs.shape[0]*self.dataset.h_params['n_t'] - 1
             cov_s = np.einsum('ijk, ijl -> kl', xs, xs) / ddof_s
 
-            anti_class_ind = tf.squeeze(tf.where(tf.argmax(y, 1)!=class_y))#[0]
-            xn = np.squeeze(X.numpy()[anti_class_ind, ...])
+            anti_class_ind = tf.reshape(tf.where(tf.argmax(y, 1)!=class_y), [-1])
+            xn = np.squeeze(X.numpy()[anti_class_ind, ...], axis=1)
             ddof_n = xn.shape[0]*self.dataset.h_params['n_t'] - 1
             cov_n = np.einsum('ijk, ijl -> kl', xn, xn) / ddof_n
 
