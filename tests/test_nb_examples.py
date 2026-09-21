@@ -30,8 +30,8 @@ EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "tests/notebooks"
 # save_restore, the trained model) that mneflow_example_tf2.ipynb writes
 # to MNEFLOW_DATA_PATH, so it must run first.
 NOTEBOOKS = [
-    "mneflow_example_tf2_ci.ipynb",
-    "mneflow_save_restore_ci.ipynb",
+    "basic_example_ci.ipynb",
+    "save_restore_ci.ipynb",
     "own_graph_example_ci.ipynb",
     "regression_example_ci.ipynb",
 ]

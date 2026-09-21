@@ -515,7 +515,7 @@ def produce_tfrecords(inputs,
 
     Examples
     --------
-    >>> meta = mneflow.produce_tfrecords(input_paths, \**import_opts)
+    >>> meta = mneflow.produce_tfrecords(input_paths, **import_opts)
     """
 
     assert input_type in ['trials', 'seq', 'continuous', 'fconn'], "Unknown input type: {}".format(input_type)
