@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mneflow"
-version = "0.5.13dev"
+version = "0.6.1"
 description = "Neural networks for MEG and EEG data"
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -30,6 +30,7 @@ dependencies = [
     "mne>=1.0,<=1.7",
     "tensorflow>=2.12.0,<=2.16rc",
     "matplotlib",
+    "dill",
 ]
 
 [project.optional-dependencies]
