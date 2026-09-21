@@ -832,7 +832,7 @@ class BaseModel():
             log['class_ratio'] = self.meta.data['class_ratio']
             log['orig_classees'] = self.meta.data['orig_classees']
             log['rebalance_classes'] = self.meta.data['rebalance_classes']
-            log['cm'] = self.meta.data['cm']
+            log['cm'] = self.meta.results['cm']
             log_header += classif_header
 
         elif self.meta.data['target_type'] == 'float':

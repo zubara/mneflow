@@ -367,8 +367,11 @@ class Dataset(object):
             dataset = dataset.filter(self._select_classes)
             dataset = dataset.map(self._select_class_subset)
 
+            # class_ratio keys are stored as str (see produce_labels), while
+            # class_subset is a list of ints, so compare on int(k) rather
+            # than the raw (str) key to avoid an always-empty match.
             subset_ratio = np.sum([v for k,v in self.h_params['class_ratio'].items()
-                                   if k in self.h_params['class_subset']])
+                                   if int(k) in self.h_params['class_subset']])
             ratio_multiplier = 1./subset_ratio
             print("Using class_subset with {} classes:".format(len(self.h_params['class_subset'])))
 
@@ -376,7 +379,7 @@ class Dataset(object):
                                                                   ratio_multiplier
                                                                   ))
             cp = {k:v*ratio_multiplier for k,v in self.h_params['class_ratio'].items()
-                  if k in self.h_params['class_subset']}
+                  if int(k) in self.h_params['class_subset']}
 
             self.h_params['class_ratio'] = cp
             self.y_shape = (len(self.h_params['class_subset']),)

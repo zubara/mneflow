@@ -592,8 +592,9 @@ def produce_tfrecords(inputs,
 
                 if t_index is not None:
                     assert len(t_index[i]) == len(events), "t_index size ({}) mismatches the size of  the data ({})".format(len(t_index[i]), len(events))
+                    cur_t_index = np.asarray(t_index[i])
                 else:
-                    t_index = np.arange(len(events))
+                    cur_t_index = np.arange(len(events))
 
                 X, Y, fold_split = preprocess(
                         data, events,
@@ -629,8 +630,8 @@ def produce_tfrecords(inputs,
                     test_fold = fold_split.pop(-1) - train_size
                     X, x_test = _split_sets(X, test_fold)
                     Y, y_test = _split_sets(Y, test_fold)
-                    if np.any(t_index):
-                        T, t_test = _split_sets(t_index, test_fold)
+                    if np.any(cur_t_index):
+                        T, t_test = _split_sets(cur_t_index, test_fold)
                     test_fold = test_fold + train_size
                     test_size += x_test.shape[0]
                 else:
@@ -655,9 +656,13 @@ def produce_tfrecords(inputs,
 
                 folds.append(fold_split)
                 if t_index is not None:
-                    indices.append([t_index[i][f - train_size] for f in fold_split])
+                    indices.append([cur_t_index[f - train_size] for f in fold_split])
                 else:
-                    indices.append([n[f - train_size]  for f in fold_split])
+                    # `fold_split` entries already hold the original
+                    # (train_size-offset) sample indices; looking them up in
+                    # `n` breaks once a holdout test fold has shrunk `n`
+                    # below the largest index still present in fold_split.
+                    indices.append([f for f in fold_split])
 
                 train_size += _n
 

@@ -14,12 +14,12 @@ pip install mneflow
 
 ## Dependencies
 
-- Python 3
-- `tensorflow > 2.12.0, <= 2.16rc`
+- Python >= 3.9
+- `tensorflow >= 2.12.0, <= 2.16rc`
 - `mne >= 1.0, <= 1.7`
 - `numpy`, `scipy`, `matplotlib`
 
-See [`setup.py`](setup.py) for the exact, currently enforced version constraints.
+See [`pyproject.toml`](pyproject.toml) for the exact, currently enforced version constraints.
 
 ## Software architecture
 
