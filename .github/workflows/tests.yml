@@ -44,7 +44,7 @@ jobs:
         env:
           MPLBACKEND: Agg
           TF_ENABLE_ONEDNN_OPTS: "0"
-        run: pytest -v -m slow tests/test_examples.py
+        run: pytest -v -m slow tests/test_nb_examples.py
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
