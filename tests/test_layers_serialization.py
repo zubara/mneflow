@@ -1,13 +1,13 @@
 """
 Round-trip tests for mneflow's custom Keras layers' get_config()/
-from_config() -- the path tf.keras.models.load_model() uses to
+from_config() -- the path keras.models.load_model() uses to
 reconstruct a saved model's architecture from scratch.
 
 This is a DIFFERENT round trip from the one
 mneflow.MetaData.restore_model() actually uses in practice (which
 rebuilds the architecture from Python code and only load_weights()s
 the saved weights -- see test_models.py). get_config()/from_config()
-is exercised only if something calls tf.keras.models.load_model()
+is exercised only if something calls keras.models.load_model()
 directly on a saved .h5, but every custom layer is decorated
 `@saving.register_keras_serializable`, which promises that path works.
 
@@ -43,7 +43,7 @@ Three bugs were found and fixed here:
    `saving.deserialize_keras_object(nonlin_config)` on it, which
    expects a *serialized* representation (a string or a config dict),
    not a live function. Calling get_config() then from_config()
-   directly (as these tests do, and as tf.keras.models.load_model()
+   directly (as these tests do, and as keras.models.load_model()
    effectively does once the saved JSON has been parsed back into
    Python) raised `TypeError: Could not parse config: <function relu
    at 0x...>` for every layer, regardless of bug 1. This was masked
@@ -51,12 +51,12 @@ Three bugs were found and fixed here:
    no TensorFlow installed, so nothing exercised it end to end until
    run for real. Fixed by serializing/deserializing `nonlin` properly,
    the way Keras activations are meant to be round-tripped:
-   `'nonlin': tf.keras.activations.serialize(self.nonlin)` in
+   `'nonlin': keras.activations.serialize(self.nonlin)` in
    get_config(), and
-   `nonlin = tf.keras.activations.deserialize(nonlin_config)` in
-   from_config(). One consequence: `tf.keras.activations.deserialize`
+   `nonlin = keras.activations.deserialize(nonlin_config)` in
+   from_config(). One consequence: `keras.activations.deserialize`
    returns Keras's OWN function object for a built-in name (e.g.
-   `tf.keras.activations.relu`), not the exact object that was passed
+   `keras.activations.relu`), not the exact object that was passed
    in (`tf.nn.relu`) -- they compute the same thing but are not the
    same Python object, so tests below compare by serialized name
    rather than by identity/`is`.
@@ -71,7 +71,7 @@ have no tests here:
   entirely. Left alone.
 - LSTM's from_config() also has the same shape (and got the same bug-3
   nonlin serialization fix, applied for consistency), but a deeper bug
-  on top of it: get_config() merges the base tf.keras.layers.LSTM
+  on top of it: get_config() merges the base keras.layers.LSTM
   config (which already has 'units'/'activation') with the custom
   'size'/'nonlin' keys, so the same dict carries both names for the
   same value. Passing that combined dict back into `cls(**config)` --
@@ -84,6 +84,7 @@ have no tests here:
 import numpy as np
 import pytest
 import tensorflow as tf
+import keras
 
 from mneflow.layers import (
     DeMixing,
@@ -110,9 +111,9 @@ def _built(layer, input_shape):
 def _same_activation(a, b):
     """True if two activation callables are the same Keras activation,
     even if they're different Python objects (e.g. tf.nn.relu vs.
-    tf.keras.activations.relu) -- compared by their canonical
+    keras.activations.relu) -- compared by their canonical
     serialized name rather than by identity."""
-    return tf.keras.activations.serialize(a) == tf.keras.activations.serialize(b)
+    return keras.activations.serialize(a) == keras.activations.serialize(b)
 
 
 # --- Layers whose get_config() captures every constructor argument ---
@@ -136,7 +137,7 @@ def test_from_config_round_trips_scope_and_nonlin(cls, kwargs, input_shape):
     assert config['scope'] == kwargs['scope']
     # nonlin is now stored serialized (e.g. the string 'relu'), not as
     # the raw function object -- see bug 3.
-    assert config['nonlin'] == tf.keras.activations.serialize(kwargs['nonlin'])
+    assert config['nonlin'] == keras.activations.serialize(kwargs['nonlin'])
 
     restored = cls.from_config(config)
 
@@ -178,7 +179,7 @@ def test_varconv_from_config_still_loses_size():
     """Pins down bug 2 specifically for VARConv, where a lost `size`
     is not cosmetic: it sets the number of output convolution filters
     used directly in build(). A model reloaded via
-    tf.keras.models.load_model() today would silently get 32 output
+    keras.models.load_model() today would silently get 32 output
     filters regardless of how the original was built. LFTConv has the
     identical get_config() gap but no equivalent assertion here, since
     its own docstring notes 'size' is unused by that layer's weights.

@@ -6,6 +6,7 @@ Created on Mon Apr 28 17:11:39 2025
 """
 
 import tensorflow as tf
+import keras
 
 import numpy as np
 
@@ -23,9 +24,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from time import time
         
 from mneflow.layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling, LFTConvTranspose
-from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D, LSTM
-from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
-from tensorflow.keras.initializers import Constant
+from keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D, LSTM
+from keras.layers import Flatten, Dropout, BatchNormalization
+from keras.initializers import Constant
 from mneflow.data import Dataset
 from mneflow.models import BaseModel
 from collections import defaultdict
@@ -142,11 +143,11 @@ class LFCNN(BaseModel):
         self.dropout = Dropout(self.specs['dropout'],
                           noise_shape=None)(self.pooled)
 
-        # self.fin_fc0 = FullyConnected(size=self.specs['n_latent'], nonlin=tf.keras.activations.linear,
+        # self.fin_fc0 = FullyConnected(size=self.specs['n_latent'], nonlin=keras.activations.linear,
         #                     specs=self.specs)
         # fc0_out = self.fin_fc0(self.dropout)
 
-        self.fin_fc = FullyConnected(size=self.out_dim, nonlin=tf.keras.activations.linear,
+        self.fin_fc = FullyConnected(size=self.out_dim, nonlin=keras.activations.linear,
                             specs=self.specs)
         #y_pred = self.fin_fc(fc0_out)
         self.y_pred = self.fin_fc(self.dropout)
@@ -155,7 +156,7 @@ class LFCNN(BaseModel):
 
     def build_encoder(self, encoder_specs
                       #inputs='y_pred', conv='full',
-                      #reconstruction_loss=tf.keras.losses.MAE
+                      #reconstruction_loss=keras.losses.MAE
                       ):
         """Build computational graph for an interpretable Generator
         (decoder) that reconstructs the input from either the model's
@@ -205,7 +206,7 @@ class LFCNN(BaseModel):
             enc_tconv_activations =  self.enc_fc(self.pooled)
 
         print("enc_tconv_activations: ", enc_tconv_activations.shape, self.pooled.shape)
-        self.enc_tconv_activations_r = tf.keras.layers.Reshape(self.pooled.shape[1:])
+        self.enc_tconv_activations_r = keras.layers.Reshape(self.pooled.shape[1:])
 
         enc_tconv_activations_r =  self.enc_tconv_activations_r(enc_tconv_activations)
         default_output_t = enc_tconv_activations_r.shape[2] * self.encoder_specs['stride']
@@ -228,10 +229,10 @@ class LFCNN(BaseModel):
                           noise_shape=None)(enc_tconv_activations_r)
 
         if self.encoder_specs['conv'] == 'depthwise':
-            enc_dropout_split = tf.keras.ops.split(enc_dropout,
+            enc_dropout_split = keras.ops.split(enc_dropout,
                                                    indices_or_sections=self.encoder_specs['n_latent'],
                                                    axis=-1)
-            self.enc_tconv_trans = [tf.keras.layers.Conv1DTranspose(
+            self.enc_tconv_trans = [keras.layers.Conv1DTranspose(
                                         filters=1,
                                         kernel_size=self.encoder_specs['filter_length'],
                                         strides=self.encoder_specs['stride'],
@@ -239,24 +240,24 @@ class LFCNN(BaseModel):
                                         output_padding=(n_pads),
                                         data_format='channels_last',
                                         dilation_rate=1,
-                                        activation=self.encoder_specs['nonlin'], #tf.keras.activations.linear,#
+                                        activation=self.encoder_specs['nonlin'], #keras.activations.linear,#
                                         use_bias=True,
                                         kernel_initializer='glorot_uniform',
                                         bias_initializer='glorot_uniform',
-                                        kernel_regularizer=tf.keras.regularizers.l2(self.encoder_specs['l2_lambda']),
+                                        kernel_regularizer=keras.regularizers.l2(self.encoder_specs['l2_lambda']),
                                         bias_regularizer=None,
                                         activity_regularizer=None,
-                                        #kernel_constraint=tf.keras.constraints.UnitNorm(axis=[0, 1]),
+                                        #kernel_constraint=keras.constraints.UnitNorm(axis=[0, 1]),
                                         bias_constraint=None,
                                         ) for i in range(self.specs['n_latent'])]
             enc_tconv_tans_out = [tconv(enc_dropout_split[i][:, 0, :, :]) for i, tconv in enumerate(self.enc_tconv_trans)]
             print('Build {} separate ConvTranspose layers each returning {}'.format(len(self.enc_tconv_trans),
                                                                                     enc_tconv_tans_out[0].shape))
-            enc_deconv = tf.keras.ops.expand_dims(tf.keras.ops.concatenate(
+            enc_deconv = keras.ops.expand_dims(keras.ops.concatenate(
                                                   enc_tconv_tans_out,
                                                   axis=-1), 1)
         else:
-            self.enc_tconv_trans=tf.keras.layers.Conv2DTranspose(
+            self.enc_tconv_trans=keras.layers.Conv2DTranspose(
                                     filters=1,
                                     kernel_size=(self.encoder_specs['filter_length'],
                                                  self.encoder_specs['n_latent']),
@@ -269,10 +270,10 @@ class LFCNN(BaseModel):
                                     use_bias=True,
                                     kernel_initializer='glorot_uniform',
                                     bias_initializer='glorot_uniform',
-                                    kernel_regularizer=tf.keras.regularizers.l2(self.encoder_specs['l2_lambda']),
+                                    kernel_regularizer=keras.regularizers.l2(self.encoder_specs['l2_lambda']),
                                     bias_regularizer=None,
                                     activity_regularizer=None,
-                                    #kernel_constraint=tf.keras.constraints.UnitNorm(axis=[0, 1]),
+                                    #kernel_constraint=keras.constraints.UnitNorm(axis=[0, 1]),
                                     bias_constraint=None,
                                     )
 
@@ -290,16 +291,16 @@ class LFCNN(BaseModel):
 
         self.X_pred = self.de_dmx(enc_deconv)
 
-        self.km_enc = tf.keras.Model(inputs=self.inputs, outputs=self.X_pred)
+        self.km_enc = keras.Model(inputs=self.inputs, outputs=self.X_pred)
 
         self.meta.train_params['enc_loss'] = [#CosMSE
                                               self.encoder_specs['loss'],
-                                              #tf.keras.losses.CosineSimilarity(axis=[3]),
-                                              #tf.keras.losses.MSE
+                                              #keras.losses.CosineSimilarity(axis=[3]),
+                                              #keras.losses.MSE
                                               ]
-        self.km_enc.compile(optimizer=tf.keras.optimizers.Adam(self.encoder_specs['learn_rate']),
+        self.km_enc.compile(optimizer=keras.optimizers.Adam(self.encoder_specs['learn_rate']),
                         loss=self.meta.train_params['enc_loss'],
-                        metrics=[tf.keras.metrics.RootMeanSquaredError(name="RMSE")],
+                        metrics=[keras.metrics.RootMeanSquaredError(name="RMSE")],
                         #loss_weights=[alpha, 1.-alpha]
                         )
 
@@ -340,14 +341,14 @@ class LFCNN(BaseModel):
 
         print(f_enc.shape) # n_classes, 1, n_t, n_components
         if self.encoder_specs['conv'] == 'depthwise':
-            f_enc_split = tf.keras.ops.split(f_enc,
+            f_enc_split = keras.ops.split(f_enc,
                                                indices_or_sections=self.specs['n_latent'],
                                                axis=-1)
 
             comp_ts = [tconv_trans(fes[:, 0, :, :]) for tconv_trans, fes  in zip(self.enc_tconv_trans,
                                                                  f_enc_split)]
 
-            enc_deconv = tf.keras.ops.expand_dims(tf.keras.ops.concatenate(
+            enc_deconv = keras.ops.expand_dims(keras.ops.concatenate(
                                               comp_ts,
                                               axis=-1), 1)
         elif self.encoder_specs['conv'] == 'full':
@@ -453,7 +454,7 @@ class LFCNN(BaseModel):
 
             dataset_train = train.map(lambda x, y : (x, x))
             dataset_val = val.map(lambda x, y : (x, x))
-            stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+            stop_early = keras.callbacks.EarlyStopping(monitor='val_loss',
                                                           min_delta=min_delta,
                                                           patience=early_stopping,
                                                           restore_best_weights=True)
@@ -2201,7 +2202,7 @@ class EnvelopNet(LFCNN):
             Prediction of the target variable.
         """
         self.dmx = DeMixing(size=self.specs['n_latent'],
-                            nonlin=tf.keras.activations.linear,
+                            nonlin=keras.activations.linear,
                             axis=3, specs=self.specs)
         self.dmx_out = self.dmx(self.inputs)
 
@@ -2240,7 +2241,7 @@ class EnvelopNet(LFCNN):
         self.dropout = Dropout(self.specs['dropout'], noise_shape=None)(self.pooled)
         
         self.fin_fc = FullyConnected(size=self.out_dim, 
-                                     nonlin=tf.keras.activations.linear,
+                                     nonlin=keras.activations.linear,
                                      specs=self.specs)
 
         self.y_pred = self.fin_fc(self.dropout)
@@ -2684,10 +2685,10 @@ class WFNet(LFCNN):
         #Apply n_latent temporal convolution kernels
         self.scope = 'wfnet'
         
-        #inputs = tf.keras.ops.transpose(self.inputs,[0,3,2,1])
+        #inputs = keras.ops.transpose(self.inputs,[0,3,2,1])
         
         # self.dmx = DeMixing(size=self.specs['n_latent'], 
-        #                     nonlin=tf.keras.activations.linear,
+        #                     nonlin=keras.activations.linear,
         #                     axis=3, specs=self.specs)
         
         # self.dmx_out = self.dmx(self.inputs)
@@ -2699,7 +2700,7 @@ class WFNet(LFCNN):
             specs=self.specs)
         
         self.tconv_out = self.tconv(self.inputs)
-        reshaped = tf.keras.layers.Reshape(self.tconv_out.shape[2:])(self.tconv_out)
+        reshaped = keras.layers.Reshape(self.tconv_out.shape[2:])(self.tconv_out)
         print("LSTM input: {}".format(reshaped.shape))
         self.lstm = LSTM(units=self.specs['n_latent'], activation='tanh', 
                             input_shape=reshaped.shape[1:],
@@ -2729,7 +2730,7 @@ class WFNet(LFCNN):
 
         lstm_state = self.lstm(reshaped)        
         print("LSTM output: {}".format(lstm_state.shape))
-        fc_out = FullyConnected(size=self.out_dim, nonlin=tf.keras.activations.linear,
+        fc_out = FullyConnected(size=self.out_dim, nonlin=keras.activations.linear,
                             specs=self.specs)
         
         self.y_pred = fc_out(lstm_state)
