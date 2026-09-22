@@ -25,10 +25,10 @@ classifiers = [
     "Operating System :: MacOS",
 ]
 dependencies = [
-    "numpy>=1.23.5,<2.0",  # tensorflow<=2.16rc hard-requires numpy<2 (NumPy 2 ABI break: `_ARRAY_API not found` at import time); scipy<1.15 also wants numpy<2.3
-    "scipy<1.15",  # scipy 1.15 removed scipy.special.sph_harm, which mne<=1.7 still imports
-    "mne>=1.0,<=1.7",
-    "tensorflow>=2.16.0,<=2.16rc",  # first TF release bundling Keras 3 (tf.keras.ops etc. rely on it); mneflow now imports the standalone `keras` package rather than tf.keras
+    "numpy<2.0",  # tensorflow<=2.16rc hard-requires numpy<2 (NumPy 2 ABI break: `_ARRAY_API not found` at import time); scipy<1.15 also wants numpy<2.3
+    "scipy",  # scipy 1.15 removed scipy.special.sph_harm, which mne<=1.7 still imports
+    "mne<=1.7",
+    "tensorflow<=2.16rc",  # first TF release bundling Keras 3 (tf.keras.ops etc. rely on it); mneflow now imports the standalone `keras` package rather than tf.keras
     "keras>=3.0,<4",
     "matplotlib",
     "dill",
