@@ -32,7 +32,7 @@ API reference is available in the [Documentation](https://mneflow.readthedocs.io
 
 See [`pyproject.toml`](pyproject.toml) for the exact, currently enforced version constraints.
 
-```{include} docs/examples.md
+```{include} examples.md
 ```
 
 ## Software architecture
