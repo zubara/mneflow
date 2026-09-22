@@ -14,11 +14,12 @@ from pathlib import Path
 import numpy as np
 from scipy.stats import spearmanr, pearsonr
 import tensorflow as tf
-from tensorflow.keras.layers import (Dense, Flatten, Dropout, BatchNormalization,
+import keras
+from keras.layers import (Dense, Flatten, Dropout, BatchNormalization,
                                      Conv2D, SpatialDropout2D, Conv3D,
                                      SpatialDropout3D, AveragePooling2D,
                                      MaxPooling2D, Lambda, DepthwiseConv2D)
-from tensorflow.keras import initializers
+from keras import initializers
 
 # working_directory = Path("/m/nbe/scratch/restmeg/eero/code/mneflow/")
 # os.chdir(working_directory)
@@ -110,7 +111,7 @@ class Conv3DModel(BaseModel):
 
         # Gaussian Noise layer
         if self.specs['stddev'] > 0:
-            self.gaussian_noise = tf.keras.layers.GaussianNoise(
+            self.gaussian_noise = keras.layers.GaussianNoise(
                 stddev=self.specs['stddev'])
             inputs1 = self.gaussian_noise(self.inputs)
             print(f"Gaussian noise with stddev: {self.specs['stddev']} "
@@ -170,7 +171,7 @@ class Conv3DModel(BaseModel):
         # Fully connected layer with ReLU activation and L1 regularization
         self.fc1 = Dense(units=self.specs['n_latent_dense'],
                          activation=tf.nn.relu,
-                         kernel_regularizer=tf.keras.regularizers.l1(
+                         kernel_regularizer=keras.regularizers.l1(
                              self.specs['l1_lambda']))
         fc1 = self.fc1(flat)
         print(f"Built: Dense layer with {self.specs['n_latent_dense']} units. "
@@ -185,7 +186,7 @@ class Conv3DModel(BaseModel):
         self.fc2 = Dense(
             units=1,
             activation=tf.identity,
-            kernel_regularizer=tf.keras.regularizers.l1(
+            kernel_regularizer=keras.regularizers.l1(
                 self.specs['l1_lambda']))
         y_pred = self.fc2(dropout)
 
@@ -294,7 +295,7 @@ class WeightedSum3dModel(BaseModel):
 
         # Gaussian Noise layer
         if self.specs['stddev'] > 0:
-            self.gaussian_noise = tf.keras.layers.GaussianNoise(
+            self.gaussian_noise = keras.layers.GaussianNoise(
                 stddev=self.specs['stddev'])
             inputs1 = self.gaussian_noise(self.inputs)
             print(f"Gaussian noise with stddev: {self.specs['stddev']} "
@@ -361,7 +362,7 @@ class WeightedSum3dModel(BaseModel):
         # Fully connected layer with ReLU activation and L1 regularization
         self.fc1 = Dense(units=self.specs['n_latent_dense'],
                          activation=tf.nn.relu,
-                         kernel_regularizer=tf.keras.regularizers.l1(
+                         kernel_regularizer=keras.regularizers.l1(
                              self.specs['l1_lambda']))
         fc1 = self.fc1(flat)
         print(f"Built: Dense layer with {self.specs['n_latent_dense']} units. "
@@ -375,7 +376,7 @@ class WeightedSum3dModel(BaseModel):
         # Output layer with linear activation and L1 regularization
         self.fc = Dense(units=1,
                         activation=tf.identity,
-                        kernel_regularizer=tf.keras.regularizers.l1(
+                        kernel_regularizer=keras.regularizers.l1(
                             self.specs['l1_lambda']))
         y_pred = self.fc(dropout)
 
@@ -485,7 +486,7 @@ class SymmetricModel(BaseModel):
 
         # Gaussian Noise layer
         if self.specs['stddev'] > 0:
-            self.gaussian_noise = tf.keras.layers.GaussianNoise(
+            self.gaussian_noise = keras.layers.GaussianNoise(
                 stddev=self.specs['stddev'])
             inputs1 = self.gaussian_noise(self.inputs)
             print(f"Gaussian noise with stddev: {self.specs['stddev']} "
@@ -542,7 +543,7 @@ class SymmetricModel(BaseModel):
         self.fc1 = Dense(
             units=self.specs['n_latent_dense'],
             activation=tf.nn.relu,
-            kernel_regularizer=tf.keras.regularizers.l1(
+            kernel_regularizer=keras.regularizers.l1(
                 self.specs['l1_lambda']))
         fc1 = self.fc1(flat)
 
@@ -559,7 +560,7 @@ class SymmetricModel(BaseModel):
         self.fc = Dense(
             units=1,
             activation=tf.identity,
-            kernel_regularizer=tf.keras.regularizers.l1(
+            kernel_regularizer=keras.regularizers.l1(
                 self.specs['l1_lambda']))
         y_pred = self.fc(dropout)
 
@@ -731,7 +732,7 @@ class SymmetricModel(BaseModel):
 
         dcov = {}
         #Compute covariance across samples
-        X -= tf.keras.ops.mean(X, axis=0, keepdims=True)
+        X -= keras.ops.mean(X, axis=0, keepdims=True)
         dcov = np.einsum('hijk, hilk -> ilk', X, X) / ndof
         print("DCOV:", dcov.shape)
 

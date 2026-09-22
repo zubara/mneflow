@@ -9,6 +9,7 @@ parent class.
 
 
 import tensorflow as tf
+import keras
 
 import numpy as np
 
@@ -26,10 +27,10 @@ from matplotlib import collections
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from .layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling
-from tensorflow.keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
-from tensorflow.keras.layers import Flatten, Dropout, BatchNormalization
-from tensorflow.keras.initializers import Constant
-from tensorflow.keras import regularizers as k_reg, constraints, layers
+from keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
+from keras.layers import Flatten, Dropout, BatchNormalization
+from keras.initializers import Constant
+from keras import regularizers as k_reg, constraints, layers
 
 from .layers import LSTM
 import csv
@@ -60,7 +61,7 @@ def uniquify(seq):
 
 
 # ----- Base model -----
-#@tf.keras.utils.register_keras_serializable(package="mneflow")
+#@keras.utils.register_keras_serializable(package="mneflow")
 class BaseModel():
     """Parent class for all MNEflow models.
 
@@ -151,11 +152,11 @@ class BaseModel():
         optimizer : str, tf.optimizers.Optimizer
             Deafults to "adam"
 
-        loss : str, tf.keras.losses.Loss
+        loss : str, keras.losses.Loss
             Defaults to MSE in target_type is "float" and
             "softmax_crossentropy" if "target_type" is int
 
-        metrics : str, list of str, tf.keras.metrics.Metric
+        metrics : str, list of str, keras.metrics.Metric
             Defaults to RMSE in target_type is "float" and
                 "categorical_accuracy" if "target_type" is int
 
@@ -167,33 +168,33 @@ class BaseModel():
         """
         # Initialize computational graph
         if mapping:
-            map_fun = tf.keras.activations.get(mapping)
+            map_fun = keras.activations.get(mapping)
             self.y_pred = map_fun(self.y_pred)
 
-        self.km = tf.keras.Model(inputs=self.inputs, outputs=self.y_pred)
+        self.km = keras.Model(inputs=self.inputs, outputs=self.y_pred)
 
         params = {"optimizer": tf.optimizers.get(optimizer).from_config(
                                             {"learning_rate":learn_rate})}
 
         if loss:
-            params["loss"] = tf.keras.losses.get(loss)
+            params["loss"] = keras.losses.get(loss)
             loss_name = loss
 
         if metrics:
             if not isinstance(metrics, list):
                 metrics = [metrics]
-            params["metrics"] = [tf.keras.metrics.get(metric) for metric in metrics]
+            params["metrics"] = [keras.metrics.get(metric) for metric in metrics]
 
        # Initialize optimizer
         if self.dataset.h_params["target_type"] in ['float', 'signal']:
-            params.setdefault("loss", tf.keras.losses.MeanSquaredError(name='MSE'))
+            params.setdefault("loss", keras.losses.MeanSquaredError(name='MSE'))
 
-            params.setdefault("metrics", [tf.keras.metrics.R2Score(name="R2")])
+            params.setdefault("metrics", [keras.metrics.R2Score(name="R2")])
 
         elif self.dataset.h_params["target_type"] in ['int']:
-            params.setdefault("loss", tf.keras.losses.CategoricalCrossentropy(from_logits=True,
+            params.setdefault("loss", keras.losses.CategoricalCrossentropy(from_logits=True,
                                                                                    name='Cat_CE'))
-            params.setdefault("metrics", [tf.keras.metrics.CategoricalAccuracy(name="Cat_Acc")])
+            params.setdefault("metrics", [keras.metrics.CategoricalAccuracy(name="Cat_Acc")])
 
         self.km.compile(optimizer=params["optimizer"],
                         loss=params["loss"],
@@ -382,7 +383,7 @@ class BaseModel():
                                                    test_batch=self.dataset.validation_batch,
                                                    split=True, val_fold_ind=self.current_fold)
             if not noisy_labels:
-                stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+                stop_early = keras.callbacks.EarlyStopping(monitor='val_loss',
                                                               min_delta=self.meta.train_params['min_delta'],
                                                               patience=self.meta.train_params['early_stopping'],
                                                               restore_best_weights=True)
@@ -547,7 +548,7 @@ class BaseModel():
         None
 
         """
-        stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+        stop_early = keras.callbacks.EarlyStopping(monitor='val_loss',
                                                       min_delta=1e-6,
                                                       patience=10,
                                                       restore_best_weights=True)
@@ -708,7 +709,7 @@ class BaseModel():
         if self.meta.data['target_type'] == 'float':
             criterion = r2_score
         else:
-            criterion = tf.keras.metrics.categorical_accuracy
+            criterion = keras.metrics.categorical_accuracy
 
         if not dataset:
             dataset = self.dataset.val
@@ -1087,7 +1088,7 @@ class SourceNet(BaseModel):
             Prediction of the target variable.
         """
 
-        self.tconv = tf.keras.layers.DepthwiseConv2D(
+        self.tconv = keras.layers.DepthwiseConv2D(
             kernel_size = (1, self.specs['filter_length']),
             #strides=1,
             padding='same',
@@ -1098,7 +1099,7 @@ class SourceNet(BaseModel):
             use_bias=True,
             depthwise_initializer='glorot_uniform',
             bias_initializer='zeros',
-            depthwise_regularizer=tf.keras.regularizers.l1(self.specs['l1_lambda']),
+            depthwise_regularizer=keras.regularizers.l1(self.specs['l1_lambda']),
             bias_regularizer=None,
             activity_regularizer=None,
             depthwise_constraint=None,
@@ -1354,7 +1355,7 @@ class FBCSP_ShallowNet(BaseModel):
         print('pool1: ', pool1.shape)
         fc_out = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
-        y_pred = fc_out(tf.keras.backend.log(pool1))
+        y_pred = fc_out(keras.backend.log(pool1))
         return y_pred
 #
 #
@@ -1613,7 +1614,7 @@ class Deep4(BaseModel):
         """
         self.scope = 'deep4'
 
-        inputs = tf.keras.ops.transpose(self.inputs,[0,3,2,1])
+        inputs = keras.ops.transpose(self.inputs,[0,3,2,1])
 
         tconv1 = DepthwiseConv2D(
                         kernel_size=(1, self.specs['filter_length']),
@@ -1889,7 +1890,7 @@ class NoisyTrainer:
 
         Parameters
         ----------
-        model : tf.keras.Model
+        model : keras.Model
             Compiled Keras model to train. Its ``.loss`` is reused as
             the training/validation loss function.
 
@@ -1914,8 +1915,8 @@ class NoisyTrainer:
         self.model_path = model_path + '_best.weights.h5'
         self.noise_std = noise_std
         self.loss_fn = model.loss 
-        self.metric = tf.keras.metrics.R2Score()
-        self.optimizer = tf.keras.optimizers.Adam()
+        self.metric = keras.metrics.R2Score()
+        self.optimizer = keras.optimizers.Adam()
 
         # Early stopping parameters
         self.patience = patience

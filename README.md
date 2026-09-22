@@ -15,11 +15,40 @@ pip install mneflow
 ## Dependencies
 
 - Python >= 3.9
-- `tensorflow >= 2.12.0, <= 2.16rc`
+- `tensorflow >= 2.16.0, <= 2.16rc`
+- `keras >= 3.0, < 4`
 - `mne >= 1.0, <= 1.7`
 - `numpy`, `scipy`, `matplotlib`
 
 See [`pyproject.toml`](pyproject.toml) for the exact, currently enforced version constraints.
+
+### Supported / tested versions
+
+MNEflow sits on top of a fast-moving scientific-Python + deep-learning
+stack, and the packages it depends on don't always coordinate breaking
+changes with each other. The combination below is what CI actually
+installs and runs against; combinations outside it may work but aren't
+verified.
+
+| Component | Tested range | Why the bound is there |
+| --- | --- | --- |
+| Python | 3.9 – 3.11 | 3.12/3.13 run as a non-blocking canary job in CI (see below); not yet officially supported |
+| NumPy | >=1.23.5, <2.0 | `tensorflow<=2.16rc` is compiled against the NumPy 1.x ABI; importing it under NumPy 2.x fails with `AttributeError: _ARRAY_API not found` |
+| SciPy | <1.15 | SciPy 1.15 removed `scipy.special.sph_harm`, which `mne<=1.7` still calls |
+| MNE-Python | >=1.0, <=1.7 | Newer MNE releases require SciPy >=1.15, which conflicts with the pin above |
+| TensorFlow | >=2.16.0, <=2.16rc | 2.16 is the first release bundling Keras 3, which MNEflow now imports directly as the standalone `keras` package (rather than via `tf.keras`) |
+| Keras | >=3.0, <4 | MNEflow's layers, models, and losses are built against the standalone Keras 3 API (`import keras`); Keras 2 (as used by `tf.keras` in TensorFlow <=2.15) is not supported |
+
+If you hit an import or install error with a newer release of any of
+these, it's most likely a version-compatibility issue rather than a bug
+in your setup — please check [open issues](https://github.com/zubara/mneflow/issues)
+or file a new one with `pip list` output attached.
+
+CI (`.github/workflows/tests.yml`) runs on every push/PR against the
+supported matrix above, plus a weekly scheduled run so a new upstream
+release that breaks compatibility is caught even between commits, and a
+non-blocking canary job against newer Python versions to give advance
+warning before they're adopted.
 
 ## Software architecture
 
@@ -83,7 +112,7 @@ API reference is available in the [Documentation](https://mneflow.readthedocs.io
 
 ## Publications using MNEflow
 
-A selection of peer-reviewed papers and preprints that use MNEflow for EEG/MEG decoding or interpretation:
+A selection of peer-reviewed papers and preprints that use MNEflow for EEG/MEG decoding or interpretation (compiled from [Google Scholar](https://scholar.google.com/citations?user=xWRyzr4AAAAJ); not necessarily exhaustive):
 
 - Zubarev I, Nurminen M, Parkkonen L. Robust discrimination of multiple naturalistic same-hand movements from MEG signals with convolutional neural networks. *Imaging Neuroscience* 2, imag-2-00178 (2024). [link](https://doi.org/10.1162/imag_a_00178)
 - Ruuskanen S, Saarro E, Caivano CM, Parkkonen L, Zubarev I. Interpretable Decoding of Frequency-Resolved Functional Connectivity. *bioRxiv* (2026). [link](https://www.biorxiv.org/content/10.64898/2026.08.20.745932v1)
@@ -154,20 +183,3 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 ## License
 
 BSD-3. See [LICENSE.md](LICENSE.md).
-
-### Supported / tested versions
-
-MNEflow sits on top of a fast-moving scientific-Python + deep-learning
-stack, and the packages it depends on don't always coordinate breaking
-changes with each other. The combination below is what CI actually
-installs and runs against; combinations outside it may work but aren't
-verified.
-
-| Component | Tested range | Why the bound is there |
-| --- | --- | --- |
-| Python | 3.9 – 3.11 | 3.12/3.13 run as a non-blocking canary job in CI (see below); not yet officially supported |
-| NumPy | >=1.23.5, <2.0 | `tensorflow<=2.16rc` is compiled against the NumPy 1.x ABI; |
-| SciPy | <1.15 | SciPy 1.15 removed `scipy.special.sph_harm`, which `mne<=1.7` still calls |
-| MNE-Python | >=1.0, <=1.7 | Newer MNE releases require SciPy >=1.15, which conflicts with the pin above |
-| TensorFlow | >=2.12.0, <=2.16rc | Later 2.16+ releases move to standalone Keras 3, which changes model-building APIs MNEflow relies on |
-

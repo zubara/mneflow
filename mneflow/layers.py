@@ -9,14 +9,15 @@ Defines mneflow.layers for mneflow.models.
 
 #import functools
 import tensorflow as tf
+import keras
 
-from tensorflow.keras.initializers import Constant
-#from tensorflow.keras.activations import relu
-from tensorflow.keras import constraints as k_con, regularizers as k_reg, saving
+from keras.initializers import Constant
+#from keras.activations import relu
+from keras import constraints as k_con, regularizers as k_reg, saving
 
 
-from tensorflow.keras.layers import Dense, Activation, Conv2D
-from tensorflow.keras.layers import Concatenate, Multiply, GlobalAveragePooling2D, GlobalMaxPooling2D
+from keras.layers import Dense, Activation, Conv2D
+from keras.layers import Concatenate, Multiply, GlobalAveragePooling2D, GlobalMaxPooling2D
 
 # import tensorflow.compat.v1 as tf
 # tf.disable_v2_behavior()
@@ -25,7 +26,7 @@ import numpy as np
 bias_const = 0.1
 bias_traiable = True
 
-class BaseLayer(tf.keras.layers.Layer):
+class BaseLayer(keras.layers.Layer):
     """Common base class for mneflow's custom Keras layers.
 
     Stores the layer's output ``size``, nonlinearity, and ``specs``
@@ -49,7 +50,7 @@ class BaseLayer(tf.keras.layers.Layer):
 
     **args : dict
         Additional keyword arguments passed to
-        ``tf.keras.layers.Layer.__init__``.
+        ``keras.layers.Layer.__init__``.
 
     """
     def __init__(self, size, nonlin, specs, **args):
@@ -68,7 +69,7 @@ class BaseLayer(tf.keras.layers.Layer):
 
         **args : dict
             Additional keyword arguments passed to
-            ``tf.keras.layers.Layer.__init__``.
+            ``keras.layers.Layer.__init__``.
 
         """
         super(BaseLayer, self).__init__(**args)
@@ -81,7 +82,7 @@ class BaseLayer(tf.keras.layers.Layer):
 
         Returns
         -------
-        reg : tf.keras.regularizers.Regularizer or None
+        reg : keras.regularizers.Regularizer or None
             An L1 regularizer if ``self.scope`` (or ``'weights'``) is
             in ``self.specs['l1_scope']``, an L2 regularizer if it is
             in ``self.specs['l2_scope']``, otherwise None.
@@ -108,7 +109,7 @@ class BaseLayer(tf.keras.layers.Layer):
 
         Returns
         -------
-        constr : tf.keras.constraints.Constraint or None
+        constr : keras.constraints.Constraint or None
             A ``UnitNorm(axis=axis)`` constraint if ``self.scope`` is
             in ``self.specs['unitnorm_scope']``, otherwise None.
 
@@ -121,7 +122,7 @@ class BaseLayer(tf.keras.layers.Layer):
         return constr
 
 @saving.register_keras_serializable(package="mneflow")
-class FullyConnected(BaseLayer, tf.keras.layers.Layer):
+class FullyConnected(BaseLayer, keras.layers.Layer):
 
 
     """
@@ -166,13 +167,13 @@ class FullyConnected(BaseLayer, tf.keras.layers.Layer):
         Returns
         -------
         config : dict
-            Base ``tf.keras.layers.Layer`` config merged with
+            Base ``keras.layers.Layer`` config merged with
             ``'scope'``, ``'size'``, ``'nonlin'``, and ``'specs'``.
 
         """
         base_config = super(FullyConnected, self).get_config()
         config = {'scope': self.scope, 'size': self.size,
-                  'nonlin': tf.keras.activations.serialize(self.nonlin), 'specs': self.specs}
+                  'nonlin': keras.activations.serialize(self.nonlin), 'specs': self.specs}
 
         return {**base_config, **config}
 
@@ -193,7 +194,7 @@ class FullyConnected(BaseLayer, tf.keras.layers.Layer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -317,7 +318,7 @@ class DeMixing(BaseLayer):
         """
         config = super(DeMixing, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                        'nonlin': tf.keras.activations.serialize(self.nonlin), 'axis': self.axis,
+                        'nonlin': keras.activations.serialize(self.nonlin), 'axis': self.axis,
                         'specs':self.specs})
         return config
 
@@ -338,7 +339,7 @@ class DeMixing(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -486,7 +487,7 @@ class SquareSymm(BaseLayer):
         """
         config = super(SquareSymm, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                        'nonlin': tf.keras.activations.serialize(self.nonlin), 'axis': self.axis,
+                        'nonlin': keras.activations.serialize(self.nonlin), 'axis': self.axis,
                         'specs':self.specs})
         return config
 
@@ -507,7 +508,7 @@ class SquareSymm(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -656,7 +657,7 @@ class LFTConv(BaseLayer):
         config = super(LFTConv, self).get_config()
         config.update({'scope': self.scope,
                         'filter_length': self.filter_length,
-                        'nonlin': tf.keras.activations.serialize(self.nonlin), 'padding': self.padding,
+                        'nonlin': keras.activations.serialize(self.nonlin), 'padding': self.padding,
                         'specs':self.specs})
         return config
 
@@ -677,7 +678,7 @@ class LFTConv(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -881,7 +882,7 @@ class LFTConvTranspose(BaseLayer):
         diff_padding = default_output_t - self.target_shape[2]
         self.n_pads = max(0, min(self.stride-1, diff_padding))
         # Each channel gets its own transpose convolution
-        self.deconv_units = [tf.keras.layers.Conv2DTranspose(filters=1,  # Each channel processed independently
+        self.deconv_units = [keras.layers.Conv2DTranspose(filters=1,  # Each channel processed independently
                             kernel_size=self.kernel_shape,
                             strides=self.stride,
                             padding=[[0, 0], [0, 0],
@@ -1001,7 +1002,7 @@ class VARConv(BaseLayer):
         config = super(VARConv, self).get_config()
         config.update({'scope': self.scope,
                         'filter_length': self.filter_length,
-                        'nonlin': tf.keras.activations.serialize(self.nonlin), 'padding': self.padding,
+                        'nonlin': keras.activations.serialize(self.nonlin), 'padding': self.padding,
                         'specs':self.specs})
         return config
 
@@ -1022,7 +1023,7 @@ class VARConv(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1226,8 +1227,8 @@ class TempPooling(BaseLayer):
 
 
 @saving.register_keras_serializable(package="mneflow")
-class LSTM(tf.keras.layers.LSTM):
-    """Thin wrapper around ``tf.keras.layers.LSTM`` using mneflow's
+class LSTM(keras.layers.LSTM):
+    """Thin wrapper around ``keras.layers.LSTM`` using mneflow's
     naming conventions (``scope``, ``size``, ``nonlin``).
 
     """
@@ -1241,7 +1242,7 @@ class LSTM(tf.keras.layers.LSTM):
         Parameters
         ----------
         scope : str, optional
-            Layer name, passed to ``tf.keras.layers.LSTM`` as
+            Layer name, passed to ``keras.layers.LSTM`` as
             ``name``. Defaults to 'lstm'.
 
         size : int, optional
@@ -1270,11 +1271,11 @@ class LSTM(tf.keras.layers.LSTM):
             Whether to add 1 to the bias of the forget gate at
             initialization. Defaults to True.
 
-        kernel_regularizer : tf.keras.regularizers.Regularizer, optional
+        kernel_regularizer : keras.regularizers.Regularizer, optional
             Regularizer for the input kernel weights. Defaults to
             None.
 
-        bias_regularizer : tf.keras.regularizers.Regularizer, optional
+        bias_regularizer : keras.regularizers.Regularizer, optional
             Regularizer for the bias vector. Defaults to None.
 
         return_sequences : bool, optional
@@ -1291,7 +1292,7 @@ class LSTM(tf.keras.layers.LSTM):
 
         **args : dict
             Additional keyword arguments passed to
-            ``tf.keras.layers.LSTM.__init__``.
+            ``keras.layers.LSTM.__init__``.
 
         """
         super(LSTM, self).__init__(name=scope,
@@ -1321,13 +1322,13 @@ class LSTM(tf.keras.layers.LSTM):
         Returns
         -------
         config : dict
-            Base ``tf.keras.layers.LSTM`` config merged with
+            Base ``keras.layers.LSTM`` config merged with
             ``'scope'``, ``'size'``, and ``'nonlin'``.
 
         """
         config = super(LSTM, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                        'nonlin': tf.keras.activations.serialize(self.nonlin)})
+                        'nonlin': keras.activations.serialize(self.nonlin)})
         return config
 
     @classmethod
@@ -1347,11 +1348,11 @@ class LSTM(tf.keras.layers.LSTM):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
-        """Build the underlying ``tf.keras.layers.LSTM``.
+        """Build the underlying ``keras.layers.LSTM``.
 
         Parameters
         ----------
@@ -1388,7 +1389,7 @@ class LSTM(tf.keras.layers.LSTM):
         Returns
         -------
         output : tf.Tensor
-            Output of ``tf.keras.layers.LSTM.call``.
+            Output of ``keras.layers.LSTM.call``.
 
         """
         # print(self.scope, inputs.shape)
@@ -1455,7 +1456,7 @@ class WeightedSum(BaseLayer):
         config = super().get_config()
         config.update({'scope': self.scope,
                        'size': self.size,
-                       'nonlin': tf.keras.activations.serialize(self.nonlin),
+                       'nonlin': keras.activations.serialize(self.nonlin),
                        'axis': self.axis,
                        'specs': self.specs})
         return config
@@ -1477,7 +1478,7 @@ class WeightedSum(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1615,7 +1616,7 @@ class WeightSum3d(BaseLayer):
         config = super(WeightSum3d, self).get_config()
         config.update({'scope': self.scope,
                        'size': self.size,
-                       'nonlin': tf.keras.activations.serialize(self.nonlin),
+                       'nonlin': keras.activations.serialize(self.nonlin),
                        'axis': self.axis,
                        'specs': self.specs})
         return config
@@ -1637,7 +1638,7 @@ class WeightSum3d(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1779,7 +1780,7 @@ class SquareSum3d(BaseLayer):
         """
         config = super(SquareSum3d, self).get_config()
         config.update({'scope': self.scope, 'size': self.size,
-                       'nonlin': tf.keras.activations.serialize(self.nonlin), 'axis': self.axis,
+                       'nonlin': keras.activations.serialize(self.nonlin), 'axis': self.axis,
                        'specs': self.specs})
         return config
 
@@ -1800,7 +1801,7 @@ class SquareSum3d(BaseLayer):
         """
         nonlin_config = config.pop("nonlin")
         scope = config.pop("scope")
-        nonlin = tf.keras.activations.deserialize(nonlin_config)
+        nonlin = keras.activations.deserialize(nonlin_config)
         return cls(scope=scope, nonlin=nonlin, **config)
 
     def build(self, input_shape):
@@ -1911,8 +1912,8 @@ def soft_attention(x):
     """
 
     attention_weights = Dense(units=1, activation="sigmoid")(x)
-    attention_weights = tf.keras.layers.Softmax(axis=1)(attention_weights)
-    attention_output = tf.keras.layers.Dot(axes=[1,1])([attention_weights, x])
+    attention_weights = keras.layers.Softmax(axis=1)(attention_weights)
+    attention_output = keras.layers.Dot(axes=[1,1])([attention_weights, x])
 
     return attention_output
 
@@ -1998,11 +1999,11 @@ def spatial_attention(x):
 
     """
     # Average pooling
-    x1 = tf.keras.layers.Lambda(
+    x1 = keras.layers.Lambda(
         lambda x: tf.reduce_mean(x, axis=-1, keepdims=True))(x)
 
     # Max pooling
-    x2 = tf.keras.layers.Lambda(
+    x2 = keras.layers.Lambda(
         lambda x: tf.reduce_max(x, axis=-1, keepdims=True))(x)
 
     # concat

@@ -153,7 +153,7 @@ def test_squaresum3d_raises_when_size_does_not_match_rows():
         layer(x)
 
 
-# --- LSTM: thin wrapper around tf.keras.layers.LSTM (no `specs` param at all) ---
+# --- LSTM: thin wrapper around keras.layers.LSTM (no `specs` param at all) ---
 
 @pytest.mark.parametrize("size,return_sequences", [(8, True), (8, False), (16, True)])
 def test_lstm_output_shape(size, return_sequences):

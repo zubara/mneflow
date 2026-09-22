@@ -9,6 +9,7 @@ Created on Mon May  5 16:36:53 2025
 @author: ipzub
 """
 import tensorflow as tf
+import keras
 
 
 def Cos2MSE(y_true, y_pred, alpha=.5):
@@ -33,10 +34,10 @@ def Cos2MSE(y_true, y_pred, alpha=.5):
          a new trailing axis, plus ``mse(y_true, y_pred)``.
 
      """
-     cosine = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
-     mse = tf.keras.losses.mse(y_true, y_pred)
-     #mae = tf.keras.losses.mae(y_true, y_pred)
-     #cosine2 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     cosine = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     mse = keras.losses.mse(y_true, y_pred)
+     #mae = keras.losses.mae(y_true, y_pred)
+     #cosine2 = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
      return cosine[:, :, :, tf.newaxis] + mse
 
 def Cos2_3(y_true, y_pred, alpha=.5):
@@ -62,10 +63,10 @@ def Cos2_3(y_true, y_pred, alpha=.5):
          axis=3)`` broadcast over a new axis before the last.
 
      """
-     cosine2 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
-     #mse = tf.keras.losses.mse(y_true, y_pred)
-     #mae = tf.keras.losses.mae(y_true, y_pred)
-     cosine3 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
+     cosine2 = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     #mse = keras.losses.mse(y_true, y_pred)
+     #mae = keras.losses.mae(y_true, y_pred)
+     cosine3 = keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
      return cosine2[:, :, :, tf.newaxis] + cosine3[:, :, tf.newaxis, :]
 
 def Cos2MAE(y_true, y_pred, alpha=.5):
@@ -90,10 +91,10 @@ def Cos2MAE(y_true, y_pred, alpha=.5):
          a new trailing axis, plus ``mae(y_true, y_pred)``.
 
      """
-     cosine = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
-     #mse = tf.keras.losses.mse(y_true, y_pred)
-     mae = tf.keras.losses.mae(y_true, y_pred)
-     #cosine2 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     cosine = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     #mse = keras.losses.mse(y_true, y_pred)
+     mae = keras.losses.mae(y_true, y_pred)
+     #cosine2 = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
      return cosine[:, :, :, tf.newaxis] + mae
 
 def CosMSE(y_true, y_pred, alpha=.5):
@@ -118,10 +119,10 @@ def CosMSE(y_true, y_pred, alpha=.5):
          a new axis before the last, plus ``mse(y_true, y_pred)``.
 
      """
-     cosine = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
-     mse = tf.keras.losses.mse(y_true, y_pred)
-     #mae = tf.keras.losses.mae(y_true, y_pred)
-     #cosine2 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     cosine = keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
+     mse = keras.losses.mse(y_true, y_pred)
+     #mae = keras.losses.mae(y_true, y_pred)
+     #cosine2 = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
      return cosine[:, :, tf.newaxis, :] + mse
 
 def Cos23MSE(y_true, y_pred, alpha=.1):
@@ -147,10 +148,10 @@ def Cos23MSE(y_true, y_pred, alpha=.1):
          ``alpha * mse(y_true, y_pred)``.
 
      """
-     cosine = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2, 3])
-     mse = tf.keras.losses.mse(y_true, y_pred)
-     #mae = tf.keras.losses.mae(y_true, y_pred)
-     #cosine2 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     cosine = keras.losses.cosine_similarity(y_true, y_pred, axis=[2, 3])
+     mse = keras.losses.mse(y_true, y_pred)
+     #mae = keras.losses.mae(y_true, y_pred)
+     #cosine2 = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
      return (1-alpha)*cosine[:, :, tf.newaxis, tf.newaxis] + alpha*mse
 
 def Cos3MAE(y_true, y_pred, alpha=.5):
@@ -175,10 +176,10 @@ def Cos3MAE(y_true, y_pred, alpha=.5):
          a new axis before the last, plus ``mae(y_true, y_pred)``.
 
      """
-     cosine = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
-     #mse = tf.keras.losses.mse(y_true, y_pred)
-     mae = tf.keras.losses.mae(y_true, y_pred)
-     #cosine2 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     cosine = keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
+     #mse = keras.losses.mse(y_true, y_pred)
+     mae = keras.losses.mae(y_true, y_pred)
+     #cosine2 = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
      return cosine[:, :, tf.newaxis, :] + mae
 
 def MSAE(y_true, y_pred, alpha=.5):
@@ -202,10 +203,10 @@ def MSAE(y_true, y_pred, alpha=.5):
          ``alpha * mse(y_true, y_pred) + (1 - alpha) * mae(y_true, y_pred)``.
 
      """
-     #cosine = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
-     mse = tf.keras.losses.mse(y_true, y_pred)
-     mae = tf.keras.losses.mae(y_true, y_pred)
-     #cosine2 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     #cosine = keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
+     mse = keras.losses.mse(y_true, y_pred)
+     mae = keras.losses.mae(y_true, y_pred)
+     #cosine2 = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
      return alpha*mse + (1-alpha)*mae
 
 def dMSAE(y_true, y_pred, alpha=.5):
@@ -229,10 +230,10 @@ def dMSAE(y_true, y_pred, alpha=.5):
          ``tf.maximum(mse(y_true, y_pred), mae(y_true, y_pred))``.
 
      """
-     #cosine = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
-     mse = tf.keras.losses.mse(y_true, y_pred)
-     mae = tf.keras.losses.mae(y_true, y_pred)
-     #cosine2 = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
+     #cosine = keras.losses.cosine_similarity(y_true, y_pred, axis=[3])
+     mse = keras.losses.mse(y_true, y_pred)
+     mae = keras.losses.mae(y_true, y_pred)
+     #cosine2 = keras.losses.cosine_similarity(y_true, y_pred, axis=[2])
      return tf.maximum(mse, mae)
 
 # def top(y_true, y_pred, alpha=.5):
