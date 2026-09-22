@@ -1,10 +1,10 @@
-tensorflow >= 2.12.0
-mne >= 0.19.0
-numpydoc>=0.9.1
-matplotlib
-pip>=8.1.1
-nose>=1.1.2
+# Doc-build tooling only. mneflow's own runtime dependencies (numpy, scipy,
+# mne, tensorflow, keras, matplotlib, dill) are NOT re-pinned here -- those
+# bounds live in pyproject.toml, and duplicating them in a second file is
+# how they drift out of sync (see environment.yml for the same reasoning).
+# Read the Docs and .github/workflows/docs.yml both install the package
+# itself (`pip install -e .` / `path: .`) in addition to this file, which
+# is what actually pulls in mneflow's dependencies for autodoc to import.
 sphinx>=2.0.1
-coverage>=3.7.1
 sphinx_rtd_theme>=0.1.6
 myst_parser>=2.0.0
