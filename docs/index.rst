@@ -11,11 +11,10 @@ Welcome to MNEflow's documentation!
    :caption: Contents:
 
    readme
-   models	
+   examples
+   models
    mneflow_api
    changelog
-     
- 
 
 
 Indices and tables

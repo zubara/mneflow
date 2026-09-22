@@ -1,10 +1,13 @@
 # MNEflow
 
 [![Tests](https://github.com/zubara/mneflow/actions/workflows/tests.yml/badge.svg)](https://github.com/zubara/mneflow/actions/workflows/tests.yml)
+[![Documentation Status](https://readthedocs.org/projects/mneflow/badge/?version=latest)](https://mneflow.readthedocs.io/en/latest/?badge=latest)
 
-Neural networks for EEG/MEG decoding and interpretation, built on [MNE-Python](https://mne.tools) and TensorFlow.
+Neural networks for EEG/MEG decoding and interpretation, built on [MNE-Python](https://mne.tools) and [TensorFlow](https://www.tensorflow.org/).
 
-MNEflow provides neuroscientists with a robust, reproducible, and time-efficient way to apply (deep) convolutional neural networks (CNNs) to EEG and MEG data. It implements several published CNN architectures for M/EEG decoding, a streamlined pipeline for preprocessing, training, and benchmarking them, and a growing set of tools for inspecting the patterns a trained model has learned to rely on.
+Full documentation: **[mneflow.readthedocs.io](https://mneflow.readthedocs.io/)**
+
+MNEflow provides neuroscientists with a robust, reproducible, and time-efficient way to apply deep neural networks (DNNs) to EEG and MEG data. It implements several popular architectures for M/EEG decoding, a streamlined pipeline for preprocessing, training, and benchmarking them, and a growing set of tools for inspecting the patterns a trained model has learned to rely on.
 
 ## Installation
 
@@ -12,16 +15,25 @@ MNEflow provides neuroscientists with a robust, reproducible, and time-efficient
 pip install mneflow
 ```
 
+## Documentation
+
+API reference is available in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
+
 ## Dependencies
 
-- Python >= 3.10, < 3.14
-- `mne >= 1.10, <= 1.13.2`
-- `tensorflow >= 2.16.1, <= 2.21.0`
-- `keras >= 3.0, < 4`
-- `numpy`, `scipy`, `matplotlib`
+| Component | Tested range | Why the bound is there |
+| --- | --- | --- |
+| Python | 3.10 – 3.13 | Use mneflow 0.6.1 for Python 3.9 and Earlier;|
+| MNE-Python | >=1.10, <=1.13.2 | Use mneflow 0.6.1 with older veriosns of MNE;|
+| TensorFlow | >=2.16.1, <=2.21.0 | tensorflow >= 2.16rc in mneflow 0.6.1 |
+| Keras | >=3.0, <4 | mneflow 0.7.0 Migrated to standalone keras |
+| NumPy / SciPy | no explicit ceiling | TensorFlow and MNE-Python each pin their own NumPy/SciPy ceiling per release |
+
 
 See [`pyproject.toml`](pyproject.toml) for the exact, currently enforced version constraints.
 
+```{include} docs/examples.md
+```
 
 ## Software architecture
 
@@ -69,19 +81,6 @@ The modular structure of the underlying `mneflow.layers` also makes it straightf
 - **Component-interaction (Shapley-like) relevances** — `shapley_order` in `model.compute_patterns()` controls whether single-component (order 1), pairwise (order 2), or triple-wise (order 3) interactions between latent components are evaluated for their effect on the loss, extending the single-component recursive-elimination approach to higher-order component interactions.
 
 `mneflow.MetaData.get_feature_relevances()`, `get_spatial_patterns()`, and `get_spectra()` provide programmatic access to the computed patterns for further analysis.
-
-## Examples
-
-- [Data import and the basic MNEflow pipeline](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb)
-- [Working with continuous data](https://github.com/zubara/mneflow/blob/master/examples/continuous_example.py)
-- [Sequence data](https://github.com/zubara/mneflow/blob/master/examples/sequence_data_example.ipynb)
-- [Regression](https://github.com/zubara/mneflow/blob/master/examples/regression_example.ipynb)
-- [Building a custom network](https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb)
-- [Saving and restoring models](https://github.com/zubara/mneflow/blob/master/examples/mneflow_save_restore.ipynb)
-
-## Documentation
-
-API reference is available in the [Documentation](https://mneflow.readthedocs.io/en/latest/).
 
 ## Publications using MNEflow
 
@@ -156,27 +155,3 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 ## License
 
 BSD-3. See [LICENSE.md](LICENSE.md).
-
-
-### Supported / tested versions
-
-MNEflow sits on top of a fast-moving scientific-Python + deep-learning
-stack, and the packages it depends on don't always coordinate breaking
-changes with each other. The ranges below are what CI actually installs
-and runs against; combinations outside them may work but aren't verified.
-
-| Component | Tested range | Why the bound is there |
-| --- | --- | --- |
-| Python | 3.10 – 3.12 | mne>=1.10 (see below) requires Python>=3.10, so 3.9 can no longer be supported; 3.13 isn't yet in the tested matrix |
-| MNE-Python | >=1.10, <=1.13.2 | mne<1.10 calls `scipy.special.sph_harm` directly, which SciPy removed in 1.17 (deprecated since 1.15); mne 1.10.0 is the first release with its own fallback to `sph_harm_y` |
-| TensorFlow | >=2.16.1, <=2.21.0 | 2.16 is the first TensorFlow release whose bundled Keras defaults to Keras 3, which is what makes the `tf.keras.ops.*` calls MNEflow uses (via `mneflow/_compat.py`) available; 2.16.1 specifically because 2.16.0 was never published as a final release |
-| Keras | >=3.0, <4 | Keras 2 (TensorFlow <=2.15's bundled default) doesn't have the `tf.keras.ops` namespace MNEflow relies on |
-| NumPy / SciPy | no explicit ceiling | TensorFlow and MNE-Python each pin their own NumPy/SciPy ceiling per release, so pip's resolver already finds a set that satisfies both within the ranges above; pinning a ceiling here as well is what caused an earlier NumPy-ABI break (`_ARRAY_API not found`) this range replaces |
-
-If you hit an import or install error with a newer release of any of
-these, it's most likely a version-compatibility issue rather than a bug
-in your setup — please check [open issues](https://github.com/zubara/mneflow/issues)
-or file a new one with `pip list` output attached.
-
-CI (`.github/workflows/tests.yml`) runs on every push/PR against the
-Python 3.10–3.12 matrix above.
