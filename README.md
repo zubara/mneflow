@@ -32,9 +32,6 @@ API reference is available in the [Documentation](https://mneflow.readthedocs.io
 
 See [`pyproject.toml`](pyproject.toml) for the exact, currently enforced version constraints.
 
-```{include} docs/examples.md
-```
-
 ## Software architecture
 
 The functionality of MNEflow is organized around two blocks, mirroring the everyday workflow of a decoding study:
