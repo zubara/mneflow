@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mneflow"
-version = "0.6.1"
+version = "0.7.0"
 description = "Neural networks for MEG and EEG data"
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
 maintainers = [
     { name = "Ivan Zubarev", email = "ivan.zubarev@aalto.fi" },
 ]
-requires-python = ">=3.9, <3.13"
+requires-python = ">=3.10, <3.14"
 classifiers = [
     "Intended Audience :: Science/Research",
     "Intended Audience :: Developers",
@@ -24,11 +24,30 @@ classifiers = [
     "Operating System :: Unix",
     "Operating System :: MacOS",
 ]
+# Ranges verified 2026-09-22 (Python 3.10-3.12; 3.13 dropped along with the
+# Python 3.9 floor -- see below). No numpy/scipy ceiling is pinned here on
+# purpose: tensorflow and mne each declare their own numpy/scipy ceiling per
+# release, so pip's resolver already finds a jointly-compatible set for
+# whatever tensorflow/mne version it lands on within the ranges below.
+#
+# mne>=1.10 is a floor, not a preference: mne<1.10 calls
+# `scipy.special.sph_harm` directly, which scipy removed in 1.17 (deprecated
+# since 1.15); mne 1.10.0 is the first release with its own sph_harm_y
+# fallback wrapper. mne>=1.10 requires Python>=3.10, which is why the
+# Python floor below moved from 3.9 to 3.10 -- there is no mne version that
+# is both >=1.10 and installable on Python 3.9.
+#
+# tensorflow>=2.16.1 is a floor because 2.16 is the first TensorFlow release
+# whose bundled Keras defaults to Keras 3, which is what makes tf.keras.ops
+# (used via mneflow/_compat.py) available; 2.16.1 rather than 2.16.0 because
+# 2.16.0 was never published as a final release and 2.16.1 is also the first
+# tag with a cp312 wheel. See README "Supported / tested versions" for the
+# resulting per-Python-version table.
 dependencies = [
-    "numpy<2.0",  # tensorflow<=2.16rc hard-requires numpy<2 (NumPy 2 ABI break: `_ARRAY_API not found` at import time); scipy<1.15 also wants numpy<2.3
-    "scipy",  # scipy 1.15 removed scipy.special.sph_harm, which mne<=1.7 still imports
-    "mne>=1.10",
-    "tensorflow>=2.16rc",  # first TF release bundling Keras 3 (tf.keras.ops etc. rely on it); mneflow now imports the standalone `keras` package rather than tf.keras
+    "numpy>=1.23.5",
+    "scipy",
+    "mne>=1.10,<=1.13.2",
+    "tensorflow>=2.16.1,<=2.21.0",
     "keras>=3.0,<4",
     "matplotlib",
     "dill",

@@ -14,41 +14,14 @@ pip install mneflow
 
 ## Dependencies
 
-- Python >= 3.9
-- `tensorflow >= 2.16.0, <= 2.16rc`
+- Python >= 3.10, < 3.14
+- `mne >= 1.10, <= 1.13.2`
+- `tensorflow >= 2.16.1, <= 2.21.0`
 - `keras >= 3.0, < 4`
-- `mne >= 1.0, <= 1.7`
 - `numpy`, `scipy`, `matplotlib`
 
 See [`pyproject.toml`](pyproject.toml) for the exact, currently enforced version constraints.
 
-### Supported / tested versions
-
-MNEflow sits on top of a fast-moving scientific-Python + deep-learning
-stack, and the packages it depends on don't always coordinate breaking
-changes with each other. The combination below is what CI actually
-installs and runs against; combinations outside it may work but aren't
-verified.
-
-| Component | Tested range | Why the bound is there |
-| --- | --- | --- |
-| Python | 3.9 – 3.11 | 3.12/3.13 run as a non-blocking canary job in CI (see below); not yet officially supported |
-| NumPy | >=1.23.5, <2.0 | `tensorflow<=2.16rc` is compiled against the NumPy 1.x ABI; importing it under NumPy 2.x fails with `AttributeError: _ARRAY_API not found` |
-| SciPy | <1.15 | SciPy 1.15 removed `scipy.special.sph_harm`, which `mne<=1.7` still calls |
-| MNE-Python | >=1.0, <=1.7 | Newer MNE releases require SciPy >=1.15, which conflicts with the pin above |
-| TensorFlow | >=2.16.0, <=2.16rc | 2.16 is the first release bundling Keras 3, which MNEflow now imports directly as the standalone `keras` package (rather than via `tf.keras`) |
-| Keras | >=3.0, <4 | MNEflow's layers, models, and losses are built against the standalone Keras 3 API (`import keras`); Keras 2 (as used by `tf.keras` in TensorFlow <=2.15) is not supported |
-
-If you hit an import or install error with a newer release of any of
-these, it's most likely a version-compatibility issue rather than a bug
-in your setup — please check [open issues](https://github.com/zubara/mneflow/issues)
-or file a new one with `pip list` output attached.
-
-CI (`.github/workflows/tests.yml`) runs on every push/PR against the
-supported matrix above, plus a weekly scheduled run so a new upstream
-release that breaks compatibility is caught even between commits, and a
-non-blocking canary job against newer Python versions to give advance
-warning before they're adopted.
 
 ## Software architecture
 
@@ -183,3 +156,27 @@ Zubarev I, Zetter R, Halme HL, Parkkonen L. Adaptive neural network classifier f
 ## License
 
 BSD-3. See [LICENSE.md](LICENSE.md).
+
+
+### Supported / tested versions
+
+MNEflow sits on top of a fast-moving scientific-Python + deep-learning
+stack, and the packages it depends on don't always coordinate breaking
+changes with each other. The ranges below are what CI actually installs
+and runs against; combinations outside them may work but aren't verified.
+
+| Component | Tested range | Why the bound is there |
+| --- | --- | --- |
+| Python | 3.10 – 3.12 | mne>=1.10 (see below) requires Python>=3.10, so 3.9 can no longer be supported; 3.13 isn't yet in the tested matrix |
+| MNE-Python | >=1.10, <=1.13.2 | mne<1.10 calls `scipy.special.sph_harm` directly, which SciPy removed in 1.17 (deprecated since 1.15); mne 1.10.0 is the first release with its own fallback to `sph_harm_y` |
+| TensorFlow | >=2.16.1, <=2.21.0 | 2.16 is the first TensorFlow release whose bundled Keras defaults to Keras 3, which is what makes the `tf.keras.ops.*` calls MNEflow uses (via `mneflow/_compat.py`) available; 2.16.1 specifically because 2.16.0 was never published as a final release |
+| Keras | >=3.0, <4 | Keras 2 (TensorFlow <=2.15's bundled default) doesn't have the `tf.keras.ops` namespace MNEflow relies on |
+| NumPy / SciPy | no explicit ceiling | TensorFlow and MNE-Python each pin their own NumPy/SciPy ceiling per release, so pip's resolver already finds a set that satisfies both within the ranges above; pinning a ceiling here as well is what caused an earlier NumPy-ABI break (`_ARRAY_API not found`) this range replaces |
+
+If you hit an import or install error with a newer release of any of
+these, it's most likely a version-compatibility issue rather than a bug
+in your setup — please check [open issues](https://github.com/zubara/mneflow/issues)
+or file a new one with `pip list` output attached.
+
+CI (`.github/workflows/tests.yml`) runs on every push/PR against the
+Python 3.10–3.12 matrix above.
