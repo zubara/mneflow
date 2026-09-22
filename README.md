@@ -32,6 +32,9 @@ API reference is available in the [Documentation](https://mneflow.readthedocs.io
 
 See [`pyproject.toml`](pyproject.toml) for the exact, currently enforced version constraints.
 
+```{include} docs/examples.md
+```
+
 ## Software architecture
 
 The functionality of MNEflow is organized around two blocks, mirroring the everyday workflow of a decoding study:
@@ -78,6 +81,15 @@ The modular structure of the underlying `mneflow.layers` also makes it straightf
 - **Component-interaction (Shapley-like) relevances** — `shapley_order` in `model.compute_patterns()` controls whether single-component (order 1), pairwise (order 2), or triple-wise (order 3) interactions between latent components are evaluated for their effect on the loss, extending the single-component recursive-elimination approach to higher-order component interactions.
 
 `mneflow.MetaData.get_feature_relevances()`, `get_spatial_patterns()`, and `get_spectra()` provide programmatic access to the computed patterns for further analysis.
+
+## Examples
+
+- [Data import and the basic MNEflow pipeline](https://github.com/zubara/mneflow/blob/master/examples/mneflow_example_tf2.ipynb)
+- [Working with continuous data](https://github.com/zubara/mneflow/blob/master/examples/continuous_example.py)
+- [Sequence data](https://github.com/zubara/mneflow/blob/master/examples/sequence_data_example.ipynb)
+- [Regression](https://github.com/zubara/mneflow/blob/master/examples/regression_example.ipynb)
+- [Building a custom network](https://github.com/zubara/mneflow/blob/master/examples/own_graph_example.ipynb)
+- [Saving and restoring models](https://github.com/zubara/mneflow/blob/master/examples/mneflow_save_restore.ipynb)
 
 ## Publications using MNEflow
 
