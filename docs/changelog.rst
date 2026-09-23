@@ -1,6 +1,19 @@
 History
 =======
 
+0.7.0 (22-09-2026)
+-------------------
+* Migrated to standalone keras. Removed support for Python 3.9 and earlier
+* Unit tests, Integration tests, and CI pipeline
+* Major documentation updates
+
+0.6.1 (22-05-2025)
+-------------------
+* Added Functional connectivity models in fc_models.py
+* Moved MetaData class into a separate module meta.py
+* Introduced novel interpretatbility tools and plots for lfcnn.py
+
+
 0.2.0-beta (24-09-2020)
 -----------------------
 * updated API and documentation for compatibility with Tensorflow 2.0
