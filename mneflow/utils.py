@@ -637,13 +637,7 @@ def produce_tfrecords(inputs,
                 else:
                     test_fold = None
 
-
-
-                if input_type == 'fconn':
-                    _n, n_ch, n_t, n_freq = X.shape
-                else:
-                    _n, n_seq, n_t, n_ch = X.shape
-
+                _n, n_seq, n_t, n_ch = X.shape
 
                 if input_type == 'seq':
                     y_shape = Y[0].shape[1:]

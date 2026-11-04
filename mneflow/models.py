@@ -204,8 +204,7 @@ class BaseModel():
             loss_name = 'MSE'
         elif not loss:
             loss_name = 'Cat_CE'
-        else:
-            loss_name = params['loss'].name
+
         _ = params.pop('loss')
         metrics = params.pop('metrics')
         metric_names = ':'.join([m.name for m in metrics])
@@ -458,8 +457,7 @@ class BaseModel():
                 rms = None
 
             if collect_patterns and hasattr(self, 'collect_patterns'):
-                self.collect_patterns(fold=self.current_fold, n_folds=n_folds,
-                                      shapley_order=shapley_order)
+                self.collect_patterns(fold=self.current_fold, n_folds=n_folds)
             if store_fold_predictions:
                 self.cv_predictions.append({'y_true':y_true,
                                             'y_pred':y_pred,
