@@ -637,7 +637,7 @@ def produce_tfrecords(inputs,
                 else:
                     test_fold = None
 
-                    _n, n_seq, n_t, n_ch = X.shape
+                _n, n_seq, n_t, n_ch = X.shape
 
                 if input_type == 'seq':
                     y_shape = Y[0].shape[1:]
