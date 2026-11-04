@@ -204,8 +204,7 @@ class BaseModel():
             loss_name = 'MSE'
         elif not loss:
             loss_name = 'Cat_CE'
-        else:
-            loss_name = params['loss'].name
+
         _ = params.pop('loss')
         metrics = params.pop('metrics')
         metric_names = ':'.join([m.name for m in metrics])
