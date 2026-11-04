@@ -641,6 +641,7 @@ def produce_tfrecords(inputs,
 
                 if input_type == 'fconn':
                     _n, n_ch, n_t, n_freq = X.shape
+                    n_seq = None
                 else:
                     _n, n_seq, n_t, n_ch = X.shape
 
