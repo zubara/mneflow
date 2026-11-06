@@ -159,24 +159,24 @@ class Dataset(object):
 
         """
         self.h_params = meta.data
-        if pick_channels or not 'channel_subset' in self.h_params.keys():
+        if pick_channels or 'channel_subset' not in self.h_params.keys():
             self.h_params['channel_subset'] = pick_channels
-        if np.any(class_subset) or not 'class_subset' in self.h_params.keys():
+        if np.any(class_subset) or 'class_subset' not in self.h_params.keys():
             self.h_params['class_subset'] = class_subset
-        if np.any(sample_subset) or not 'sample_subset' in self.h_params.keys():
+        if np.any(sample_subset) or 'sample_subset' not in self.h_params.keys():
             self.h_params['sample_subset'] = sample_subset
-        if decim or not 'decim' in self.h_params.keys():
+        if decim or 'decim' not in self.h_params.keys():
             self.h_params['decim'] = decim
-        if crop or not 'crop' in self.h_params.keys():
+        if crop or 'crop' not in self.h_params.keys():
             self.h_params['crop'] = crop
-        if not 'train_batch' in self.h_params.keys() or self.h_params['train_batch'] == None:
+        if 'train_batch' not in self.h_params.keys() or self.h_params['train_batch'] is None:
             self.h_params['train_batch'] = train_batch
         if not test_batch:
             test_batch = train_batch
 
-        if not 'test_batch' in self.h_params.keys() or self.h_params['test_batch'] == None:
+        if 'test_batch' not in self.h_params.keys() or self.h_params['test_batch'] is None:
             self.h_params['test_batch'] = test_batch
-        if rebalance_classes or not 'rebalance_classes' in self.h_params.keys():
+        if rebalance_classes or 'rebalance_classes' not in self.h_params.keys():
             self.h_params['rebalance_classes'] = rebalance_classes
 
         self.y_shape = self.h_params['y_shape']
@@ -258,7 +258,7 @@ class Dataset(object):
         dataset = dataset.map(self._parse_function)
 
         #Define batch sizes
-        if split == True:
+        if split:
             train_folds = []
             val_folds = []
             train_inds = []

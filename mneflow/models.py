@@ -1532,7 +1532,7 @@ class LFLSTM(BaseModel):
         self.lstm_out = self.lstm(ffeatures)
         print('lstm_out:', self.lstm_out.shape)
 
-        if self.return_sequence == True:
+        if self.return_sequence:
             self.fin_fc = DeMixing(size=self.out_dim,
                                    nonlin=tf.identity, axis=2)
         else:
