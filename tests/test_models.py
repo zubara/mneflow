@@ -184,3 +184,20 @@ def test_lfcnn_preserves_explicitly_given_specs(meta_and_dataset):
 
     for key, value in custom_specs.items():
         assert model.specs[key] == value, f"{key!r} was overwritten by a default"
+
+
+# --- The other architectures in models.py: do they build under Keras 3? ---
+#
+# FBCSP_ShallowNet and EEGNet used raw TensorFlow ops on the symbolic
+# input and Keras 2 argument names, so they failed to build at all.
+
+@pytest.mark.parametrize("model_name", ["VARCNN", "EEGNet", "Deep4",
+                                        "FBCSP_ShallowNet"])
+def test_other_models_build_with_expected_output_shape(meta_and_dataset,
+                                                      model_name):
+    from mneflow import models
+    meta, dataset = meta_and_dataset(
+        n_t=256, n_ch=8, n_classes=3,
+        model_specs=dict(MIN_BASEMODEL_SPECS, dropout=0.5))
+    model = getattr(models, model_name)(meta, dataset=dataset)
+    assert model.y_pred.shape == (None, 3)

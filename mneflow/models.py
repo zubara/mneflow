@@ -1323,7 +1323,7 @@ class FBCSP_ShallowNet(BaseModel):
             Prediction of the target variable.
         """
         #(self.inputs)
-        inputs = tf.transpose(self.inputs,[0,3,2,1])
+        inputs = keras.ops.transpose(self.inputs, [0, 3, 2, 1])
         #print(inputs.shape)
         #df = "channels_first"
         tconv1 = DepthwiseConv2D(
@@ -1332,10 +1332,10 @@ class FBCSP_ShallowNet(BaseModel):
                         strides=1,
                         padding="VALID",
                         activation = tf.identity,
-                        kernel_initializer="he_uniform",
+                        depthwise_initializer="he_uniform",
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
-                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda'])
+                        depthwise_regularizer=k_reg.l2(self.specs['l2_lambda'])
                         #kernel_constraint="maxnorm"
                         )
 
@@ -1366,7 +1366,7 @@ class FBCSP_ShallowNet(BaseModel):
         print('pool1: ', pool1.shape)
         fc_out = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
-        y_pred = fc_out(keras.backend.log(pool1))
+        y_pred = fc_out(keras.ops.log(pool1))
         return y_pred
 #
 #
@@ -1844,7 +1844,7 @@ class EEGNet(BaseModel):
             Prediction of the target variable.
         """
 
-        inputs = tf.transpose(self.inputs,[0,3,2,1])
+        inputs = keras.ops.transpose(self.inputs, [0, 3, 2, 1])
 
         dropoutType = Dropout
 
