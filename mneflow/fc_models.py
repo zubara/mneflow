@@ -511,8 +511,8 @@ class SymmetricModel(BaseModel):
                                      data_format='channels_last')(ssum1)
 
         # Channel attention block (optional)
-        if self.specs['attention_ratio'] > 0:
-            ssum1 = se_block(ssum1, ratio=self.specs['attention_ratio'])
+        if self.specs['attention_rate'] > 0:
+            ssum1 = se_block(ssum1, ratio=self.specs['attention_rate'])
             print(
                 f"Built: Squeeze-and-Excitation block added with channel reduction rate: ",
                 self.specs['attention_rate'])
