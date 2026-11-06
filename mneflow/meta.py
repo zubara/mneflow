@@ -9,6 +9,7 @@ import mne
 import numpy as np
 from scipy.signal import freqz
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib import patches as ptch
 from matplotlib import collections
 import pickle
@@ -1121,7 +1122,7 @@ class MetaData():
             vmax = 1.1*max(np.max(h), np.max(psds))
 
         f, ax = plt.subplots(1, n_y, sharey=True, figsize=(3*n_y, 4))
-        if isinstance(ax, plt.matplotlib.axes._axes.Axes):
+        if isinstance(ax, Axes):
             ax = [ax]
         for i in range(n_y):
             h_std = h_stds[:, i]
