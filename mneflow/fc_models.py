@@ -1044,7 +1044,9 @@ class SymmetricModel(BaseModel):
 
         """
         out = defaultdict(dict)
-        n_folds = self.meta.data['n_folds']
+        # One weight set per trained fold. meta.data['n_folds'] also counts
+        # the holdout fold when test_set='holdout', so it can't be used here.
+        n_folds = self.meta.weights['out_w_flat'].shape[-1]
         max_inds_folds = [np.argmax(self.meta.weights['out_w_flat'][:, :, i], 0)
                           for i in range(n_folds)]
         pointwise_shape = self.cv_patterns['ccms']['pointwise'].shape[:-1]
