@@ -819,7 +819,9 @@ class BaseModel():
         log['model_id'] = self.model_name
         log_header += ['model_id']
         for k in model_specs:
-            log[k] = specs_dict[k]
+            # Not every model has every key (e.g. WeightedSum3dModel uses
+            # n_latent1/n_latent2 instead of n_latent)
+            log[k] = specs_dict.get(k)
         log_header += model_specs
 
         for k in data_info:
