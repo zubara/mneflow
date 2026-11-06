@@ -76,3 +76,47 @@ addopts = "-v --cov=mneflow --cov-report=term-missing"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 79
+extend-exclude = ["docs", "*.ipynb"]
+
+[tool.ruff.format]
+# Only applied to new code (see the lint section); keep the code base's
+# mix of quote styles
+quote-style = "preserve"
+
+[tool.ruff.lint]
+# Errors and likely bugs (pyflakes, bugbear, pycodestyle error classes).
+# Style-only rules and formatting are not enforced on the existing code,
+# to keep the diff to upstream small.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = [
+    "B006",  # mutable argument defaults: all are read-only (checked)
+    "B007",  # unused loop variables
+    "B905",  # zip() without strict=
+]
+
+[tool.ruff.lint.per-file-ignores]
+"mneflow/__init__.py" = ["F401"]  # public re-exports
+"tests/*" = ["B017"]              # pytest.raises(Exception) in some tests
+
+[tool.pyright]
+include = ["mneflow", "tests"]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"
+# mneflow is largely untyped and its TensorFlow/Keras objects have incomplete
+# type stubs, so these checks mostly report false positives here (e.g.
+# attributes set at runtime, Keras tensors typed as possibly None). They are
+# reported as warnings instead of errors.
+reportOptionalMemberAccess = "warning"
+reportOptionalSubscript = "warning"
+reportOptionalOperand = "warning"
+reportPossiblyUnbound = "warning"
+reportArgumentType = "warning"
+reportAttributeAccessIssue = "warning"
+reportCallIssue = "warning"
+reportIndexIssue = "warning"
+reportOperatorIssue = "warning"
+reportIncompatibleMethodOverride = "warning"
