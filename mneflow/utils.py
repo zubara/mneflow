@@ -199,7 +199,7 @@ def _make_example(X, y, n, target_type='int'):
     return example
 
 
-def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
+def _write_tfrecords(X_, y_, n_, output_file, target_type='int', order=None):
     """Serialize and write datasets in TFRecords format.
 
     Parameters
@@ -222,6 +222,10 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
         Type of the target variable, passed to :func:`_make_example`.
         Defaults to 'int'.
 
+    order : array-like of int, optional
+        Order in which to write the examples (positions in ``X_``). Defaults
+        to None, which writes them in their current order.
+
     Returns
     -------
     None
@@ -229,7 +233,10 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
     """
     writer = tf.io.TFRecordWriter(output_file)
 
-    for X, y, n in zip(X_, y_, n_):
+    if order is None:
+        order = range(len(n_))
+    for i in order:
+        X, y, n = X_[i], y_[i], n_[i]
         # print(len(X_), len(y_), X.shape, y.shape)
         X = X.astype(np.float32)
         n = n.astype(np.int64)
@@ -490,9 +497,13 @@ def produce_tfrecords(inputs,
         :func:`preprocess_targets`. Defaults to False.
 
     predefined_split : list or lists, optional
-        Pre-defined split of the dataset into training/validation folds.
-        Should match exactly the size and type of MetaData.data['folds'],
-        size of the dataset, and contain n_folds.
+        Pre-defined split of the dataset into training/validation folds:
+        one list of fold index arrays per input. The indices refer to the
+        samples of the input (for later inputs, offset by the total number
+        of samples in the previous inputs). Each list must contain n_folds
+        folds of the same sizes as the automatic split (n_samples // n_folds
+        samples each); with test_set='holdout' it needs one extra fold,
+        and its last fold is used as the holdout set. Not modified.
 
     t_index : array-like, optional
         Index of timestamps associated with each training example. Must be
@@ -546,6 +557,11 @@ def produce_tfrecords(inputs,
     Pre-processing functions are implemented mostly for for convenience
     when working with array inputs. When working with mne.epochs the
     use of the corresponding mne functions is preferred.
+
+    Each record stores its sample index as ``'n'`` (see predefined_split),
+    which is what ``MetaData.data['folds']`` and ``'test_fold'`` refer to.
+    Training records are written in random order (from ``np.random``), so
+    batches mix samples even if the inputs are sorted, e.g. by target.
 
     Examples
     --------
@@ -713,8 +729,14 @@ def produce_tfrecords(inputs,
                 train_filename = os.path.join(data_path, trname)
                 train_paths.append(train_filename)
 
+                # Write the training examples in random order. Dataset only
+                # shuffles within a small buffer, so with ordered inputs
+                # (e.g. sorted by target) each batch would otherwise cover
+                # a narrow range of targets. Fold membership is unaffected:
+                # it is defined by each record's 'n'.
                 _write_tfrecords(X, Y, n, train_filename,
-                                 target_type=target_type)
+                                 target_type=target_type,
+                                 order=np.random.permutation(len(n)))
 
                 if test_set == 'loso':
                     test_size = len(Y)
@@ -1127,7 +1149,6 @@ def preprocess(data, events, sample_counter,
         print("Continuous events: ", events.shape)
 
     else:
-        shuffle = np.random.permutation(np.arange(n_samples))
         batch_folds = _split_indices(n_samples, n_folds=n_folds)
 
     print("Splitting into: {} folds x {}".format(len(batch_folds), len(batch_folds[0])))
