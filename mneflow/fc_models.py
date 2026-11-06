@@ -631,13 +631,15 @@ class SymmetricModel(BaseModel):
         weights['out_w_flat'] = self.fc.kernel.numpy()
 
         if verbose:
+            fc1_shape = (weights['fc1_w_flat'].shape
+                         if 'fc1_w_flat' in weights else None)
             print("""Weights: \n
                   SPATIAL: {}
                   POINTWISE: {}
-
+                  FC1: {}
                   FC_OUT: {}""".format(weights['ssum1'].shape,
                   weights['pointwise'].shape,
-                  weights['fc1_w_flat'].shape,
+                  fc1_shape,
                   weights['out_w_flat'].shape))
 
         return weights

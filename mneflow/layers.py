@@ -887,8 +887,6 @@ class LFTConvTranspose(BaseLayer):
                             strides=self.stride,
                             padding=[[0, 0], [0, 0],
                                      [self.n_pads, 0], [0, 0]]) for i in range(self.n_channels)]
-
-        super(LFTConvTranspose).__init__()
  
 
         print("Built: {} input: {}".format(self.scope, input_shape))

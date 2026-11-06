@@ -717,7 +717,7 @@ class LFCNN(BaseModel):
         y_hat = np.reshape(y_hat, [y_hat.shape[0], -1])
         w = np.reshape(w, [-1, w.shape[-1]])
 
-        assert(X.shape[-1] == w.shape[0]), 'Shape mismatch X:{} w:{}'.format(X.shaep, w.shape)
+        assert(X.shape[-1] == w.shape[0]), 'Shape mismatch X:{} w:{}'.format(X.shape, w.shape)
         assert(y_hat.shape[-1] == w.shape[1]), 'Shape mismatch y:{} w:{}'.format(y_hat.shape, w.shape)
         X = X - X.mean(0, keepdims=True)
         y_hat = y_hat - y_hat.mean(0, keepdims=True)
