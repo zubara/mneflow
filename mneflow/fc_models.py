@@ -605,12 +605,11 @@ class SymmetricModel(BaseModel):
         Returns
         -------
         weights : dict
-            Dictionary with keys 
-            ``'ssum1'`` and ``'ssum1b'`` 
-                the `SquareSum3d` layer's weights and bias,
-            ``'pointwise'`` the pointwise convolution kernel, 
-            ``'fc1_w_flat'`` the first dense layer's weights, if present, and 
-            ``'out_w_flat'`` the output layer's weights.
+            Dictionary with keys ``'ssum1'`` and ``'ssum1b'`` (the
+            `SquareSum3d` layer's weights and bias), ``'pointwise'`` (the
+            pointwise convolution kernel), ``'fc1_w_flat'`` (the first
+            dense layer's weights, if present) and ``'out_w_flat'`` (the
+            output layer's weights).
 
         """
         weights = {}
