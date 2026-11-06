@@ -30,6 +30,35 @@ from .models import BaseModel
 from .data import Dataset
 
 
+def _fold_stability(data, threshold):
+    """Consistency of spatial patterns across CV folds.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_sources, n_folds)
+        Standardized pattern of each fold.
+    threshold : float or ndarray, shape (n_folds,)
+        Sources with ``abs(data) > threshold`` count as top sources.
+
+    Returns
+    -------
+    dict
+        Mean over all pairs of folds of ``'jaccard'`` (Jaccard index of the
+        top-source sets) and ``'abs_r'`` (absolute correlation of the
+        patterns).
+    """
+    masks = np.abs(data) > threshold
+    jaccard, abs_r = [], []
+    n_folds = data.shape[-1]
+    for i in range(n_folds - 1):
+        for j in range(i + 1, n_folds):
+            union = np.sum(masks[:, i] | masks[:, j])
+            inter = np.sum(masks[:, i] & masks[:, j])
+            jaccard.append(inter / union if union else 0.)
+            abs_r.append(np.abs(np.corrcoef(data[:, i], data[:, j])[0, 1]))
+    return {'jaccard': float(np.mean(jaccard)), 'abs_r': float(np.mean(abs_r))}
+
+
 class Conv3DModel(BaseModel):
     """3D convolutional model designed to decode connectomes (Model 3).
     Extracts features simultaneously along the row fingerprints for each ROI and
@@ -748,7 +777,8 @@ class SymmetricModel(BaseModel):
         return patterns_struct
 
     def get_roi_labels(self, percentile=80, patterns=None,
-                       methods=['row', 'col', 'diag'], selection_method='activation'):
+                       methods=['row', 'col', 'diag'], selection_method='activation',
+                       return_stability=False):
         """
         Computes ROIs from spatial activation patterns.
 
@@ -772,17 +802,30 @@ class SymmetricModel(BaseModel):
             How to integrate across folds. Possible arguments 'count' or
             'activation'. Default 'activation'
 
+        return_stability : bool, optional
+            Whether to also return how consistent the patterns are across
+            folds. Defaults to False.
+
         Returns
         ------
         roi_labels : dict
             ROI indices identified by the interpretation pipeline
             {'extraction_method':[label indices]}
+
+        stability : dict
+            Only if ``return_stability`` is True. For each method, a dict
+            with the mean over all pairs of folds of
+            ``'jaccard'``, the Jaccard index of the sets of top sources
+            (sources whose absolute standardized pattern exceeds the
+            selection threshold), and ``'abs_r'``, the absolute correlation
+            of the standardized patterns.
         """
 
         if not patterns:
             patterns = self.extract_patterns()
 
         roi_labels = {}
+        stability = {}
 
         for key in methods:
             data = (patterns['spatial_patterns'][key] - patterns['spatial_patterns'][key].mean(0)) / patterns['spatial_patterns'][key].std(0, keepdims=True)
@@ -799,11 +842,14 @@ class SymmetricModel(BaseModel):
                 mask = np.where(mean_activation > top_active)[0]
 
             roi_labels[key] = mask
+            if return_stability:
+                stability[key] = _fold_stability(data, top_active)
         if 'row' in methods and 'col' in methods:
             roi_labels['row-col'] = np.unique(np.concatenate([roi_labels['row'],
                                                               roi_labels['col']]))
 
-
+        if return_stability:
+            return roi_labels, stability
         return roi_labels
 
     # def get_frequency_kernels(self, methods=['row', 'col', 'diag'], patterns=None):
