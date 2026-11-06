@@ -286,7 +286,7 @@ class WeightedSum3dModel(BaseModel):
            [1] Hu, J. et al. (2018). Squeeze-and-excitation networks.
            In Proceedings of the IEEE conference on computer vision and pattern recognition. pages 7132–7141.
         """
-        self.scope = 'model2_weighted_sum_3d'
+        self.scope = 'weighted_sum_3d'
 
         meta.model_specs.setdefault('n_latent_dense', 32)
         meta.model_specs.setdefault('n_latent_cross', 1)
@@ -306,7 +306,6 @@ class WeightedSum3dModel(BaseModel):
 
         meta.model_specs['scope'] = self.scope
 
-        super(WeightedSum3dModel, self).__init__(meta, dataset, specs_prefix)
         super().__init__(meta=meta, dataset=dataset, specs_prefix=specs_prefix)
 
     def build_graph(self):
@@ -319,7 +318,6 @@ class WeightedSum3dModel(BaseModel):
             Output of the forward pass of the computational graph.
             Prediction of the target variable.
         """
-        self.scope = 'weighted_sum_3d'
         self.specs = self.meta.model_specs
 
         # Gaussian Noise layer
