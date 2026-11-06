@@ -116,6 +116,38 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     return X
 
 
+def minmax_scale(X):
+    """Min-max scale each sample of a connectivity array to [0, 1].
+
+    Scales each sample (first axis) separately, using only its non-zero
+    entries; zero entries (e.g. the diagonal or an empty triangle of a
+    connectivity matrix) stay zero. A sample whose non-zero entries are all
+    equal becomes all zeros.
+
+    Parameters
+    ----------
+    X : ndarray, shape (n_samples, ...)
+        Input array. Not modified.
+
+    Returns
+    -------
+    X_scaled : ndarray
+        Scaled float array with the same shape as ``X``.
+    """
+    X_scaled = np.array(X, dtype=float)
+    for i in range(X_scaled.shape[0]):
+        sample = X_scaled[i]
+        nonzero = ~np.isclose(sample, 0)
+        if not nonzero.any():
+            continue
+        vmin, vmax = sample[nonzero].min(), sample[nonzero].max()
+        if vmax == vmin:
+            sample[nonzero] = 0.
+        else:
+            sample[nonzero] = (sample[nonzero] - vmin) / (vmax - vmin)
+    return X_scaled
+
+
 def _make_example(X, y, n, target_type='int'):
     """Construct a serializable example proto object from data and
     target pairs.
@@ -431,7 +463,9 @@ def produce_tfrecords(inputs,
         None does not leave a separate test set. Defaults to None.
 
     scale : bool, optional
-        Whether to perform scaling to baseline. Defaults to False.
+        Whether to perform scaling to baseline. For ``input_type='fconn'``,
+        each sample is instead min-max scaled to [0, 1] (see
+        :func:`minmax_scale`). Defaults to False.
 
     scale_interval : NoneType, tuple of ints,  optional
         Baseline definition. If None (default) scaling is
@@ -1016,7 +1050,9 @@ def preprocess(data, events, sample_counter,
             Number of folds defining the train/validation/test split.
 
     scale : bool, optional
-        Whether to perform scaling to baseline. Defaults to False.
+        Whether to perform scaling to baseline. For ``input_type='fconn'``,
+        each sample is instead min-max scaled to [0, 1] (see
+        :func:`minmax_scale`). Defaults to False.
 
     scale_interval : NoneType, tuple of ints or floats,  optional
         Baseline definition. If None (default) scaling is
@@ -1067,8 +1103,12 @@ def preprocess(data, events, sample_counter,
     n_samples = events.shape[0]
 
     if scale:
-        data = scale_to_baseline(data, baseline=scale_interval,
-                                 crop_baseline=crop_baseline)
+        if input_type == 'fconn':
+            # Connectivity has no baseline; scale each sample to [0, 1]
+            data = minmax_scale(data)
+        else:
+            data = scale_to_baseline(data, baseline=scale_interval,
+                                     crop_baseline=crop_baseline)
 
     #define folds
     if input_type  == 'continuous':
