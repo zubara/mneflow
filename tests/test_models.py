@@ -201,3 +201,25 @@ def test_other_models_build_with_expected_output_shape(meta_and_dataset,
         model_specs=dict(MIN_BASEMODEL_SPECS, dropout=0.5))
     model = getattr(models, model_name)(meta, dataset=dataset)
     assert model.y_pred.shape == (None, 3)
+
+
+ODD_N_T = pytest.param(
+    65, marks=pytest.mark.xfail(
+        strict=True, reason="build_encoder's output padding is wrong when "
+                            "n_t is not divisible by the stride"))
+
+
+@pytest.mark.parametrize("conv", ["depthwise", "full"])
+@pytest.mark.parametrize("n_t", [64, ODD_N_T])
+def test_lfcnn_encoder_reconstructs_input_shape(meta_and_dataset, conv, n_t):
+    meta, dataset = meta_and_dataset(
+        n_t=n_t, n_ch=8, n_classes=3,
+        model_specs={'dropout': 0.5, 'n_latent': 4, 'filter_length': 7})
+    meta.train_params = {}
+    model = LFCNN(meta, dataset=dataset)
+    model.build_encoder(dict(inputs='y_pred', conv=conv, nonlin=tf.nn.relu,
+                             filter_length=7, stride=2, n_latent=4,
+                             l1_lambda=0., l2_lambda=0., l1_scope=[],
+                             l2_scope=[], unitnorm_scope=[], loss='mse',
+                             learn_rate=1e-3))
+    assert model.km_enc.output_shape == (None, 1, n_t, 8)

@@ -215,6 +215,7 @@ class LFCNN(BaseModel):
         diff_padding = default_output_t - self.dataset.h_params['n_t']
         if self.dataset.h_params['n_t']%self.specs['stride'] == 0:
             n_pads=None
+            padding = None
         elif self.dataset.h_params['n_t']%self.specs['stride'] == 1:
             n_pads = max(0, self.specs['stride'] - diff_padding)
             padding = (n_pads, 1)
@@ -266,7 +267,7 @@ class LFCNN(BaseModel):
                                     output_padding=padding,
                                     data_format='channels_first',
                                     dilation_rate=(1, 1),
-                                    activation=tf.encoder_specs['nonlin'],
+                                    activation=self.encoder_specs['nonlin'],
                                     use_bias=True,
                                     kernel_initializer='glorot_uniform',
                                     bias_initializer='glorot_uniform',
