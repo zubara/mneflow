@@ -817,7 +817,10 @@ class BaseModel():
             specs_dict['nonlin'] = specs_dict['nonlin'].__name__
         
         log['model_id'] = self.model_name
-        log_header += ['model_id']
+        # The model_id given in the model specs (e.g. to tell apart
+        # hyperparameter sets), if any
+        log['spec_model_id'] = specs_dict.get('model_id')
+        log_header += ['model_id', 'spec_model_id']
         for k in model_specs:
             # Not every model has every key (e.g. WeightedSum3dModel uses
             # n_latent1/n_latent2 instead of n_latent)
