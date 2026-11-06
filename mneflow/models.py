@@ -347,6 +347,9 @@ class BaseModel():
             print("Running cross-validation with {} folds".format(n_folds))
         elif mode == "loso":
             n_folds = len(self.dataset.h_params['train_paths'])
+        else:
+            raise ValueError("mode must be 'single_fold', 'cv' or 'loso', "
+                             f"got {mode!r}")
 
         if collect_patterns and self.scope=='lfcnn':
             self.init_pattern_struct(n_folds, freqs=None)

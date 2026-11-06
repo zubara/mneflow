@@ -836,6 +836,9 @@ class SymmetricModel(BaseModel):
                 mean_activation = np.mean(data, -1)
                 top_active = np.percentile(mean_activation, percentile)
                 mask = np.where(mean_activation > top_active)[0]
+            else:
+                raise ValueError(f"selection_method must be 'count' or "
+                                 f"'activation', got {selection_method!r}")
 
             roi_labels[key] = mask
             if return_stability:

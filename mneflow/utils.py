@@ -105,6 +105,8 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     elif isinstance(baseline, tuple):
         print("Scaling to interval {:.1f} - {:.1f}".format(*baseline))
         interval = np.arange(baseline[0], baseline[1])
+    else:
+        raise ValueError(f"baseline must be None or a tuple, got {baseline!r}")
     X0m = X[..., interval].mean(axis=2, keepdims=True)
     X0sd = X[..., interval].std(axis=(1,2), keepdims=True)
 
@@ -360,10 +362,12 @@ def import_data(inp, array_keys={'X': 'X', 'y': 'y'}):
         else:
             if fname[-3:] == 'mat':
                 datafile = sio.loadmat(fname)
-
-            if fname[-3:] == 'npz':
+            elif fname[-3:] == 'npz':
                 print('Importing from npz')
                 datafile = np.load(fname)
+            else:
+                raise ValueError(f"Unsupported file type: {fname} (expected "
+                                 ".mat or .npz)")
 
             data = datafile[array_keys['X']]
             events = datafile[array_keys['y']]
@@ -1197,6 +1201,9 @@ def preprocess(data, events, sample_counter,
             X = np.expand_dims(data, 1)
         elif data.ndim == 4:
             X = data
+        else:
+            raise ValueError(f"Data must have 3 or 4 dimensions, got shape "
+                             f"{data.shape}")
 
         Y = events
         folds = [f + sample_counter for f in batch_folds]

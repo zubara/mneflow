@@ -258,3 +258,16 @@ def test_missing_input_returns_none(tmp_path):
                                          overwrite=False)
     assert meta is None
     assert 'Dataset not found' in out.getvalue()
+
+
+def test_data_with_wrong_dimensions_raises(tmp_path):
+    X = np.random.rand(60, 2, 3, 4, 5).astype(np.float32)  # 5-D
+    y = np.arange(60, dtype=float)
+    with pytest.raises(ValueError, match='3 or 4 dimensions'):
+        produce(tmp_path, (X, y), input_type='trials', test_set=None)
+
+
+def test_scale_to_baseline_rejects_invalid_baseline():
+    from mneflow.utils import scale_to_baseline
+    with pytest.raises(ValueError, match='baseline'):
+        _quiet(scale_to_baseline, np.random.rand(4, 3, 20), baseline=[0, 5])
