@@ -5,6 +5,7 @@ i + 1, and the targets are sorted (like subjects ordered by age). This makes
 it easy to check that each record's data, target and index 'n' belong
 together, and that folds, holdout set and records agree.
 """
+
 import contextlib
 import io
 
@@ -31,9 +32,16 @@ def make_fconn(n_samples=120, n_ch=4, n_freq=2, start=0):
 
 
 def produce(tmp_path, inputs, n_folds=5, test_set='holdout', **kwargs):
-    opts = dict(path=str(tmp_path), data_id='test', fs=1,
-                input_type='fconn', target_type='float', n_folds=n_folds,
-                overwrite=True, test_set=test_set)
+    opts = dict(
+        path=str(tmp_path),
+        data_id='test',
+        fs=1,
+        input_type='fconn',
+        target_type='float',
+        n_folds=n_folds,
+        overwrite=True,
+        test_set=test_set,
+    )
     opts.update(kwargs)
     return _quiet(mneflow.produce_tfrecords, inputs, **opts)
 
@@ -41,9 +49,14 @@ def produce(tmp_path, inputs, n_folds=5, test_set='holdout', **kwargs):
 def read_records(meta, paths):
     """(n, first X value, first y value) of each record, in file order."""
     parse = mneflow.Dataset(meta)._parse_function
-    out = [(int(r['n']), float(r['X'].numpy().ravel()[0]),
-            float(r['y'].numpy().ravel()[0]))
-           for r in tf.data.TFRecordDataset(paths).map(parse)]
+    out = [
+        (
+            int(r['n']),
+            float(r['X'].numpy().ravel()[0]),
+            float(r['y'].numpy().ravel()[0]),
+        )
+        for r in tf.data.TFRecordDataset(paths).map(parse)
+    ]
     return np.array(out).reshape(-1, 3)
 
 
@@ -78,12 +91,13 @@ def test_records_match_their_sample_index(tmp_path):
     test = read_records(meta, meta.data['test_paths'])
     for recs in (train, test):
         np.testing.assert_allclose(recs[:, 1], recs[:, 0] + 1)  # X
-        np.testing.assert_allclose(recs[:, 2], recs[:, 0])      # y
+        np.testing.assert_allclose(recs[:, 2], recs[:, 0])  # y
     # train records = everything except the holdout; test records = holdout
     test_fold = np.asarray(meta.data['test_fold'])
     np.testing.assert_array_equal(np.sort(test[:, 0]), np.sort(test_fold))
-    np.testing.assert_array_equal(np.sort(train[:, 0]),
-                                  np.setdiff1d(np.arange(120), test_fold))
+    np.testing.assert_array_equal(
+        np.sort(train[:, 0]), np.setdiff1d(np.arange(120), test_fold)
+    )
 
 
 def test_train_records_are_shuffled(tmp_path):
@@ -103,14 +117,21 @@ def test_dataset_cv_filters_select_intended_folds(tmp_path, test_set):
     n_train = 120 - (20 if test_set == 'holdout' else 0)
     dataset = mneflow.Dataset(meta)
     for k in range(len(folds)):
-        _quiet(dataset._build_dataset, meta.data['train_paths'],
-               split=True, val_fold_ind=k)
+        _quiet(
+            dataset._build_dataset,
+            meta.data['train_paths'],
+            split=True,
+            val_fold_ind=k,
+        )
         records = tf.data.TFRecordDataset(meta.data['train_paths']).map(
-            dataset._parse_function)
-        train_n = {int(r['n']) for r in
-                   records.filter(dataset._cv_train_fold_filter)}
-        val_n = {int(r['n']) for r in
-                 records.filter(dataset._cv_val_fold_filter)}
+            dataset._parse_function
+        )
+        train_n = {
+            int(r['n']) for r in records.filter(dataset._cv_train_fold_filter)
+        }
+        val_n = {
+            int(r['n']) for r in records.filter(dataset._cv_val_fold_filter)
+        }
         assert val_n == set(folds[k])
         others = np.concatenate([f for i, f in enumerate(folds) if i != k])
         assert train_n == set(others)
@@ -132,8 +153,7 @@ def test_predefined_split_is_used_exactly(tmp_path):
     np.testing.assert_array_equal(np.sort(test[:, 0]), np.arange(0, 20))
     # The caller's split is not modified, so it can be reused
     assert len(split[0]) == 6
-    meta2 = produce(tmp_path, (X, y), predefined_split=split,
-                    data_id='test2')
+    meta2 = produce(tmp_path, (X, y), predefined_split=split, data_id='test2')
     np.testing.assert_array_equal(meta2.data['test_fold'], split_copy[0][-1])
 
 
@@ -142,8 +162,10 @@ def test_predefined_split_with_wrong_sizes_raises(tmp_path):
     too_few = [[np.arange(i * 20, (i + 1) * 20) for i in range(5)]]
     with pytest.raises(AssertionError):
         produce(tmp_path, (X, y), predefined_split=too_few)
-    uneven = [[np.arange(0, 30)] + [np.arange(30 + i * 18, 48 + i * 18)
-                                     for i in range(5)]]
+    uneven = [
+        [np.arange(0, 30)]
+        + [np.arange(30 + i * 18, 48 + i * 18) for i in range(5)]
+    ]
     with pytest.raises(AssertionError):
         produce(tmp_path, (X, y), predefined_split=uneven)
 
@@ -167,8 +189,9 @@ def test_loso_writes_whole_inputs_as_test_sets(tmp_path):
     assert len(meta.data['train_paths']) == 2
     for i, path in enumerate(meta.data['test_paths']):
         recs = read_records(meta, [path])
-        np.testing.assert_array_equal(np.sort(recs[:, 0]),
-                                      np.arange(60) + 60 * i)
+        np.testing.assert_array_equal(
+            np.sort(recs[:, 0]), np.arange(60) + 60 * i
+        )
         np.testing.assert_allclose(recs[:, 1], recs[:, 0] + 1)
 
 
@@ -179,9 +202,14 @@ def test_trials_input_with_holdout(tmp_path):
     y = np.repeat([0, 1], n // 2)  # sorted classes
     meta = produce(tmp_path, (X, y), input_type='trials', target_type='int')
     parse = mneflow.Dataset(meta)._parse_function
-    recs = [(int(r['n']), float(r['X'].numpy().ravel()[0]),
-             int(np.argmax(r['y'].numpy())))
-            for r in tf.data.TFRecordDataset(meta.data['train_paths']).map(parse)]
+    recs = [
+        (
+            int(r['n']),
+            float(r['X'].numpy().ravel()[0]),
+            int(np.argmax(r['y'].numpy())),
+        )
+        for r in tf.data.TFRecordDataset(meta.data['train_paths']).map(parse)
+    ]
     recs = np.array(recs)
     np.testing.assert_allclose(recs[:, 1], recs[:, 0] + 1)
     np.testing.assert_array_equal(recs[:, 2], y[recs[:, 0].astype(int)])
@@ -189,11 +217,15 @@ def test_trials_input_with_holdout(tmp_path):
 
 
 def test_minmax_scale_keeps_zeros_and_scales_each_sample():
-    X = np.array([[[0, 2, 4], [2, 0, 6], [4, 6, 0]],
-                  [[0, 5, 5], [5, 0, 5], [5, 5, 0]]], float)
+    X = np.array(
+        [[[0, 2, 4], [2, 0, 6], [4, 6, 0]], [[0, 5, 5], [5, 0, 5], [5, 5, 0]]],
+        float,
+    )
     X_orig = X.copy()
     scaled = minmax_scale(X)
-    np.testing.assert_allclose(scaled[0], [[0, 0, .5], [0, 0, 1], [.5, 1, 0]])
+    np.testing.assert_allclose(
+        scaled[0], [[0, 0, 0.5], [0, 0, 1], [0.5, 1, 0]]
+    )
     np.testing.assert_allclose(scaled[1], 0)  # constant sample
     np.testing.assert_array_equal(X, X_orig)  # input not modified
 
@@ -219,13 +251,20 @@ def test_continuous_input(tmp_path, test_set):
     data = np.zeros((1, 4, n_t), np.float32)
     data[:] = t  # value = time point
     events = 2 * t[None, None, :]  # target = 2 * time point
-    meta = produce(tmp_path, (data, events), input_type='continuous',
-                   target_type='signal', test_set=test_set)
+    meta = produce(
+        tmp_path,
+        (data, events),
+        input_type='continuous',
+        target_type='signal',
+        test_set=test_set,
+    )
     folds = meta.data['folds'][0]
     assert len(folds) == 5
     parse = mneflow.Dataset(meta)._parse_function
-    recs = [(int(r['n']), r['X'].numpy(), r['y'].numpy())
-            for r in tf.data.TFRecordDataset(meta.data['train_paths']).map(parse)]
+    recs = [
+        (int(r['n']), r['X'].numpy(), r['y'].numpy())
+        for r in tf.data.TFRecordDataset(meta.data['train_paths']).map(parse)
+    ]
     for _, x, y in recs:
         np.testing.assert_allclose(y.ravel()[0], 2 * x.ravel()[0])
     n = {r[0] for r in recs}
@@ -238,8 +277,14 @@ def test_dataset_timepoint_subset(tmp_path):
     """Dataset keeps only the time points in meta.data['timepoint_subset']."""
     X = np.random.rand(60, 3, 20).astype(np.float32)
     y = np.repeat([0, 1], 30)
-    meta = produce(tmp_path, (X, y), input_type='trials', target_type='int',
-                   n_folds=3, test_set=None)
+    meta = produce(
+        tmp_path,
+        (X, y),
+        input_type='trials',
+        target_type='int',
+        n_folds=3,
+        test_set=None,
+    )
     meta.data['timepoint_subset'] = [0, 5, 10]
     dataset = _quiet(mneflow.Dataset, meta, train_batch=10)
     x, _ = next(iter(dataset.train))
@@ -251,11 +296,15 @@ def test_missing_input_returns_none(tmp_path):
     the dataset was not found and returns None instead of crashing."""
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        meta = mneflow.produce_tfrecords(None, path=str(tmp_path),
-                                         data_id='missing', fs=1,
-                                         input_type='fconn',
-                                         target_type='float',
-                                         overwrite=False)
+        meta = mneflow.produce_tfrecords(
+            None,
+            path=str(tmp_path),
+            data_id='missing',
+            fs=1,
+            input_type='fconn',
+            target_type='float',
+            overwrite=False,
+        )
     assert meta is None
     assert 'Dataset not found' in out.getvalue()
 
@@ -269,5 +318,6 @@ def test_data_with_wrong_dimensions_raises(tmp_path):
 
 def test_scale_to_baseline_rejects_invalid_baseline():
     from mneflow.utils import scale_to_baseline
+
     with pytest.raises(ValueError, match='baseline'):
         _quiet(scale_to_baseline, np.random.rand(4, 3, 20), baseline=[0, 5])

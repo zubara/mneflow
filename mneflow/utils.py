@@ -144,7 +144,7 @@ def minmax_scale(X):
             continue
         vmin, vmax = sample[nonzero].min(), sample[nonzero].max()
         if vmax == vmin:
-            sample[nonzero] = 0.
+            sample[nonzero] = 0.0
         else:
             sample[nonzero] = (sample[nonzero] - vmin) / (vmax - vmin)
     return X_scaled

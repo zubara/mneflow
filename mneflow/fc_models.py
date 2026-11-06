@@ -51,7 +51,7 @@ def _fold_stability(data, threshold):
         for j in range(i + 1, n_folds):
             union = np.sum(masks[:, i] | masks[:, j])
             inter = np.sum(masks[:, i] & masks[:, j])
-            jaccard.append(inter / union if union else 0.)
+            jaccard.append(inter / union if union else 0.0)
             abs_r.append(np.abs(np.corrcoef(data[:, i], data[:, j])[0, 1]))
     return {'jaccard': float(np.mean(jaccard)), 'abs_r': float(np.mean(abs_r))}
 
