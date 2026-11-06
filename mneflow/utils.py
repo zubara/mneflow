@@ -164,7 +164,8 @@ def _make_example(X, y, n, target_type='int'):
         feature.
 
     n : ndarray
-        Example index, flattened and stored as an int64 feature.
+        Sample index of the example (see :func:`produce_tfrecords`),
+        stored as an int64 feature.
 
     target_type : str {'int', 'float', 'signal'}, optional
         Type of the target variable, determining how ``y`` is
@@ -212,8 +213,9 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int', order=None):
         Class labels.
         len =  `n_epochs`, shape = `y_shape`
 
-    n_ : int
-        nubmer of training examples
+    n_ : ndarray of int
+        Sample index of each example (see :func:`produce_tfrecords`),
+        stored with the example as ``'n'``.
 
     output_file : str
         Name of the TFRecords file.
@@ -457,14 +459,17 @@ def produce_tfrecords(inputs,
         files. Defaults to {'X':'X', 'y':'y'}
 
     n_folds : int, optional
-        Number of folds to split the data for training/validation/testing.
-        One fold of the n_folds is used as a validation set.
-        If test_set == 'holdout' generates one extra fold
-        used as test set. Defaults to 5
+        Number of cross-validation folds. Each fold is used once as the
+        validation set while the others are used for training. If
+        test_set == 'holdout', one extra fold of the same size is made
+        and used as the test set, so each fold holds
+        n_samples // (n_folds + 1) samples. Defaults to 5
 
     test_set : str {'holdout', 'loso', None}, optional
-        Defines if a separate holdout test set is required.
-        'holdout' saves 50% of the validation set
+        Defines if a separate test set is required.
+        'holdout' keeps one extra fold (see n_folds) out of the training
+        and validation data and writes it to a separate test TFRecord;
+        its sample indices are stored in ``MetaData.data['test_fold']``.
         'loso' saves the whole dataset in original order for
         leave-one-subject-out cross-validation.
         None does not leave a separate test set. Defaults to None.

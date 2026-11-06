@@ -92,14 +92,15 @@ class MetaData():
         data. Requires "transform_targets" function to be applied to target variables.
 
     n_folds : int, optional
-        Number of folds to split the data for training/validation/testing.
-        One fold of the n_folds is used as a validation set.
-        If test_set == 'holdout' generates one extra fold
-        used as test set. Defaults to 5
+        Number of cross-validation folds. Each fold is used once as the
+        validation set while the others are used for training. If
+        test_set == 'holdout', one extra fold of the same size is made
+        and used as the test set. Defaults to 5
 
     test_set : str {'holdout', 'loso', None}, optional
-        Defines if a separate holdout test set is required.
-        'holdout' saves 50% of the validation set
+        Defines if a separate test set is required.
+        'holdout' keeps one extra fold (see n_folds) out of the training
+        and validation data and writes it to a separate test TFRecord.
         'loso' produces an addtional trfrecord so that each input file can
         be used as a test test in leave-one-subject-out cross-validation.
         None does not produce a separate test set.

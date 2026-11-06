@@ -736,7 +736,15 @@ class BaseModel():
     def update_log(self, rms=None, prefix=''):
         """Logs experiment to self.model_path + self.scope + '_log.csv'.
 
-        If the file exists, appends a line to the existing file.
+        If the file exists, appends a line to the existing file (the
+        header is only written when the file is created, so a log started
+        by a version with different columns gets misaligned rows).
+
+        Besides the results, the line holds the training parameters, the
+        dataset sizes and selected model specs. ``model_id`` is the model
+        name (``<scope>_<data_id>``) and ``spec_model_id`` the
+        ``'model_id'`` given in the model specs, if any. Model specs that
+        a model doesn't use are left empty.
 
         Parameters
         ----------

@@ -49,12 +49,12 @@ class Dataset(object):
         Only set if ``h_params['test_paths']`` is non-empty.
 
     train_fold : ndarray
-        Concatenated example indices assigned to the training folds,
-        set by :meth:`_build_dataset`.
+        Concatenated sample indices (the records' ``'n'``) of the
+        training folds, set by :meth:`_build_dataset`.
 
     val_fold : ndarray
-        Example indices assigned to the validation fold, set by
-        :meth:`_build_dataset`.
+        Sample indices (the records' ``'n'``) of the validation fold,
+        set by :meth:`_build_dataset`.
 
     train_inds : ndarray
         Concatenated indices into the training folds, set by
@@ -608,7 +608,7 @@ class Dataset(object):
         Parameters
         ----------
         sample : dict
-            Parsed example with an ``'n'`` entry (example index) to
+            Parsed example with an ``'n'`` entry (sample index) to
             test against ``self.train_fold``.
 
         Returns
@@ -632,7 +632,7 @@ class Dataset(object):
         Parameters
         ----------
         sample : dict
-            Parsed example with an ``'n'`` entry (example index) to
+            Parsed example with an ``'n'`` entry (sample index) to
             test against ``self.val_fold``.
 
         Returns
