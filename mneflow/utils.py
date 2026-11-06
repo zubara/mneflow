@@ -564,6 +564,10 @@ def produce_tfrecords(inputs,
     if not os.path.exists(meta_fname) or  overwrite:
         #print("(Re)-importing data")
         train_size = 0
+        # Offset of the current input's samples: each record's 'n' is its
+        # sample index in the inputs, so fold and holdout indices keep
+        # pointing at the right samples after the holdout set is removed
+        sample_offset = 0
         test_size = 0
         val_size = 0
         folds = []
@@ -632,7 +636,7 @@ def produce_tfrecords(inputs,
 
                 X, Y, fold_split = preprocess(
                         data, events,
-                        sample_counter=train_size,
+                        sample_counter=sample_offset,
                         input_type=input_type,
                         n_folds=n_folds,
                         scale=scale,
@@ -655,18 +659,25 @@ def produce_tfrecords(inputs,
                     orig_classes = dict()
 
                 if predefined_split:
-                    assert len(predefined_split[jj]) == len(fold_split), "Number of folds in predefined_split {} does not match n_folds {}!".format(len(predefined_split), len(fold_split))
+                    assert len(predefined_split[jj]) == len(fold_split), "Number of folds in predefined_split {} does not match n_folds {}!".format(len(predefined_split[jj]), len(fold_split))
                     assert np.all([len(fpd) == len(fa) for fpd, fa in zip(predefined_split[jj], fold_split)]), "Number of samples in predefined folds does not match the original split!"
                     print("Using Predefined Train/Validation Split....")
-                    fold_split = predefined_split[jj]
+                    # Copy, so that removing the holdout fold below does
+                    # not modify the caller's predefined_split
+                    fold_split = [np.asarray(f) for f in predefined_split[jj]]
+
+                # Sample index of each row of X
+                n = np.arange(X.shape[0]) + sample_offset
+                n_input_samples = X.shape[0]
 
                 if test_set == 'holdout':
-                    test_fold = fold_split.pop(-1) - train_size
+                    test_fold = fold_split.pop(-1) - sample_offset
                     X, x_test = _split_sets(X, test_fold)
                     Y, y_test = _split_sets(Y, test_fold)
+                    n, n_test = _split_sets(n, test_fold)
                     if np.any(cur_t_index):
                         T, t_test = _split_sets(cur_t_index, test_fold)
-                    test_fold = test_fold + train_size
+                    test_fold = test_fold + sample_offset
                     test_size += x_test.shape[0]
                 else:
                     test_fold = None
@@ -680,19 +691,16 @@ def produce_tfrecords(inputs,
 
 
 
-                n = np.arange(_n) + train_size
-
                 folds.append(fold_split)
                 if t_index is not None:
-                    indices.append([cur_t_index[f - train_size] for f in fold_split])
+                    indices.append([cur_t_index[f - sample_offset] for f in fold_split])
                 else:
-                    # `fold_split` entries already hold the original
-                    # (train_size-offset) sample indices; looking them up in
-                    # `n` breaks once a holdout test fold has shrunk `n`
-                    # below the largest index still present in fold_split.
+                    # fold_split holds sample indices, the same values as
+                    # the records' 'n'
                     indices.append([f for f in fold_split])
 
                 train_size += _n
+                sample_offset += n_input_samples
 
                 val_size += len(fold_split[0])
 
@@ -720,8 +728,6 @@ def produce_tfrecords(inputs,
                     #meta['test_fold'].append(test_fold)
                     tfrname = ''.join([data_id, '_test_', str(jj), '.tfrecord'])
                     test_filename = os.path.join(data_path, tfrname)
-                    n_test = np.arange(len(test_fold))
-
                     _write_tfrecords(x_test, y_test, n_test, test_filename,
                                      target_type=target_type)
                     test_paths.append(test_filename)
