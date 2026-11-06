@@ -1007,7 +1007,7 @@ def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
     events = np.concatenate([events[:, :, s: s + ind_samples] for s in segments])
 
 
-    folds = _split_indices(data, events, n_folds=n_folds)
+    folds = _split_indices(data.shape[0], n_folds=n_folds)
     return data, events, folds
 
 
@@ -1146,12 +1146,11 @@ def preprocess(data, events, sample_counter,
 
     #define folds
     if input_type  == 'continuous':
+        # Fold indices refer to the segments in their current order;
+        # produce_tfrecords shuffles the records when writing them
         data, events, batch_folds = cont_split_indices(data, events,
-                                                 n_folds=5,
+                                                 n_folds=n_folds,
                                                  segments_per_fold=10)
-        shuffle = np.random.permutation(np.arange(n_samples))
-        data = data[shuffle]
-        events = events[shuffle]
         print("Continuous events: ", events.shape)
 
     else:

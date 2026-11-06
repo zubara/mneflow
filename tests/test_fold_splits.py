@@ -208,3 +208,27 @@ def test_fconn_scale_option_min_max_scales_samples(tmp_path):
         x = r['X'].numpy()
         assert x.min() == pytest.approx(0, abs=1e-6)
         assert x.max() == pytest.approx(1, abs=1e-6)
+
+
+@pytest.mark.parametrize('test_set', [None, 'holdout'])
+def test_continuous_input(tmp_path, test_set):
+    """A continuous recording is cut into segments and split into folds;
+    the target signal stays aligned with the data."""
+    n_t = 6000
+    t = np.arange(n_t, dtype=np.float32)
+    data = np.zeros((1, 4, n_t), np.float32)
+    data[:] = t  # value = time point
+    events = 2 * t[None, None, :]  # target = 2 * time point
+    meta = produce(tmp_path, (data, events), input_type='continuous',
+                   target_type='signal', test_set=test_set)
+    folds = meta.data['folds'][0]
+    assert len(folds) == 5
+    parse = mneflow.Dataset(meta)._parse_function
+    recs = [(int(r['n']), r['X'].numpy(), r['y'].numpy())
+            for r in tf.data.TFRecordDataset(meta.data['train_paths']).map(parse)]
+    for _, x, y in recs:
+        np.testing.assert_allclose(y.ravel()[0], 2 * x.ravel()[0])
+    n = {r[0] for r in recs}
+    assert set(np.concatenate(folds)) <= n
+    if test_set == 'holdout':
+        assert not n & set(np.asarray(meta.data['test_fold']))
