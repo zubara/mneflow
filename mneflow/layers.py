@@ -850,7 +850,7 @@ class LFTConvTranspose(BaseLayer):
 
         """
         nonlin_config = config.pop("nonlin")
-        scope = config.pop("scope")
+        config.pop("scope")
         nonlin = saving.deserialize_keras_object(nonlin_config)
         return cls(nonlin, **config)
 

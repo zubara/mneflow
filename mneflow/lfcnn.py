@@ -10,7 +10,7 @@ import keras
 
 import numpy as np
 
-from mne import channels, evoked, create_info, Info
+from mne import channels, evoked, create_info
 from mne.filter import filter_data
 
 
@@ -23,10 +23,9 @@ from matplotlib import collections
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from time import time
         
-from mneflow.layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling, LFTConvTranspose
-from keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D, LSTM
-from keras.layers import Flatten, Dropout, BatchNormalization
-from keras.initializers import Constant
+from mneflow.layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling
+from keras.layers import LSTM
+from keras.layers import Dropout
 from mneflow.data import Dataset
 from mneflow.models import BaseModel
 from collections import defaultdict
@@ -771,7 +770,6 @@ class LFCNN(BaseModel):
         xinp = xinp - xinp.mean(0, keepdims=True)
         cov_xy = np.dot(xinp.T, xdmx)
         print("aw", cov_xy.shape)
-        aw = cov_xy
         sx = np.reshape(Sx, [-1, Sx.shape[-2], Sx.shape[-1]])
         sx = sx - sx.mean(0, keepdims=True)
         ddof = sx.shape[0] - 1
@@ -816,16 +814,13 @@ class LFCNN(BaseModel):
             Spatial patterns for each class, shape (n_ch, n_classes).
         """
         combined_topos = []
-        pinv_dmx = np.linalg.pinv(weights['dmx']).T#np.dot(spatial_filters, np.linalg.inv(np.dot(spatial_filters.T, spatial_filters)))
         pinv_wfc = np.linalg.pinv(weights['out_w_flat']).T#np.dot(out_w_flat, np.linalg.inv(np.dot(out_w_flat.T, out_w_flat)))
-        pinv_tck = np.linalg.pinv(weights['tconv']).T #np.dot(tconv_kernels, np.linalg.inv(np.dot(tconv_kernels.T, tconv_kernels)))
 
         #Least square singal estimate in tconv given wfc and fc_activations
         Sx_tconv = np.einsum('jk, ik ->ij', pinv_wfc, activations['fc'])
         Sx_tconv = np.reshape(Sx_tconv, activations['pooled'].shape)
 
         #Reverse pooling and depthwise convolution for each class
-        Sx_dmx = []
         for class_y in range(self.out_dim):
             class_ind = tf.reshape(tf.where(tf.argmax(y, 1)==class_y), [-1])  # 1-D regardless of match count (see _get_class_conditional_spatial_covariance)
             Sxm = np.squeeze(Sx_tconv[class_ind, :].mean(0, keepdims=True))
@@ -2094,12 +2089,9 @@ class LFCNN(BaseModel):
                                                        n_comp=n_comp)
 
 
-        freqs = self.cv_patterns['freqs']
-
         topos /= np.maximum(topos.std(axis=0, keepdims=True),
                                      1e-3)
         n = self.y_shape[0]
-        ncols = n
         lo = channels.read_layout(sensor_layout)
         #lo = channels.generate_2d_layout(lo.pos)
         info = create_info(lo.names, 1., sensor_layout.split('-')[-1])

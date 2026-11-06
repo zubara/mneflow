@@ -14,17 +14,10 @@ import keras
 import numpy as np
 
 from typing import Callable
-from mne import channels, evoked, create_info, Info
-from mne.filter import filter_data
 
 
-from scipy.stats import spearmanr, pearsonr
-from scipy.signal import welch
 
 from matplotlib import pyplot as plt
-from matplotlib import patches as ptch
-from matplotlib import collections
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from .layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling
 from keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
@@ -483,9 +476,6 @@ class BaseModel():
                 print("""Test set performance:\n
                       Loss: {:.4f},
                       Metric: {:.4f}""".format(t_loss, t_metric))
-
-        metrics = self.cv_metrics
-        losses = self.cv_losses
 
         if self.dataset.h_params['target_type'] == 'float':
             rms = {k:np.mean(v) for k, v in rmss.items()}

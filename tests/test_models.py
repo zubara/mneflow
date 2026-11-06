@@ -9,7 +9,6 @@ go on to call `.build()`/`.train()`, which these tests never do.
 A lightweight duck-typed stand-in for each is enough to exercise the
 real layer wiring and check the resulting output shape.
 """
-import numpy as np
 import pytest
 import tensorflow as tf
 

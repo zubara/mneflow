@@ -8,8 +8,6 @@ Created on Fri Jul 12 10:33:35 2024
 
 from collections import defaultdict
 from copy import deepcopy
-import os
-from pathlib import Path
 
 import numpy as np
 from scipy.stats import spearmanr, pearsonr
@@ -17,15 +15,14 @@ import tensorflow as tf
 import keras
 from keras.layers import (Dense, Flatten, Dropout, BatchNormalization,
                                      Conv2D, SpatialDropout2D, Conv3D,
-                                     SpatialDropout3D, AveragePooling2D,
-                                     MaxPooling2D, Lambda, DepthwiseConv2D)
+                                     SpatialDropout3D, Lambda, DepthwiseConv2D)
 from keras import initializers
 
 # working_directory = Path("/m/nbe/scratch/restmeg/eero/code/mneflow/")
 # os.chdir(working_directory)
 #import mneflow
 from .layers import SquareSum3d, WeightSum3d
-from .layers import se_block, channel_attention, spatial_attention
+from .layers import se_block
 from .models import BaseModel
 from .data import Dataset
 
@@ -371,7 +368,7 @@ class WeightedSum3dModel(BaseModel):
         if self.specs['attention_rate'] > 0:
             csum = se_block(csum, ratio=self.specs['attention_rate'])
             print(
-                f"Built: Squeeze-and-Excitation block added with channel reduction rate: ",
+                "Built: Squeeze-and-Excitation block added with channel reduction rate: ",
                 self.specs['attention_rate'])
 
         # Pointwise convolution (Conv2D with 1x1 kernel)
@@ -541,7 +538,7 @@ class SymmetricModel(BaseModel):
         if self.specs['attention_rate'] > 0:
             ssum1 = se_block(ssum1, ratio=self.specs['attention_rate'])
             print(
-                f"Built: Squeeze-and-Excitation block added with channel reduction rate: ",
+                "Built: Squeeze-and-Excitation block added with channel reduction rate: ",
                 self.specs['attention_rate'])
 
         # Pointwise convolution (Conv2D with 1x1 kernel)

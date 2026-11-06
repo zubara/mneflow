@@ -11,11 +11,6 @@ from scipy.signal import freqz
 from matplotlib import pyplot as plt
 from matplotlib import patches as ptch
 from matplotlib import collections
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from mne import find_events, fit_dipole
-from mne.datasets import fetch_phantom
-from mne.datasets.brainstorm import bst_phantom_elekta
-from mne.io import read_raw_fif
 import pickle
 
 class MetaData():
@@ -1345,7 +1340,6 @@ class MetaData():
 
         if average_over == 'folds':
             sd_waveforms = cc_waveforms.std(-1) / np.sqrt(cc_waveforms.shape[-1])
-            sd_activations = cc_activations.std(-1) / np.sqrt(cc_waveforms.shape[-1])
             cc_waveforms = cc_waveforms.mean(-1)
             cc_activations = cc_activations.mean(-1)
 
@@ -1364,7 +1358,6 @@ class MetaData():
             # this used to be left unset, which crashed the fill_between
             # call below with an UnboundLocalError.
             sd_waveforms = np.zeros_like(cc_waveforms)
-            sd_activations = np.zeros_like(cc_activations)
 
         f, ax = plt.subplots(n_rows, 2)
         ax = np.atleast_2d(ax)
