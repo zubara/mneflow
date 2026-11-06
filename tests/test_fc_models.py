@@ -143,6 +143,10 @@ def test_cv_training_writes_log_and_saves_model(tfr_path, name):
 def test_symmetric_patterns_and_roi_labels(tfr_path):
     model = make_model(tfr_path, 'symmetric')
     train_cv(model)
+    # One collected pattern per CV fold (the holdout fold is not trained)
+    dcov = model.cv_patterns['dcov']
+    assert dcov.shape[-1] == N_FOLDS
+    assert all(np.any(dcov[..., i]) for i in range(N_FOLDS))
     patterns = _quiet(model.extract_patterns)
     for key in ('row', 'col', 'diag'):
         assert patterns['spatial_patterns'][key].shape == (N_NODES, N_FOLDS)

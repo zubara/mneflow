@@ -1005,8 +1005,8 @@ class SymmetricModel(BaseModel):
             to write into. Defaults to 0.
 
         n_folds : int, optional
-            Number of folds; only used as a fallback before
-            ``self.meta.data['n_folds']`` is read on the first fold.
+            Not used; the number of CV folds is read from
+            ``self.meta.data['folds']`` on the first fold.
             Defaults to 1.
 
         n_comp : int, optional
@@ -1026,7 +1026,9 @@ class SymmetricModel(BaseModel):
         if len(self.cv_patterns.items()) == 0 or fold==0:
             n_parcels = self.meta.data['n_seq']
             n_fft = self.meta.data['n_ch']
-            n_folds = self.meta.data['n_folds']
+            # Number of CV folds; meta.data['n_folds'] also counts the
+            # holdout fold when test_set='holdout'
+            n_folds = len(self.meta.data['folds'][0])
 
             #self.cv_patterns['freqs'] = patterns_struct['freqs']
 
