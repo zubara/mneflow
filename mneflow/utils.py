@@ -499,11 +499,12 @@ def produce_tfrecords(inputs,
     predefined_split : list or lists, optional
         Pre-defined split of the dataset into training/validation folds:
         one list of fold index arrays per input. The indices refer to the
-        samples of the input (for later inputs, offset by the total number
-        of samples in the previous inputs). Each list must contain n_folds
-        folds of the same sizes as the automatic split (n_samples // n_folds
-        samples each); with test_set='holdout' it needs one extra fold,
-        and its last fold is used as the holdout set. Not modified.
+        samples of the input (or to its segments, if ``segment`` is set),
+        offset for later inputs by the total number of samples in the
+        previous inputs. Each list must contain n_folds folds of the same
+        sizes as the automatic split (n_samples // n_folds samples each);
+        with test_set='holdout' it needs one extra fold, and its last fold
+        is used as the holdout set. Not modified.
 
     t_index : array-like, optional
         Index of timestamps associated with each training example. Must be
