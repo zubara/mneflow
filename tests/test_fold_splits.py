@@ -244,3 +244,17 @@ def test_dataset_timepoint_subset(tmp_path):
     dataset = _quiet(mneflow.Dataset, meta, train_batch=10)
     x, _ = next(iter(dataset.train))
     assert x.shape[2] == 3  # (batch, n_seq, times, channels)
+
+
+def test_missing_input_returns_none(tmp_path):
+    """Without data (and no saved metadata), produce_tfrecords reports that
+    the dataset was not found and returns None instead of crashing."""
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        meta = mneflow.produce_tfrecords(None, path=str(tmp_path),
+                                         data_id='missing', fs=1,
+                                         input_type='fconn',
+                                         target_type='float',
+                                         overwrite=False)
+    assert meta is None
+    assert 'Dataset not found' in out.getvalue()

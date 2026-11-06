@@ -610,7 +610,8 @@ def produce_tfrecords(inputs,
         for i, inp in enumerate(inputs):
             data, events = import_data(inp, array_keys=array_keys)
 
-            if np.any(data) == None:
+            if data is None:
+                # import_data could not find the data (it prints why)
                 return
 
             else:
