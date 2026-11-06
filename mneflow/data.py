@@ -503,6 +503,7 @@ class Dataset(object):
         example_proto['X'] = tf.gather(example_proto['X'],
                                        self.timepoint_subset,
                                        axis=2)
+        return example_proto
 
     def _crop(self, example_proto):
         """Crop data on the time axis.

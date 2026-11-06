@@ -232,3 +232,15 @@ def test_continuous_input(tmp_path, test_set):
     assert set(np.concatenate(folds)) <= n
     if test_set == 'holdout':
         assert not n & set(np.asarray(meta.data['test_fold']))
+
+
+def test_dataset_timepoint_subset(tmp_path):
+    """Dataset keeps only the time points in meta.data['timepoint_subset']."""
+    X = np.random.rand(60, 3, 20).astype(np.float32)
+    y = np.repeat([0, 1], 30)
+    meta = produce(tmp_path, (X, y), input_type='trials', target_type='int',
+                   n_folds=3, test_set=None)
+    meta.data['timepoint_subset'] = [0, 5, 10]
+    dataset = _quiet(mneflow.Dataset, meta, train_batch=10)
+    x, _ = next(iter(dataset.train))
+    assert x.shape[2] == 3  # (batch, n_seq, times, channels)
