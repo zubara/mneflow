@@ -68,9 +68,11 @@ Storing the preprocessed data and metadata on disk (rather than recomputing them
 - `'trials'` — each input is an i.i.d. sample, producing a dataset of shape `(n, 1, t, ch)`;
 - `'seq'` — each input is a sequence of shorter segments, for sequence/RNN-type models;
 - `'continuous'` — inputs are treated as one continuous recording and segmented with a configurable stride (augmentation);
-- `'fconn'` — inputs are treated as functional-connectivity data.
+- `'fconn'` — inputs are treated as functional-connectivity data of shape `(n, nodes, nodes, frequencies)`; with `scale=True` each sample is min-max scaled to [0, 1].
 
 The `target_type` argument similarly distinguishes classification (`'int'`), regression of a scalar variable (`'float'`), and regression or classification against a continuous, possibly multichannel signal (`'signal'`, e.g. reconstructing a continuous source-level or envelope signal), the latter via a user-supplied `transform_targets` function.
+
+**Data partitioning.** The samples are split into `n_folds` cross-validation folds; with `test_set='holdout'`, one extra fold is kept out of training and validation as a test set. The split can also be supplied as `predefined_split` (sample indices, last fold = holdout), e.g. to evaluate several datasets on the same samples. Each record stores its sample index, which the folds in `MetaData` refer to, and training records are written in random order so that batches are mixed even when the inputs are sorted (e.g. by the target).
 
 **Model development.** MNEflow implements several published CNN architectures for EEG/MEG decoding, all inheriting from the same parent class (`mneflow.models.BaseModel`) and sharing the same datasets, optimizers, and validation routines, which makes them directly comparable and easy to benchmark against one another:
 

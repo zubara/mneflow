@@ -1,6 +1,39 @@
 History
 =======
 
+Unreleased
+----------
+Behaviour changes in ``produce_tfrecords`` (rebuild TFRecords made with
+earlier versions):
+
+* Training records are written in random order. Before, they were written in
+  input order and ``Dataset`` only shuffles within a buffer of 5, so with
+  inputs sorted by the target each batch covered a narrow range of targets.
+* With ``test_set='holdout'``, records keep their sample index ``'n'``. Before,
+  the remaining records were renumbered while the folds kept the original
+  indices, so part of the data dropped out of training and validation.
+  Holdout records also carry their sample index.
+* ``predefined_split`` is no longer modified in place.
+* ``scale=True`` min-max scales each sample for ``input_type='fconn'``
+  (new ``utils.minmax_scale``) instead of scaling to a baseline.
+
+Functional connectivity models:
+
+* ``SymmetricModel`` reads ``attention_rate`` (as documented) instead of
+  ``attention_ratio``.
+* ``WeightedSum3dModel`` uses the scope ``weighted_sum_3d`` throughout (the
+  metadata held ``model2_weighted_sum_3d``) and builds its graph only once.
+* ``SymmetricModel.get_roi_labels`` can also return the stability of the
+  patterns across folds (``return_stability=True``).
+* ``extract_patterns`` and ``collect_patterns`` count only the trained CV
+  folds, not the holdout fold.
+* The connectivity models are included in the API documentation.
+
+Logging:
+
+* ``update_log`` no longer fails for models without one of the logged specs
+  (e.g. ``n_latent``), and logs the specs' ``model_id`` as ``spec_model_id``.
+
 0.7.0 (22-09-2026)
 -------------------
 * Migrated to standalone keras. Removed support for Python 3.9 and earlier
