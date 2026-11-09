@@ -1102,13 +1102,19 @@ class SymmetricModel(BaseModel):
         comp_inds = defaultdict(list)
 
         pointwise = self.meta.weights['pointwise']
+        trainable_pointwise = self.meta.model_specs.get(
+            'trainable_pointwise_kernel', True)
+        if not trainable_pointwise and pointwise.ndim != 2:
+            raise NotImplementedError(
+                "extract_patterns supports trainable_pointwise_kernel=False "
+                "only with n_latent_cross=1")
 
         def freq_weights(comp, fold):
             # With the trainable pointwise layer each component has its own
             # frequency weights, shape (n_freqs, n_components, n_folds).
             # Otherwise a 1x1 convolution weights the frequencies, shared by
             # all components: shape (n_freqs, n_folds).
-            if pointwise.ndim == 3:
+            if trainable_pointwise:
                 return pointwise[:, comp, fold]
             return pointwise[:, fold]
 

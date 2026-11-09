@@ -266,3 +266,10 @@ def test_models_learn_target_signal(tfr_path, name):
     train_y = np.delete(y, test_fold)
     baseline_mae = np.mean(np.abs(y[test_fold] - train_y.mean()))
     assert holdout_mae < 0.7 * baseline_mae
+
+
+def test_fixed_pointwise_patterns_need_single_cross_filter(tfr_path):
+    model = make_model(tfr_path, 'symmetric_fixed_pointwise', n_latent_cross=2)
+    train_cv(model)
+    with pytest.raises(NotImplementedError, match='n_latent_cross=1'):
+        _quiet(model.extract_patterns)
