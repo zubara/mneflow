@@ -34,6 +34,11 @@ Functional connectivity models:
 * ``SymmetricModel.extract_patterns`` also works with
   ``trainable_pointwise_kernel=False`` (one frequency weighting shared by all
   components).
+* ``SymmetricModel`` with ``trainable_pointwise_kernel=True`` runs its
+  depthwise convolution channels_last (transposing around it), so it also
+  trains on the CPU with TensorFlow/Keras versions that have no
+  channels_first depthwise convolution there. The computation and the weights
+  are unchanged.
 * The connectivity models are included in the API documentation.
 
 Evaluation:

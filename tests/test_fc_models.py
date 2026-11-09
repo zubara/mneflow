@@ -391,3 +391,32 @@ def test_log_with_old_columns_is_rewritten(tmp_path):
     assert old['spec_model_id'] == ''
     assert new['spec_model_id'] == 'new_row'
     assert new['model_id'] == model.model_name
+
+
+@pytest.mark.parametrize('name', list(CONFIGS))
+def test_no_channels_first_layers(tfr_path, name):
+    """TensorFlow's CPU kernels support only channels_last convolutions
+    (older versions fail on channels_first depthwise convolutions)."""
+    model = make_model(tfr_path, name)
+    formats = [
+        getattr(layer, 'data_format', None) for layer in model.km.layers
+    ]
+    assert 'channels_first' not in formats
+
+
+def test_trainable_pointwise_weights_each_component(tfr_path):
+    """The trainable pointwise layer weights the last axis with a separate
+    kernel for each component (axis 1), as a channels_first depthwise
+    convolution would."""
+    model = make_model(tfr_path, 'symmetric')
+    rng = np.random.default_rng(0)
+    inputs = rng.random((3,) + tuple(model.inputs.shape[1:]), np.float32)
+    shape = tuple(model.squaresum_3d(inputs).shape)
+    x = rng.normal(size=shape).astype(np.float32)
+    kernel = rng.normal(size=model.pointwise.kernel.shape).astype(np.float32)
+    bias = rng.normal(size=model.pointwise.bias.shape).astype(np.float32)
+    model.pointwise.set_weights([kernel, bias])
+    expected = np.einsum('bahw,wa->bah', x, kernel[0, :, :, 0])
+    expected = np.maximum(expected + bias[None, :, None], 0)[..., None]
+    got = keras.ops.convert_to_numpy(model._apply_pointwise(x))
+    np.testing.assert_allclose(got, expected, rtol=1e-4, atol=1e-5)

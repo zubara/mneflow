@@ -8,6 +8,7 @@ Created on Fri Jul 12 10:33:35 2024
 
 from collections import defaultdict
 from copy import deepcopy
+from typing import cast
 
 import numpy as np
 from scipy.stats import spearmanr, pearsonr
@@ -543,18 +544,21 @@ class SymmetricModel(BaseModel):
 
         # Pointwise convolution (Conv2D with 1x1 kernel)
         if self.specs['trainable_pointwise_kernel']:
+            # Each component (axis 1) gets its own weighting of the last
+            # axis. Applied channels_last (see _apply_pointwise): TensorFlow
+            # has no channels_first depthwise convolution on the CPU.
             self.pointwise = DepthwiseConv2D(
                 kernel_size=(1, self.meta.data['n_ch']),
                 activation='relu',
                 padding="valid",
-                data_format='channels_first',
+                data_format='channels_last',
                 depth_multiplier=1)
         else:
             self.pointwise = Conv2D(self.specs['n_latent_cross'], (1, 1),
                                     activation='relu',
                                     data_format='channels_last')
 
-        pointwise = self.pointwise(ssum1)
+        pointwise = self._apply_pointwise(ssum1)
         print(f"Built: Pointwise layer with {self.specs['n_latent_cross']} "
               f"filters. Input shape before: {ssum1.shape}, shape after: {pointwise.shape}")
 
@@ -589,6 +593,21 @@ class SymmetricModel(BaseModel):
         y_pred = self.fc(dropout)
 
         return y_pred
+
+    def _apply_pointwise(self, x) -> tf.Tensor:
+        """Apply the pointwise layer to the SquareSum3d output ``x``.
+
+        With ``trainable_pointwise_kernel``, the depthwise convolution
+        treats axis 1 of ``x`` as its channels (one kernel over the last
+        axis per component). It runs channels_last, so ``x`` is transposed
+        to put axis 1 last, and the output transposed back.
+        """
+        if isinstance(self.pointwise, DepthwiseConv2D):
+            x = keras.ops.transpose(x, (0, 2, 3, 1))
+            # cast: keras.ops is typed for all backends
+            return cast(tf.Tensor,
+                        keras.ops.transpose(self.pointwise(x), (0, 3, 1, 2)))
+        return self.pointwise(x)
 
     def extract_weights(self, verbose=False):
         """Extract the trained weights relevant for interpretation.
@@ -723,7 +742,8 @@ class SymmetricModel(BaseModel):
         #get layer activations
         activations = {}
         activations['squaresym'] = self.squaresum_3d(X)
-        activations['pointwise'] = self.pointwise(activations['squaresym'])
+        activations['pointwise'] = self._apply_pointwise(
+            activations['squaresym'])
         if hasattr(self, "fc1"):
             activations['fc1'] = self.fc1(self.flat(activations['pointwise']))
             activations['fin_fc']  = self.fc(self.b2n(activations['fc1']))
