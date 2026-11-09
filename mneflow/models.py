@@ -243,7 +243,8 @@ class BaseModel():
               early_stopping=3, mode='single_fold',
               collect_patterns=False, class_weights=None,
               noisy_labels=False, noise_std=.1, shapley_order=1, fold=0, 
-              compute_pvalues=False, store_fold_predictions=False) :
+              compute_pvalues=False, store_fold_predictions=False,
+              store_test_predictions=False) :
 
         """
         Train a model
@@ -302,6 +303,14 @@ class BaseModel():
             (``y_true``, ``y_pred``, and sample indices) in
             ``self.cv_predictions``. Defaults to False.
 
+        store_test_predictions : bool, optional
+            Whether to store each fold model's predictions for the test
+            set in ``self.cv_test_predictions``, one dict with ``y_true``
+            and ``y_pred`` per fold. The test samples are in the order of
+            the test TFRecords, i.e. of ``MetaData.data['test_fold']`` for
+            ``test_set='holdout'``, so the folds' predictions can be
+            averaged per sample. Defaults to False.
+
         Returns
         -------
         None
@@ -330,6 +339,7 @@ class BaseModel():
         self.cv_test_metrics = []
         self.cv_metric_pvalues = []
         self.cv_predictions = []
+        self.cv_test_predictions = []
         cv_pvals = []
 
         if class_weights:
@@ -436,6 +446,14 @@ class BaseModel():
                 t_loss, t_metric = self.evaluate(test)
                 self.cv_test_losses.append(t_loss)
                 self.cv_test_metrics.append(t_metric)
+                if store_test_predictions:
+                    n_test_batches = int(np.ceil(
+                        self.dataset.h_params['test_size']
+                        / self.dataset.test_batch))
+                    t_true, t_pred = self.predict(test,
+                                                  n_batches=n_test_batches)
+                    self.cv_test_predictions.append({'y_true': t_true,
+                                                     'y_pred': t_pred})
 
 
             y_true, y_pred = self.predict(val,

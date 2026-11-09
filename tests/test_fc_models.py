@@ -273,3 +273,25 @@ def test_fixed_pointwise_patterns_need_single_cross_filter(tfr_path):
     train_cv(model)
     with pytest.raises(NotImplementedError, match='n_latent_cross=1'):
         _quiet(model.extract_patterns)
+
+
+def test_cv_training_stores_test_predictions(tfr_path):
+    """With store_test_predictions, each fold model's predictions for the
+    whole test set are kept, in test_fold order."""
+    model = make_model(tfr_path, 'conv3d', model_id='pred_test')
+    _quiet(
+        model.train,
+        n_epochs=2,
+        eval_step=3,
+        early_stopping=1,
+        mode='cv',
+        store_test_predictions=True,
+    )
+    _, y = make_data()
+    test_fold = np.asarray(model.meta.data['test_fold'])
+    assert len(model.cv_test_predictions) == N_FOLDS
+    for fold in model.cv_test_predictions:
+        np.testing.assert_allclose(
+            np.ravel(fold['y_true']), y[test_fold], rtol=1e-5
+        )
+        assert np.ravel(fold['y_pred']).shape == test_fold.shape

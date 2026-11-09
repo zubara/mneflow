@@ -32,6 +32,14 @@ Functional connectivity models:
   components).
 * The connectivity models are included in the API documentation.
 
+Evaluation:
+
+* Test sets are no longer shuffled, so test predictions are in the order of
+  ``MetaData.data['test_fold']``.
+* ``train(..., store_test_predictions=True)`` keeps each fold model's
+  predictions for the test set in ``cv_test_predictions`` (e.g. to average
+  the fold models' predictions per sample).
+
 Logging:
 
 * ``update_log`` no longer fails for models without one of the logged specs
