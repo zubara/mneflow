@@ -49,6 +49,8 @@ Logging:
 
 * ``update_log`` no longer fails for models without one of the logged specs
   (e.g. ``n_latent``), and logs the specs' ``model_id`` as ``spec_model_id``.
+  A log written with other columns (e.g. by an earlier version) is rewritten
+  with the union of the columns before appending, so all rows stay aligned.
 
 0.7.0 (22-09-2026)
 -------------------

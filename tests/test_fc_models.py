@@ -365,3 +365,29 @@ def test_train_passes_shapley_order_to_collect_patterns(tfr_path):
     )
     assert calls == [2] * N_FOLDS
 
+
+def test_log_with_old_columns_is_rewritten(tmp_path):
+    """Appending to a log written with other columns (e.g. by an older
+    mneflow without spec_model_id) keeps every row aligned."""
+    _produce(tmp_path, make_data())
+    model = make_model(tmp_path, 'conv3d', model_id='new_row')
+    path = os.path.join(model.model_path, model.scope + '_log.csv')
+    os.makedirs(model.model_path, exist_ok=True)
+    with open(path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=['data_id', 'model_id', 'loss'])
+        writer.writeheader()
+        writer.writerow({'data_id': 'old', 'model_id': 'm0', 'loss': 'MSE'})
+    train_cv(model)
+    with open(path, newline='') as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        lines = list(reader)
+    assert header[:3] == ['data_id', 'model_id', 'loss']
+    assert 'spec_model_id' in header
+    assert all(len(line) == len(header) for line in lines)
+    old, new = read_log(model)
+    assert old['data_id'] == 'old' and old['loss'] == 'MSE'
+    assert old['model_id'] == 'm0'
+    assert old['spec_model_id'] == ''
+    assert new['spec_model_id'] == 'new_row'
+    assert new['model_id'] == model.model_name

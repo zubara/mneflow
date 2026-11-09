@@ -888,6 +888,24 @@ class BaseModel():
         log_header += by_fold
         self.log = log
 
+        if appending:
+            with open(savepath, newline='') as csv_file:
+                reader = csv.DictReader(csv_file)
+                old_header = list(reader.fieldnames or [])
+                old_rows = list(reader)
+            if old_header != log_header:
+                # The log was written with other columns (e.g. by an older
+                # mneflow, or a model with other options): rewrite it with
+                # the union of the columns, so that all rows stay aligned
+                header = old_header + [k for k in log_header
+                                       if k not in old_header]
+                with open(savepath, 'w', newline='') as csv_file:
+                    writer = csv.DictWriter(csv_file, fieldnames=header,
+                                            extrasaction='ignore')
+                    writer.writeheader()
+                    writer.writerows(old_rows)
+                log_header = header
+
         with open(savepath, 'a+', newline='') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=log_header)
             if not appending:
