@@ -170,6 +170,48 @@ def test_predefined_split_with_wrong_sizes_raises(tmp_path):
         produce(tmp_path, (X, y), predefined_split=uneven)
 
 
+def _global_split(n_inputs=2, n_per_input=60, n_folds=6):
+    """Predefined split of several inputs, with indices offset by the
+    previous inputs' samples."""
+    size = n_per_input // n_folds
+    return [
+        [
+            np.arange(
+                i * n_per_input + k * size, i * n_per_input + (k + 1) * size
+            )
+            for k in range(n_folds)
+        ]
+        for i in range(n_inputs)
+    ]
+
+
+def test_predefined_split_with_multiple_inputs(tmp_path):
+    inputs = [make_fconn(60, start=0), make_fconn(60, start=60)]
+    split = _global_split()
+    meta = produce(tmp_path, inputs, predefined_split=split)
+    train = read_records(meta, meta.data['train_paths'])
+    test = read_records(meta, meta.data['test_paths'])
+    np.testing.assert_array_equal(
+        np.sort(np.concatenate([train[:, 0], test[:, 0]])), np.arange(120)
+    )
+    np.testing.assert_array_equal(
+        meta.data['test_fold'], np.concatenate([split[0][-1], split[1][-1]])
+    )
+    for i in range(2):
+        for got, expected in zip(meta.data['folds'][i], split[i][:-1]):
+            np.testing.assert_array_equal(got, expected)
+
+
+def test_predefined_split_with_local_indices_raises(tmp_path):
+    """Indices of the second input that are not offset by the first
+    input's samples would silently drop its samples, so they raise."""
+    inputs = [make_fconn(60, start=0), make_fconn(60, start=60)]
+    split = _global_split()
+    split[1] = [f - 60 for f in split[1]]
+    with pytest.raises(ValueError, match='predefined_split\\[1\\]'):
+        produce(tmp_path, inputs, predefined_split=split)
+
+
 def test_multiple_inputs_get_unique_indices(tmp_path):
     inputs = [make_fconn(60, start=0), make_fconn(60, start=60)]
     meta = produce(tmp_path, inputs)

@@ -13,7 +13,10 @@ earlier versions):
   the remaining records were renumbered while the folds kept the original
   indices, so part of the data dropped out of training and validation.
   Holdout records also carry their sample index.
-* ``predefined_split`` is no longer modified in place.
+* ``predefined_split`` is no longer modified in place. Its indices must lie
+  within their input's samples (offset by the previous inputs' samples, as in
+  ``MetaData.data['folds']``); before, other indices silently dropped samples
+  from training and validation, now they raise a ``ValueError``.
 * ``scale=True`` min-max scales each sample for ``input_type='fconn'``
   (new ``utils.minmax_scale``) instead of scaling to a baseline.
 

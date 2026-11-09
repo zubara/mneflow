@@ -698,6 +698,19 @@ def produce_tfrecords(inputs,
                 n = np.arange(X.shape[0]) + sample_offset
                 n_input_samples = X.shape[0]
 
+                if predefined_split:
+                    split_idx = np.concatenate(fold_split)
+                    if (split_idx.min() < sample_offset
+                            or split_idx.max()
+                            >= sample_offset + n_input_samples):
+                        raise ValueError(
+                            "predefined_split[{}] must index samples {}..{} "
+                            "of this input: the indices of later inputs are "
+                            "offset by the number of samples in the previous "
+                            "inputs (as in MetaData.data['folds'])".format(
+                                jj, sample_offset,
+                                sample_offset + n_input_samples - 1))
+
                 if test_set == 'holdout':
                     test_fold = fold_split.pop(-1) - sample_offset
                     X, x_test = _split_sets(X, test_fold)
