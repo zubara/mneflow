@@ -429,12 +429,14 @@ class BaseModel():
 
             if mode == 'loso':
                 print("Creating loso test DS")
+                test_paths = test_subj
                 test = self.dataset._build_dataset(test_subj,
                                                    test_batch=None,
                                                    split=False,
                                                    repeat=False)
             elif len(self.dataset.h_params['test_paths']):
-                test = self.dataset._build_dataset(self.dataset.h_params['test_paths'],
+                test_paths = self.dataset.h_params['test_paths']
+                test = self.dataset._build_dataset(test_paths,
                                                    test_batch=None,
                                                    split=False,
                                                    repeat=False)
@@ -447,9 +449,12 @@ class BaseModel():
                 self.cv_test_losses.append(t_loss)
                 self.cv_test_metrics.append(t_metric)
                 if store_test_predictions:
-                    n_test_batches = int(np.ceil(
-                        self.dataset.h_params['test_size']
-                        / self.dataset.test_batch))
+                    # Count the test records (the test dataset repeats).
+                    # With loso, this is the held-out subject's size,
+                    # which can differ between subjects.
+                    n_test = sum(1 for _ in tf.data.TFRecordDataset(test_paths))
+                    n_test_batches = int(np.ceil(n_test
+                                                 / self.dataset.test_batch))
                     t_true, t_pred = self.predict(test,
                                                   n_batches=n_test_batches)
                     self.cv_test_predictions.append({'y_true': t_true,

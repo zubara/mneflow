@@ -295,3 +295,50 @@ def test_cv_training_stores_test_predictions(tfr_path):
             np.ravel(fold['y_true']), y[test_fold], rtol=1e-5
         )
         assert np.ravel(fold['y_pred']).shape == test_fold.shape
+
+
+def _produce(path, inputs, test_set='holdout'):
+    np.random.seed(0)
+    return _quiet(
+        mneflow.produce_tfrecords,
+        inputs,
+        path=str(path),
+        data_id='fc',
+        fs=1,
+        input_type='fconn',
+        target_type='float',
+        n_folds=N_FOLDS,
+        overwrite=True,
+        test_set=test_set,
+    )
+
+
+def test_loso_test_predictions_cover_each_subject(tmp_path):
+    """With loso and subjects of different sizes, each fold's test
+    predictions cover exactly the held-out subject's samples."""
+    # Unequal sizes, not multiples of N_FOLDS; the first is larger than
+    # the test batch (100)
+    data = [make_data(seed=0), make_data(seed=1)]
+    X = np.concatenate([d[0] for d in data])
+    y = np.concatenate([d[1] for d in data])
+    sizes = [157, 35]
+    inputs = [(X[:157], y[:157]), (X[157:], y[157:])]
+    _produce(tmp_path, inputs, test_set='loso')
+    model = make_model(tmp_path, 'conv3d', model_id='loso_pred')
+    _quiet(
+        model.train,
+        n_epochs=1,
+        eval_step=2,
+        early_stopping=1,
+        mode='loso',
+        store_test_predictions=True,
+    )
+    assert len(model.cv_test_predictions) == len(inputs)
+    for (_, y_subj), size, fold in zip(
+        inputs, sizes, model.cv_test_predictions
+    ):
+        assert np.ravel(fold['y_pred']).shape == (size,)
+        np.testing.assert_allclose(
+            np.sort(np.ravel(fold['y_true'])), np.sort(y_subj), rtol=1e-5
+        )
+

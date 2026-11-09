@@ -39,7 +39,8 @@ Evaluation:
   the holdout samples of all inputs (before, only those of the last input).
 * ``train(..., store_test_predictions=True)`` keeps each fold model's
   predictions for the test set in ``cv_test_predictions`` (e.g. to average
-  the fold models' predictions per sample).
+  the fold models' predictions per sample), also with ``mode='loso'`` and
+  subjects of different sizes.
 
 Logging:
 
