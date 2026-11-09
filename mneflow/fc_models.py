@@ -8,8 +8,7 @@ Created on Fri Jul 12 10:33:35 2024
 
 from collections import defaultdict
 from copy import deepcopy
-import os
-from pathlib import Path
+from typing import cast
 
 import numpy as np
 from scipy.stats import spearmanr, pearsonr
@@ -17,17 +16,45 @@ import tensorflow as tf
 import keras
 from keras.layers import (Dense, Flatten, Dropout, BatchNormalization,
                                      Conv2D, SpatialDropout2D, Conv3D,
-                                     SpatialDropout3D, AveragePooling2D,
-                                     MaxPooling2D, Lambda, DepthwiseConv2D)
+                                     SpatialDropout3D, Lambda, DepthwiseConv2D)
 from keras import initializers
 
 # working_directory = Path("/m/nbe/scratch/restmeg/eero/code/mneflow/")
 # os.chdir(working_directory)
 #import mneflow
 from .layers import SquareSum3d, WeightSum3d
-from .layers import se_block, channel_attention, spatial_attention
+from .layers import se_block
 from .models import BaseModel
 from .data import Dataset
+
+
+def _fold_stability(data, threshold):
+    """Consistency of spatial patterns across CV folds.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_sources, n_folds)
+        Standardized pattern of each fold.
+    threshold : float or ndarray, shape (n_folds,)
+        Sources with ``abs(data) > threshold`` count as top sources.
+
+    Returns
+    -------
+    dict
+        Mean over all pairs of folds of ``'jaccard'`` (Jaccard index of the
+        top-source sets) and ``'abs_r'`` (absolute correlation of the
+        patterns).
+    """
+    masks = np.abs(data) > threshold
+    jaccard, abs_r = [], []
+    n_folds = data.shape[-1]
+    for i in range(n_folds - 1):
+        for j in range(i + 1, n_folds):
+            union = np.sum(masks[:, i] | masks[:, j])
+            inter = np.sum(masks[:, i] & masks[:, j])
+            jaccard.append(inter / union if union else 0.0)
+            abs_r.append(np.abs(np.corrcoef(data[:, i], data[:, j])[0, 1]))
+    return {'jaccard': float(np.mean(jaccard)), 'abs_r': float(np.mean(abs_r))}
 
 
 class Conv3DModel(BaseModel):
@@ -257,7 +284,7 @@ class WeightedSum3dModel(BaseModel):
            [1] Hu, J. et al. (2018). Squeeze-and-excitation networks.
            In Proceedings of the IEEE conference on computer vision and pattern recognition. pages 7132–7141.
         """
-        self.scope = 'model2_weighted_sum_3d'
+        self.scope = 'weighted_sum_3d'
 
         meta.model_specs.setdefault('n_latent_dense', 32)
         meta.model_specs.setdefault('n_latent_cross', 1)
@@ -277,7 +304,6 @@ class WeightedSum3dModel(BaseModel):
 
         meta.model_specs['scope'] = self.scope
 
-        super(WeightedSum3dModel, self).__init__(meta, dataset, specs_prefix)
         super().__init__(meta=meta, dataset=dataset, specs_prefix=specs_prefix)
 
     def build_graph(self):
@@ -290,7 +316,6 @@ class WeightedSum3dModel(BaseModel):
             Output of the forward pass of the computational graph.
             Prediction of the target variable.
         """
-        self.scope = 'weighted_sum_3d'
         self.specs = self.meta.model_specs
 
         # Gaussian Noise layer
@@ -344,7 +369,7 @@ class WeightedSum3dModel(BaseModel):
         if self.specs['attention_rate'] > 0:
             csum = se_block(csum, ratio=self.specs['attention_rate'])
             print(
-                f"Built: Squeeze-and-Excitation block added with channel reduction rate: ",
+                "Built: Squeeze-and-Excitation block added with channel reduction rate: ",
                 self.specs['attention_rate'])
 
         # Pointwise convolution (Conv2D with 1x1 kernel)
@@ -511,26 +536,29 @@ class SymmetricModel(BaseModel):
                                      data_format='channels_last')(ssum1)
 
         # Channel attention block (optional)
-        if self.specs['attention_ratio'] > 0:
-            ssum1 = se_block(ssum1, ratio=self.specs['attention_ratio'])
+        if self.specs['attention_rate'] > 0:
+            ssum1 = se_block(ssum1, ratio=self.specs['attention_rate'])
             print(
-                f"Built: Squeeze-and-Excitation block added with channel reduction rate: ",
+                "Built: Squeeze-and-Excitation block added with channel reduction rate: ",
                 self.specs['attention_rate'])
 
         # Pointwise convolution (Conv2D with 1x1 kernel)
         if self.specs['trainable_pointwise_kernel']:
+            # Each component (axis 1) gets its own weighting of the last
+            # axis. Applied channels_last (see _apply_pointwise): TensorFlow
+            # has no channels_first depthwise convolution on the CPU.
             self.pointwise = DepthwiseConv2D(
                 kernel_size=(1, self.meta.data['n_ch']),
                 activation='relu',
                 padding="valid",
-                data_format='channels_first',
+                data_format='channels_last',
                 depth_multiplier=1)
         else:
             self.pointwise = Conv2D(self.specs['n_latent_cross'], (1, 1),
                                     activation='relu',
                                     data_format='channels_last')
 
-        pointwise = self.pointwise(ssum1)
+        pointwise = self._apply_pointwise(ssum1)
         print(f"Built: Pointwise layer with {self.specs['n_latent_cross']} "
               f"filters. Input shape before: {ssum1.shape}, shape after: {pointwise.shape}")
 
@@ -566,6 +594,21 @@ class SymmetricModel(BaseModel):
 
         return y_pred
 
+    def _apply_pointwise(self, x) -> tf.Tensor:
+        """Apply the pointwise layer to the SquareSum3d output ``x``.
+
+        With ``trainable_pointwise_kernel``, the depthwise convolution
+        treats axis 1 of ``x`` as its channels (one kernel over the last
+        axis per component). It runs channels_last, so ``x`` is transposed
+        to put axis 1 last, and the output transposed back.
+        """
+        if isinstance(self.pointwise, DepthwiseConv2D):
+            x = keras.ops.transpose(x, (0, 2, 3, 1))
+            # cast: keras.ops is typed for all backends
+            return cast(tf.Tensor,
+                        keras.ops.transpose(self.pointwise(x), (0, 3, 1, 2)))
+        return self.pointwise(x)
+
     def extract_weights(self, verbose=False):
         """Extract the trained weights relevant for interpretation.
 
@@ -578,12 +621,11 @@ class SymmetricModel(BaseModel):
         Returns
         -------
         weights : dict
-            Dictionary with keys 
-            ``'ssum1'`` and ``'ssum1b'`` 
-                the `SquareSum3d` layer's weights and bias,
-            ``'pointwise'`` the pointwise convolution kernel, 
-            ``'fc1_w_flat'`` the first dense layer's weights, if present, and 
-            ``'out_w_flat'`` the output layer's weights.
+            Dictionary with keys ``'ssum1'`` and ``'ssum1b'`` (the
+            `SquareSum3d` layer's weights and bias), ``'pointwise'`` (the
+            pointwise convolution kernel), ``'fc1_w_flat'`` (the first
+            dense layer's weights, if present) and ``'out_w_flat'`` (the
+            output layer's weights).
 
         """
         weights = {}
@@ -605,13 +647,15 @@ class SymmetricModel(BaseModel):
         weights['out_w_flat'] = self.fc.kernel.numpy()
 
         if verbose:
+            fc1_shape = (weights['fc1_w_flat'].shape
+                         if 'fc1_w_flat' in weights else None)
             print("""Weights: \n
                   SPATIAL: {}
                   POINTWISE: {}
-
+                  FC1: {}
                   FC_OUT: {}""".format(weights['ssum1'].shape,
                   weights['pointwise'].shape,
-                  weights['fc1_w_flat'].shape,
+                  fc1_shape,
                   weights['out_w_flat'].shape))
 
         return weights
@@ -698,7 +742,8 @@ class SymmetricModel(BaseModel):
         #get layer activations
         activations = {}
         activations['squaresym'] = self.squaresum_3d(X)
-        activations['pointwise'] = self.pointwise(activations['squaresym'])
+        activations['pointwise'] = self._apply_pointwise(
+            activations['squaresym'])
         if hasattr(self, "fc1"):
             activations['fc1'] = self.fc1(self.flat(activations['pointwise']))
             activations['fin_fc']  = self.fc(self.b2n(activations['fc1']))
@@ -748,7 +793,8 @@ class SymmetricModel(BaseModel):
         return patterns_struct
 
     def get_roi_labels(self, percentile=80, patterns=None,
-                       methods=['row', 'col', 'diag'], selection_method='activation'):
+                       methods=['row', 'col', 'diag'], selection_method='activation',
+                       return_stability=False):
         """
         Computes ROIs from spatial activation patterns.
 
@@ -772,17 +818,30 @@ class SymmetricModel(BaseModel):
             How to integrate across folds. Possible arguments 'count' or
             'activation'. Default 'activation'
 
+        return_stability : bool, optional
+            Whether to also return how consistent the patterns are across
+            folds. Defaults to False.
+
         Returns
         ------
         roi_labels : dict
             ROI indices identified by the interpretation pipeline
             {'extraction_method':[label indices]}
+
+        stability : dict
+            Only if ``return_stability`` is True. For each method, a dict
+            with the mean over all pairs of folds of
+            ``'jaccard'``, the Jaccard index of the sets of top sources
+            (sources whose absolute standardized pattern exceeds the
+            selection threshold), and ``'abs_r'``, the absolute correlation
+            of the standardized patterns.
         """
 
         if not patterns:
             patterns = self.extract_patterns()
 
         roi_labels = {}
+        stability = {}
 
         for key in methods:
             data = (patterns['spatial_patterns'][key] - patterns['spatial_patterns'][key].mean(0)) / patterns['spatial_patterns'][key].std(0, keepdims=True)
@@ -797,13 +856,19 @@ class SymmetricModel(BaseModel):
                 mean_activation = np.mean(data, -1)
                 top_active = np.percentile(mean_activation, percentile)
                 mask = np.where(mean_activation > top_active)[0]
+            else:
+                raise ValueError(f"selection_method must be 'count' or "
+                                 f"'activation', got {selection_method!r}")
 
             roi_labels[key] = mask
+            if return_stability:
+                stability[key] = _fold_stability(data, top_active)
         if 'row' in methods and 'col' in methods:
             roi_labels['row-col'] = np.unique(np.concatenate([roi_labels['row'],
                                                               roi_labels['col']]))
 
-
+        if return_stability:
+            return roi_labels, stability
         return roi_labels
 
     # def get_frequency_kernels(self, methods=['row', 'col', 'diag'], patterns=None):
@@ -961,8 +1026,8 @@ class SymmetricModel(BaseModel):
             to write into. Defaults to 0.
 
         n_folds : int, optional
-            Number of folds; only used as a fallback before
-            ``self.meta.data['n_folds']`` is read on the first fold.
+            Not used; the number of CV folds is read from
+            ``self.meta.data['folds']`` on the first fold.
             Defaults to 1.
 
         n_comp : int, optional
@@ -982,7 +1047,9 @@ class SymmetricModel(BaseModel):
         if len(self.cv_patterns.items()) == 0 or fold==0:
             n_parcels = self.meta.data['n_seq']
             n_fft = self.meta.data['n_ch']
-            n_folds = self.meta.data['n_folds']
+            # Number of CV folds; meta.data['n_folds'] also counts the
+            # holdout fold when test_set='holdout'
+            n_folds = len(self.meta.data['folds'][0])
 
             #self.cv_patterns['freqs'] = patterns_struct['freqs']
 
@@ -1044,13 +1111,33 @@ class SymmetricModel(BaseModel):
 
         """
         out = defaultdict(dict)
-        n_folds = self.meta.data['n_folds']
+        # One weight set per trained fold. meta.data['n_folds'] also counts
+        # the holdout fold when test_set='holdout', so it can't be used here.
+        n_folds = self.meta.weights['out_w_flat'].shape[-1]
         max_inds_folds = [np.argmax(self.meta.weights['out_w_flat'][:, :, i], 0)
                           for i in range(n_folds)]
         pointwise_shape = self.cv_patterns['ccms']['pointwise'].shape[:-1]
         connectivity_patterns = defaultdict(list)
         freq_inds = defaultdict(list)
         comp_inds = defaultdict(list)
+
+        pointwise = self.meta.weights['pointwise']
+        trainable_pointwise = self.meta.model_specs.get(
+            'trainable_pointwise_kernel', True)
+        if not trainable_pointwise and pointwise.ndim != 2:
+            raise NotImplementedError(
+                "extract_patterns supports trainable_pointwise_kernel=False "
+                "only with n_latent_cross=1")
+
+        def freq_weights(comp, fold):
+            # With the trainable pointwise layer each component has its own
+            # frequency weights, shape (n_freqs, n_components, n_folds).
+            # Otherwise a 1x1 convolution weights the frequencies, shared by
+            # all components: shape (n_freqs, n_folds).
+            if trainable_pointwise:
+                return pointwise[:, comp, fold]
+            return pointwise[:, fold]
+
         for i, ind in enumerate(max_inds_folds):
             fc1 = np.dot(self.meta.weights['fc1_w_flat'][:, ind, i][..., None],
                          self.meta.weights['out_w_flat'][ind, :, i])
@@ -1058,19 +1145,19 @@ class SymmetricModel(BaseModel):
 
             row = np.unravel_index(np.argmax(np.diag(fcr)), fcr.shape)[0]
 
-            max_freq_row = np.argmax(self.meta.weights['pointwise'][:, row, i])
+            max_freq_row = np.argmax(freq_weights(row, i))
             spatial_kernel_row = self.meta.weights['ssum1'][max_freq_row, :, row, i]
             spatial_pattern_row = np.dot(self.cv_patterns['dcov'][:, :, max_freq_row, i], spatial_kernel_row.T)
 
             col = np.unravel_index(np.argmax(fcr), fcr.shape)[1]
 
-            max_freq_col = np.argmax(self.meta.weights['pointwise'][:, col, i])
+            max_freq_col = np.argmax(freq_weights(col, i))
             spatial_kernel_col = self.meta.weights['ssum1'][max_freq_col, :, col, i]
             spatial_pattern_col = np.dot(self.cv_patterns['dcov'][:, :, max_freq_col, i], spatial_kernel_col.T)
 
 
             diag = np.argmax(np.abs(np.diag(fcr)))
-            max_freq_diag = np.argmax(np.abs(self.meta.weights['pointwise'][:, diag, i]))
+            max_freq_diag = np.argmax(np.abs(freq_weights(diag, i)))
             spatial_kernel_diag = self.meta.weights['ssum1'][max_freq_diag, :, diag, i]
             spatial_pattern_diag = np.dot(self.cv_patterns['dcov'][:, :, max_freq_diag, i], spatial_kernel_diag.T)
 

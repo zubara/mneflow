@@ -14,17 +14,10 @@ import keras
 import numpy as np
 
 from typing import Callable
-from mne import channels, evoked, create_info, Info
-from mne.filter import filter_data
 
 
-from scipy.stats import spearmanr, pearsonr
-from scipy.signal import welch
 
 from matplotlib import pyplot as plt
-from matplotlib import patches as ptch
-from matplotlib import collections
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from .layers import LFTConv, VARConv, DeMixing, FullyConnected, TempPooling
 from keras.layers import SeparableConv2D, Conv2D, DepthwiseConv2D
@@ -34,6 +27,7 @@ from keras import regularizers as k_reg, constraints, layers
 
 from .layers import LSTM
 import csv
+import inspect
 import os
 from .data import Dataset
 from .utils import regression_metrics, _onehot, r2_score
@@ -204,8 +198,7 @@ class BaseModel():
             loss_name = 'MSE'
         elif not loss:
             loss_name = 'Cat_CE'
-        else:
-            loss_name = params['loss'].name
+
         _ = params.pop('loss')
         metrics = params.pop('metrics')
         metric_names = ':'.join([m.name for m in metrics])
@@ -251,7 +244,8 @@ class BaseModel():
               early_stopping=3, mode='single_fold',
               collect_patterns=False, class_weights=None,
               noisy_labels=False, noise_std=.1, shapley_order=1, fold=0, 
-              compute_pvalues=False, store_fold_predictions=False) :
+              compute_pvalues=False, store_fold_predictions=False,
+              store_test_predictions=False) :
 
         """
         Train a model
@@ -310,6 +304,14 @@ class BaseModel():
             (``y_true``, ``y_pred``, and sample indices) in
             ``self.cv_predictions``. Defaults to False.
 
+        store_test_predictions : bool, optional
+            Whether to store each fold model's predictions for the test
+            set in ``self.cv_test_predictions``, one dict with ``y_true``
+            and ``y_pred`` per fold. The test samples are in the order of
+            the test TFRecords, i.e. of ``MetaData.data['test_fold']`` for
+            ``test_set='holdout'``, so the folds' predictions can be
+            averaged per sample. Defaults to False.
+
         Returns
         -------
         None
@@ -338,6 +340,7 @@ class BaseModel():
         self.cv_test_metrics = []
         self.cv_metric_pvalues = []
         self.cv_predictions = []
+        self.cv_test_predictions = []
         cv_pvals = []
 
         if class_weights:
@@ -355,6 +358,9 @@ class BaseModel():
             print("Running cross-validation with {} folds".format(n_folds))
         elif mode == "loso":
             n_folds = len(self.dataset.h_params['train_paths'])
+        else:
+            raise ValueError("mode must be 'single_fold', 'cv' or 'loso', "
+                             f"got {mode!r}")
 
         if collect_patterns and self.scope=='lfcnn':
             self.init_pattern_struct(n_folds, freqs=None)
@@ -424,12 +430,14 @@ class BaseModel():
 
             if mode == 'loso':
                 print("Creating loso test DS")
+                test_paths = test_subj
                 test = self.dataset._build_dataset(test_subj,
                                                    test_batch=None,
                                                    split=False,
                                                    repeat=False)
             elif len(self.dataset.h_params['test_paths']):
-                test = self.dataset._build_dataset(self.dataset.h_params['test_paths'],
+                test_paths = self.dataset.h_params['test_paths']
+                test = self.dataset._build_dataset(test_paths,
                                                    test_batch=None,
                                                    split=False,
                                                    repeat=False)
@@ -441,6 +449,17 @@ class BaseModel():
                 t_loss, t_metric = self.evaluate(test)
                 self.cv_test_losses.append(t_loss)
                 self.cv_test_metrics.append(t_metric)
+                if store_test_predictions:
+                    # Count the test records (the test dataset repeats).
+                    # With loso, this is the held-out subject's size,
+                    # which can differ between subjects.
+                    n_test = sum(1 for _ in tf.data.TFRecordDataset(test_paths))
+                    n_test_batches = int(np.ceil(n_test
+                                                 / self.dataset.test_batch))
+                    t_true, t_pred = self.predict(test,
+                                                  n_batches=n_test_batches)
+                    self.cv_test_predictions.append({'y_true': t_true,
+                                                     'y_pred': t_pred})
 
 
             y_true, y_pred = self.predict(val,
@@ -457,9 +476,14 @@ class BaseModel():
                 self.cm += self._confusion_matrix(y_true, y_pred)
                 rms = None
 
-            if collect_patterns and hasattr(self, 'collect_patterns'):
-                self.collect_patterns(fold=self.current_fold, n_folds=n_folds,
-                                      shapley_order=shapley_order)
+            collect = getattr(self, 'collect_patterns', None)
+            if collect_patterns and collect is not None:
+                pattern_kwargs = dict(fold=self.current_fold, n_folds=n_folds)
+                # e.g. LFCNN takes shapley_order, the connectivity models
+                # do not
+                if 'shapley_order' in inspect.signature(collect).parameters:
+                    pattern_kwargs['shapley_order'] = shapley_order
+                collect(**pattern_kwargs)
             if store_fold_predictions:
                 self.cv_predictions.append({'y_true':y_true,
                                             'y_pred':y_pred,
@@ -485,9 +509,6 @@ class BaseModel():
                 print("""Test set performance:\n
                       Loss: {:.4f},
                       Metric: {:.4f}""".format(t_loss, t_metric))
-
-        metrics = self.cv_metrics
-        losses = self.cv_losses
 
         if self.dataset.h_params['target_type'] == 'float':
             rms = {k:np.mean(v) for k, v in rmss.items()}
@@ -738,7 +759,15 @@ class BaseModel():
     def update_log(self, rms=None, prefix=''):
         """Logs experiment to self.model_path + self.scope + '_log.csv'.
 
-        If the file exists, appends a line to the existing file.
+        If the file exists, appends a line to the existing file (the
+        header is only written when the file is created, so a log started
+        by a version with different columns gets misaligned rows).
+
+        Besides the results, the line holds the training parameters, the
+        dataset sizes and selected model specs. ``model_id`` is the model
+        name (``<scope>_<data_id>``) and ``spec_model_id`` the
+        ``'model_id'`` given in the model specs, if any. Model specs that
+        a model doesn't use are left empty.
 
         Parameters
         ----------
@@ -819,9 +848,14 @@ class BaseModel():
             specs_dict['nonlin'] = specs_dict['nonlin'].__name__
         
         log['model_id'] = self.model_name
-        log_header += ['model_id']
+        # The model_id given in the model specs (e.g. to tell apart
+        # hyperparameter sets), if any
+        log['spec_model_id'] = specs_dict.get('model_id')
+        log_header += ['model_id', 'spec_model_id']
         for k in model_specs:
-            log[k] = specs_dict[k]
+            # Not every model has every key (e.g. WeightedSum3dModel uses
+            # n_latent1/n_latent2 instead of n_latent)
+            log[k] = specs_dict.get(k)
         log_header += model_specs
 
         for k in data_info:
@@ -853,6 +887,24 @@ class BaseModel():
             log[k] = self.meta.results[k]
         log_header += by_fold
         self.log = log
+
+        if appending:
+            with open(savepath, newline='') as csv_file:
+                reader = csv.DictReader(csv_file)
+                old_header = list(reader.fieldnames or [])
+                old_rows = list(reader)
+            if old_header != log_header:
+                # The log was written with other columns (e.g. by an older
+                # mneflow, or a model with other options): rewrite it with
+                # the union of the columns, so that all rows stay aligned
+                header = old_header + [k for k in log_header
+                                       if k not in old_header]
+                with open(savepath, 'w', newline='') as csv_file:
+                    writer = csv.DictWriter(csv_file, fieldnames=header,
+                                            extrasaction='ignore')
+                    writer.writeheader()
+                    writer.writerows(old_rows)
+                log_header = header
 
         with open(savepath, 'a+', newline='') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=log_header)
@@ -1312,7 +1364,7 @@ class FBCSP_ShallowNet(BaseModel):
             Prediction of the target variable.
         """
         #(self.inputs)
-        inputs = tf.transpose(self.inputs,[0,3,2,1])
+        inputs = keras.ops.transpose(self.inputs, [0, 3, 2, 1])
         #print(inputs.shape)
         #df = "channels_first"
         tconv1 = DepthwiseConv2D(
@@ -1321,10 +1373,10 @@ class FBCSP_ShallowNet(BaseModel):
                         strides=1,
                         padding="VALID",
                         activation = tf.identity,
-                        kernel_initializer="he_uniform",
+                        depthwise_initializer="he_uniform",
                         bias_initializer=Constant(0.1),
                         data_format="channels_last",
-                        kernel_regularizer=k_reg.l2(self.specs['l2_lambda'])
+                        depthwise_regularizer=k_reg.l2(self.specs['l2_lambda'])
                         #kernel_constraint="maxnorm"
                         )
 
@@ -1355,7 +1407,7 @@ class FBCSP_ShallowNet(BaseModel):
         print('pool1: ', pool1.shape)
         fc_out = FullyConnected(size=self.out_dim, nonlin=tf.identity,
                             specs=self.specs)
-        y_pred = fc_out(keras.backend.log(pool1))
+        y_pred = fc_out(keras.ops.log(pool1))
         return y_pred
 #
 #
@@ -1531,7 +1583,7 @@ class LFLSTM(BaseModel):
         self.lstm_out = self.lstm(ffeatures)
         print('lstm_out:', self.lstm_out.shape)
 
-        if self.return_sequence == True:
+        if self.return_sequence:
             self.fin_fc = DeMixing(size=self.out_dim,
                                    nonlin=tf.identity, axis=2)
         else:
@@ -1833,7 +1885,7 @@ class EEGNet(BaseModel):
             Prediction of the target variable.
         """
 
-        inputs = tf.transpose(self.inputs,[0,3,2,1])
+        inputs = keras.ops.transpose(self.inputs, [0, 3, 2, 1])
 
         dropoutType = Dropout
 

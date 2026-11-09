@@ -105,6 +105,8 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
     elif isinstance(baseline, tuple):
         print("Scaling to interval {:.1f} - {:.1f}".format(*baseline))
         interval = np.arange(baseline[0], baseline[1])
+    else:
+        raise ValueError(f"baseline must be None or a tuple, got {baseline!r}")
     X0m = X[..., interval].mean(axis=2, keepdims=True)
     X0sd = X[..., interval].std(axis=(1,2), keepdims=True)
 
@@ -114,6 +116,38 @@ def scale_to_baseline(X, baseline=None, crop_baseline=False):
         X = np.delete(X, interval, axis=-1)
     #print("Scaling Done")
     return X
+
+
+def minmax_scale(X):
+    """Min-max scale each sample of a connectivity array to [0, 1].
+
+    Scales each sample (first axis) separately, using only its non-zero
+    entries; zero entries (e.g. the diagonal or an empty triangle of a
+    connectivity matrix) stay zero. A sample whose non-zero entries are all
+    equal becomes all zeros.
+
+    Parameters
+    ----------
+    X : ndarray, shape (n_samples, ...)
+        Input array. Not modified.
+
+    Returns
+    -------
+    X_scaled : ndarray
+        Scaled float array with the same shape as ``X``.
+    """
+    X_scaled = np.array(X, dtype=float)
+    for i in range(X_scaled.shape[0]):
+        sample = X_scaled[i]
+        nonzero = sample != 0
+        if not nonzero.any():
+            continue
+        vmin, vmax = sample[nonzero].min(), sample[nonzero].max()
+        if vmax == vmin:
+            sample[nonzero] = 0.0
+        else:
+            sample[nonzero] = (sample[nonzero] - vmin) / (vmax - vmin)
+    return X_scaled
 
 
 def _make_example(X, y, n, target_type='int'):
@@ -132,7 +166,8 @@ def _make_example(X, y, n, target_type='int'):
         feature.
 
     n : ndarray
-        Example index, flattened and stored as an int64 feature.
+        Sample index of the example (see :func:`produce_tfrecords`),
+        stored as an int64 feature.
 
     target_type : str {'int', 'float', 'signal'}, optional
         Type of the target variable, determining how ``y`` is
@@ -167,7 +202,7 @@ def _make_example(X, y, n, target_type='int'):
     return example
 
 
-def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
+def _write_tfrecords(X_, y_, n_, output_file, target_type='int', order=None):
     """Serialize and write datasets in TFRecords format.
 
     Parameters
@@ -180,8 +215,9 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
         Class labels.
         len =  `n_epochs`, shape = `y_shape`
 
-    n_ : int
-        nubmer of training examples
+    n_ : ndarray of int
+        Sample index of each example (see :func:`produce_tfrecords`),
+        stored with the example as ``'n'``.
 
     output_file : str
         Name of the TFRecords file.
@@ -190,6 +226,10 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
         Type of the target variable, passed to :func:`_make_example`.
         Defaults to 'int'.
 
+    order : array-like of int, optional
+        Order in which to write the examples (positions in ``X_``). Defaults
+        to None, which writes them in their current order.
+
     Returns
     -------
     None
@@ -197,7 +237,10 @@ def _write_tfrecords(X_, y_, n_, output_file, target_type='int'):
     """
     writer = tf.io.TFRecordWriter(output_file)
 
-    for X, y, n in zip(X_, y_, n_):
+    if order is None:
+        order = range(len(n_))
+    for i in order:
+        X, y, n = X_[i], y_[i], n_[i]
         # print(len(X_), len(y_), X.shape, y.shape)
         X = X.astype(np.float32)
         n = n.astype(np.int64)
@@ -319,10 +362,12 @@ def import_data(inp, array_keys={'X': 'X', 'y': 'y'}):
         else:
             if fname[-3:] == 'mat':
                 datafile = sio.loadmat(fname)
-
-            if fname[-3:] == 'npz':
+            elif fname[-3:] == 'npz':
                 print('Importing from npz')
                 datafile = np.load(fname)
+            else:
+                raise ValueError(f"Unsupported file type: {fname} (expected "
+                                 ".mat or .npz)")
 
             data = datafile[array_keys['X']]
             events = datafile[array_keys['y']]
@@ -418,20 +463,25 @@ def produce_tfrecords(inputs,
         files. Defaults to {'X':'X', 'y':'y'}
 
     n_folds : int, optional
-        Number of folds to split the data for training/validation/testing.
-        One fold of the n_folds is used as a validation set.
-        If test_set == 'holdout' generates one extra fold
-        used as test set. Defaults to 5
+        Number of cross-validation folds. Each fold is used once as the
+        validation set while the others are used for training. If
+        test_set == 'holdout', one extra fold of the same size is made
+        and used as the test set, so each fold holds
+        n_samples // (n_folds + 1) samples. Defaults to 5
 
     test_set : str {'holdout', 'loso', None}, optional
-        Defines if a separate holdout test set is required.
-        'holdout' saves 50% of the validation set
+        Defines if a separate test set is required.
+        'holdout' keeps one extra fold (see n_folds) out of the training
+        and validation data and writes it to a separate test TFRecord;
+        its sample indices are stored in ``MetaData.data['test_fold']``.
         'loso' saves the whole dataset in original order for
         leave-one-subject-out cross-validation.
         None does not leave a separate test set. Defaults to None.
 
     scale : bool, optional
-        Whether to perform scaling to baseline. Defaults to False.
+        Whether to perform scaling to baseline. For ``input_type='fconn'``,
+        each sample is instead min-max scaled to [0, 1] (see
+        :func:`minmax_scale`). Defaults to False.
 
     scale_interval : NoneType, tuple of ints,  optional
         Baseline definition. If None (default) scaling is
@@ -456,9 +506,14 @@ def produce_tfrecords(inputs,
         :func:`preprocess_targets`. Defaults to False.
 
     predefined_split : list or lists, optional
-        Pre-defined split of the dataset into training/validation folds.
-        Should match exactly the size and type of MetaData.data['folds'],
-        size of the dataset, and contain n_folds.
+        Pre-defined split of the dataset into training/validation folds:
+        one list of fold index arrays per input. The indices refer to the
+        samples of the input (or to its segments, if ``segment`` is set),
+        offset for later inputs by the total number of samples in the
+        previous inputs. Each list must contain n_folds folds of the same
+        sizes as the automatic split (n_samples // n_folds samples each);
+        with test_set='holdout' it needs one extra fold, and its last fold
+        is used as the holdout set. Not modified.
 
     t_index : array-like, optional
         Index of timestamps associated with each training example. Must be
@@ -513,6 +568,11 @@ def produce_tfrecords(inputs,
     when working with array inputs. When working with mne.epochs the
     use of the corresponding mne functions is preferred.
 
+    Each record stores its sample index as ``'n'`` (see predefined_split),
+    which is what ``MetaData.data['folds']`` and ``'test_fold'`` refer to.
+    Training records are written in random order (from ``np.random``), so
+    batches mix samples even if the inputs are sorted, e.g. by target.
+
     Examples
     --------
     >>> meta = mneflow.produce_tfrecords(input_paths, **import_opts)
@@ -530,7 +590,12 @@ def produce_tfrecords(inputs,
     if not os.path.exists(meta_fname) or  overwrite:
         #print("(Re)-importing data")
         train_size = 0
+        # Offset of the current input's samples: each record's 'n' is its
+        # sample index in the inputs, so fold and holdout indices keep
+        # pointing at the right samples after the holdout set is removed
+        sample_offset = 0
         test_size = 0
+        test_folds = []
         val_size = 0
         folds = []
         indices = []
@@ -550,7 +615,8 @@ def produce_tfrecords(inputs,
         for i, inp in enumerate(inputs):
             data, events = import_data(inp, array_keys=array_keys)
 
-            if np.any(data) == None:
+            if data is None:
+                # import_data could not find the data (it prints why)
                 return
 
             else:
@@ -598,7 +664,7 @@ def produce_tfrecords(inputs,
 
                 X, Y, fold_split = preprocess(
                         data, events,
-                        sample_counter=train_size,
+                        sample_counter=sample_offset,
                         input_type=input_type,
                         n_folds=n_folds,
                         scale=scale,
@@ -621,29 +687,44 @@ def produce_tfrecords(inputs,
                     orig_classes = dict()
 
                 if predefined_split:
-                    assert len(predefined_split[jj]) == len(fold_split), "Number of folds in predefined_split {} does not match n_folds {}!".format(len(predefined_split), len(fold_split))
+                    assert len(predefined_split[jj]) == len(fold_split), "Number of folds in predefined_split {} does not match n_folds {}!".format(len(predefined_split[jj]), len(fold_split))
                     assert np.all([len(fpd) == len(fa) for fpd, fa in zip(predefined_split[jj], fold_split)]), "Number of samples in predefined folds does not match the original split!"
                     print("Using Predefined Train/Validation Split....")
-                    fold_split = predefined_split[jj]
+                    # Copy, so that removing the holdout fold below does
+                    # not modify the caller's predefined_split
+                    fold_split = [np.asarray(f) for f in predefined_split[jj]]
+
+                # Sample index of each row of X
+                n = np.arange(X.shape[0]) + sample_offset
+                n_input_samples = X.shape[0]
+
+                if predefined_split:
+                    split_idx = np.concatenate(fold_split)
+                    if (split_idx.min() < sample_offset
+                            or split_idx.max()
+                            >= sample_offset + n_input_samples):
+                        raise ValueError(
+                            "predefined_split[{}] must index samples {}..{} "
+                            "of this input: the indices of later inputs are "
+                            "offset by the number of samples in the previous "
+                            "inputs (as in MetaData.data['folds'])".format(
+                                jj, sample_offset,
+                                sample_offset + n_input_samples - 1))
 
                 if test_set == 'holdout':
-                    test_fold = fold_split.pop(-1) - train_size
+                    test_fold = fold_split.pop(-1) - sample_offset
                     X, x_test = _split_sets(X, test_fold)
                     Y, y_test = _split_sets(Y, test_fold)
+                    n, n_test = _split_sets(n, test_fold)
                     if np.any(cur_t_index):
                         T, t_test = _split_sets(cur_t_index, test_fold)
-                    test_fold = test_fold + train_size
+                    test_fold = test_fold + sample_offset
+                    test_folds.append(test_fold)
                     test_size += x_test.shape[0]
                 else:
                     test_fold = None
 
-
-
-                if input_type == 'fconn':
-                    _n, n_ch, n_t, n_freq = X.shape
-                else:
-                    _n, n_seq, n_t, n_ch = X.shape
-
+                _n, n_seq, n_t, n_ch = X.shape
 
                 if input_type == 'seq':
                     y_shape = Y[0].shape[1:]
@@ -652,19 +733,16 @@ def produce_tfrecords(inputs,
 
 
 
-                n = np.arange(_n) + train_size
-
                 folds.append(fold_split)
                 if t_index is not None:
-                    indices.append([cur_t_index[f - train_size] for f in fold_split])
+                    indices.append([cur_t_index[f - sample_offset] for f in fold_split])
                 else:
-                    # `fold_split` entries already hold the original
-                    # (train_size-offset) sample indices; looking them up in
-                    # `n` breaks once a holdout test fold has shrunk `n`
-                    # below the largest index still present in fold_split.
+                    # fold_split holds sample indices, the same values as
+                    # the records' 'n'
                     indices.append([f for f in fold_split])
 
                 train_size += _n
+                sample_offset += n_input_samples
 
                 val_size += len(fold_split[0])
 
@@ -677,8 +755,14 @@ def produce_tfrecords(inputs,
                 train_filename = os.path.join(data_path, trname)
                 train_paths.append(train_filename)
 
+                # Write the training examples in random order. Dataset only
+                # shuffles within a small buffer, so with ordered inputs
+                # (e.g. sorted by target) each batch would otherwise cover
+                # a narrow range of targets. Fold membership is unaffected:
+                # it is defined by each record's 'n'.
                 _write_tfrecords(X, Y, n, train_filename,
-                                 target_type=target_type)
+                                 target_type=target_type,
+                                 order=np.random.permutation(len(n)))
 
                 if test_set == 'loso':
                     test_size = len(Y)
@@ -692,8 +776,6 @@ def produce_tfrecords(inputs,
                     #meta['test_fold'].append(test_fold)
                     tfrname = ''.join([data_id, '_test_', str(jj), '.tfrecord'])
                     test_filename = os.path.join(data_path, tfrname)
-                    n_test = np.arange(len(test_fold))
-
                     _write_tfrecords(x_test, y_test, n_test, test_filename,
                                      target_type=target_type)
                     test_paths.append(test_filename)
@@ -711,7 +793,10 @@ def produce_tfrecords(inputs,
                              folds=folds,
                              indices=indices,
                              n_folds=n_folds,
-                             test_fold=test_fold,
+                             # Holdout sample indices of all inputs, in
+                             # the order of the test files
+                             test_fold=(np.concatenate(test_folds)
+                                        if test_folds else None),
                              train_size=train_size,
                              test_size=test_size,
                              val_size=val_size,
@@ -945,7 +1030,7 @@ def cont_split_indices(data, events, n_folds=5, segments_per_fold=10):
     events = np.concatenate([events[:, :, s: s + ind_samples] for s in segments])
 
 
-    folds = _split_indices(data, events, n_folds=n_folds)
+    folds = _split_indices(data.shape[0], n_folds=n_folds)
     return data, events, folds
 
 
@@ -1022,7 +1107,9 @@ def preprocess(data, events, sample_counter,
             Number of folds defining the train/validation/test split.
 
     scale : bool, optional
-        Whether to perform scaling to baseline. Defaults to False.
+        Whether to perform scaling to baseline. For ``input_type='fconn'``,
+        each sample is instead min-max scaled to [0, 1] (see
+        :func:`minmax_scale`). Defaults to False.
 
     scale_interval : NoneType, tuple of ints or floats,  optional
         Baseline definition. If None (default) scaling is
@@ -1073,21 +1160,23 @@ def preprocess(data, events, sample_counter,
     n_samples = events.shape[0]
 
     if scale:
-        data = scale_to_baseline(data, baseline=scale_interval,
-                                 crop_baseline=crop_baseline)
+        if input_type == 'fconn':
+            # Connectivity has no baseline; scale each sample to [0, 1]
+            data = minmax_scale(data)
+        else:
+            data = scale_to_baseline(data, baseline=scale_interval,
+                                     crop_baseline=crop_baseline)
 
     #define folds
     if input_type  == 'continuous':
+        # Fold indices refer to the segments in their current order;
+        # produce_tfrecords shuffles the records when writing them
         data, events, batch_folds = cont_split_indices(data, events,
-                                                 n_folds=5,
+                                                 n_folds=n_folds,
                                                  segments_per_fold=10)
-        shuffle = np.random.permutation(np.arange(n_samples))
-        data = data[shuffle]
-        events = events[shuffle]
         print("Continuous events: ", events.shape)
 
     else:
-        shuffle = np.random.permutation(np.arange(n_samples))
         batch_folds = _split_indices(n_samples, n_folds=n_folds)
 
     print("Splitting into: {} folds x {}".format(len(batch_folds), len(batch_folds[0])))
@@ -1130,6 +1219,9 @@ def preprocess(data, events, sample_counter,
             X = np.expand_dims(data, 1)
         elif data.ndim == 4:
             X = data
+        else:
+            raise ValueError(f"Data must have 3 or 4 dimensions, got shape "
+                             f"{data.shape}")
 
         Y = events
         folds = [f + sample_counter for f in batch_folds]

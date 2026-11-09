@@ -49,12 +49,12 @@ class Dataset(object):
         Only set if ``h_params['test_paths']`` is non-empty.
 
     train_fold : ndarray
-        Concatenated example indices assigned to the training folds,
-        set by :meth:`_build_dataset`.
+        Concatenated sample indices (the records' ``'n'``) of the
+        training folds, set by :meth:`_build_dataset`.
 
     val_fold : ndarray
-        Example indices assigned to the validation fold, set by
-        :meth:`_build_dataset`.
+        Sample indices (the records' ``'n'``) of the validation fold,
+        set by :meth:`_build_dataset`.
 
     train_inds : ndarray
         Concatenated indices into the training folds, set by
@@ -159,24 +159,24 @@ class Dataset(object):
 
         """
         self.h_params = meta.data
-        if pick_channels or not 'channel_subset' in self.h_params.keys():
+        if pick_channels or 'channel_subset' not in self.h_params.keys():
             self.h_params['channel_subset'] = pick_channels
-        if np.any(class_subset) or not 'class_subset' in self.h_params.keys():
+        if np.any(class_subset) or 'class_subset' not in self.h_params.keys():
             self.h_params['class_subset'] = class_subset
-        if np.any(sample_subset) or not 'sample_subset' in self.h_params.keys():
+        if np.any(sample_subset) or 'sample_subset' not in self.h_params.keys():
             self.h_params['sample_subset'] = sample_subset
-        if decim or not 'decim' in self.h_params.keys():
+        if decim or 'decim' not in self.h_params.keys():
             self.h_params['decim'] = decim
-        if crop or not 'crop' in self.h_params.keys():
+        if crop or 'crop' not in self.h_params.keys():
             self.h_params['crop'] = crop
-        if not 'train_batch' in self.h_params.keys() or self.h_params['train_batch'] == None:
+        if 'train_batch' not in self.h_params.keys() or self.h_params['train_batch'] is None:
             self.h_params['train_batch'] = train_batch
         if not test_batch:
             test_batch = train_batch
 
-        if not 'test_batch' in self.h_params.keys() or self.h_params['test_batch'] == None:
+        if 'test_batch' not in self.h_params.keys() or self.h_params['test_batch'] is None:
             self.h_params['test_batch'] = test_batch
-        if rebalance_classes or not 'rebalance_classes' in self.h_params.keys():
+        if rebalance_classes or 'rebalance_classes' not in self.h_params.keys():
             self.h_params['rebalance_classes'] = rebalance_classes
 
         self.y_shape = self.h_params['y_shape']
@@ -258,7 +258,7 @@ class Dataset(object):
         dataset = dataset.map(self._parse_function)
 
         #Define batch sizes
-        if split == True:
+        if split:
             train_folds = []
             val_folds = []
             train_inds = []
@@ -392,7 +392,9 @@ class Dataset(object):
         elif dataset_type == 'val':
             dataset = dataset.shuffle(5).batch(self.validation_batch).repeat()
         elif dataset_type == 'test':
-            dataset = dataset.shuffle(5).batch(self.test_batch).repeat()
+            # Not shuffled: test predictions stay in the order of the test
+            # file, i.e. of MetaData.data['test_fold']
+            dataset = dataset.batch(self.test_batch).repeat()
 
         if self.h_params['channel_subset'] is not None:
             dataset = dataset.map(self._select_channels)
@@ -503,6 +505,7 @@ class Dataset(object):
         example_proto['X'] = tf.gather(example_proto['X'],
                                        self.timepoint_subset,
                                        axis=2)
+        return example_proto
 
     def _crop(self, example_proto):
         """Crop data on the time axis.
@@ -608,7 +611,7 @@ class Dataset(object):
         Parameters
         ----------
         sample : dict
-            Parsed example with an ``'n'`` entry (example index) to
+            Parsed example with an ``'n'`` entry (sample index) to
             test against ``self.train_fold``.
 
         Returns
@@ -632,7 +635,7 @@ class Dataset(object):
         Parameters
         ----------
         sample : dict
-            Parsed example with an ``'n'`` entry (example index) to
+            Parsed example with an ``'n'`` entry (sample index) to
             test against ``self.val_fold``.
 
         Returns
@@ -740,8 +743,6 @@ class Dataset(object):
                                                      )
 
         balanced_ds = resample_ds.map(lambda y, xy: xy)
-        new_dist = {k: target_dist[0]
-                    for k in self.h_params['class_ratio'].keys()}
         return balanced_ds
 
 def class_func(sample):

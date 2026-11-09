@@ -81,7 +81,6 @@ have no tests here:
   with its own explicit `units=size, activation=nonlin` passed to
   super(). This predates the fixes here and isn't addressed by them.
 """
-import numpy as np
 import pytest
 import tensorflow as tf
 import keras

@@ -9,13 +9,9 @@ import mne
 import numpy as np
 from scipy.signal import freqz
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib import patches as ptch
 from matplotlib import collections
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from mne import find_events, fit_dipole
-from mne.datasets import fetch_phantom
-from mne.datasets.brainstorm import bst_phantom_elekta
-from mne.io import read_raw_fif
 import pickle
 
 class MetaData():
@@ -92,14 +88,15 @@ class MetaData():
         data. Requires "transform_targets" function to be applied to target variables.
 
     n_folds : int, optional
-        Number of folds to split the data for training/validation/testing.
-        One fold of the n_folds is used as a validation set.
-        If test_set == 'holdout' generates one extra fold
-        used as test set. Defaults to 5
+        Number of cross-validation folds. Each fold is used once as the
+        validation set while the others are used for training. If
+        test_set == 'holdout', one extra fold of the same size is made
+        and used as the test set. Defaults to 5
 
     test_set : str {'holdout', 'loso', None}, optional
-        Defines if a separate holdout test set is required.
-        'holdout' saves 50% of the validation set
+        Defines if a separate test set is required.
+        'holdout' keeps one extra fold (see n_folds) out of the training
+        and validation data and writes it to a separate test TFRecord.
         'loso' produces an addtional trfrecord so that each input file can
         be used as a test test in leave-one-subject-out cross-validation.
         None does not produce a separate test set.
@@ -1125,7 +1122,7 @@ class MetaData():
             vmax = 1.1*max(np.max(h), np.max(psds))
 
         f, ax = plt.subplots(1, n_y, sharey=True, figsize=(3*n_y, 4))
-        if isinstance(ax, plt.matplotlib.axes._axes.Axes):
+        if isinstance(ax, Axes):
             ax = [ax]
         for i in range(n_y):
             h_std = h_stds[:, i]
@@ -1344,7 +1341,6 @@ class MetaData():
 
         if average_over == 'folds':
             sd_waveforms = cc_waveforms.std(-1) / np.sqrt(cc_waveforms.shape[-1])
-            sd_activations = cc_activations.std(-1) / np.sqrt(cc_waveforms.shape[-1])
             cc_waveforms = cc_waveforms.mean(-1)
             cc_activations = cc_activations.mean(-1)
 
@@ -1363,7 +1359,6 @@ class MetaData():
             # this used to be left unset, which crashed the fill_between
             # call below with an UnboundLocalError.
             sd_waveforms = np.zeros_like(cc_waveforms)
-            sd_activations = np.zeros_like(cc_activations)
 
         f, ax = plt.subplots(n_rows, 2)
         ax = np.atleast_2d(ax)
