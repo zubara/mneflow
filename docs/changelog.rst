@@ -18,7 +18,8 @@ earlier versions):
   ``MetaData.data['folds']``); before, other indices silently dropped samples
   from training and validation, now they raise a ``ValueError``.
 * ``scale=True`` min-max scales each sample for ``input_type='fconn'``
-  (new ``utils.minmax_scale``) instead of scaling to a baseline.
+  (new ``utils.minmax_scale``, which scales every non-zero entry) instead of
+  scaling to a baseline.
 
 Functional connectivity models:
 

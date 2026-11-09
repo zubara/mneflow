@@ -284,6 +284,11 @@ def test_minmax_scale_keeps_zeros_and_scales_each_sample():
     np.testing.assert_array_equal(X, X_orig)  # input not modified
 
 
+def test_minmax_scale_scales_small_nonzero_values():
+    X = np.array([[[0, 1e-9], [2e-9, 0]]])
+    np.testing.assert_allclose(minmax_scale(X)[0], [[0, 0], [1, 0]])
+
+
 def test_fconn_scale_option_min_max_scales_samples(tmp_path):
     rng = np.random.default_rng(1)
     X = rng.uniform(1, 5, (60, 4, 4, 2)).astype(np.float32)

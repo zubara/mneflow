@@ -139,7 +139,7 @@ def minmax_scale(X):
     X_scaled = np.array(X, dtype=float)
     for i in range(X_scaled.shape[0]):
         sample = X_scaled[i]
-        nonzero = ~np.isclose(sample, 0)
+        nonzero = sample != 0
         if not nonzero.any():
             continue
         vmin, vmax = sample[nonzero].min(), sample[nonzero].max()
