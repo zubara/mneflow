@@ -392,7 +392,9 @@ class Dataset(object):
         elif dataset_type == 'val':
             dataset = dataset.shuffle(5).batch(self.validation_batch).repeat()
         elif dataset_type == 'test':
-            dataset = dataset.shuffle(5).batch(self.test_batch).repeat()
+            # Not shuffled: test predictions stay in the order of the test
+            # file, i.e. of MetaData.data['test_fold']
+            dataset = dataset.batch(self.test_batch).repeat()
 
         if self.h_params['channel_subset'] is not None:
             dataset = dataset.map(self._select_channels)

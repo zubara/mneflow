@@ -321,3 +321,21 @@ def test_scale_to_baseline_rejects_invalid_baseline():
 
     with pytest.raises(ValueError, match='baseline'):
         _quiet(scale_to_baseline, np.random.rand(4, 3, 20), baseline=[0, 5])
+
+
+def test_dataset_test_set_is_in_test_fold_order(tmp_path):
+    """The test set is not shuffled, so its samples come in the order of
+    meta.data['test_fold'] (needed to match predictions to samples)."""
+    X, y = make_fconn(120)
+    meta = produce(tmp_path, (X, y))
+    dataset = _quiet(mneflow.Dataset, meta)
+    test = _quiet(
+        dataset._build_dataset,
+        meta.data['test_paths'],
+        split=False,
+        repeat=False,
+    )
+    _, y_test = next(iter(test))
+    np.testing.assert_allclose(
+        np.ravel(y_test), y[np.asarray(meta.data['test_fold'])]
+    )
