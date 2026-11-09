@@ -27,6 +27,9 @@ Functional connectivity models:
   patterns across folds (``return_stability=True``).
 * ``extract_patterns`` and ``collect_patterns`` count only the trained CV
   folds, not the holdout fold.
+* ``SymmetricModel.extract_patterns`` also works with
+  ``trainable_pointwise_kernel=False`` (one frequency weighting shared by all
+  components).
 * The connectivity models are included in the API documentation.
 
 Logging:

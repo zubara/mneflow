@@ -1100,6 +1100,18 @@ class SymmetricModel(BaseModel):
         connectivity_patterns = defaultdict(list)
         freq_inds = defaultdict(list)
         comp_inds = defaultdict(list)
+
+        pointwise = self.meta.weights['pointwise']
+
+        def freq_weights(comp, fold):
+            # With the trainable pointwise layer each component has its own
+            # frequency weights, shape (n_freqs, n_components, n_folds).
+            # Otherwise a 1x1 convolution weights the frequencies, shared by
+            # all components: shape (n_freqs, n_folds).
+            if pointwise.ndim == 3:
+                return pointwise[:, comp, fold]
+            return pointwise[:, fold]
+
         for i, ind in enumerate(max_inds_folds):
             fc1 = np.dot(self.meta.weights['fc1_w_flat'][:, ind, i][..., None],
                          self.meta.weights['out_w_flat'][ind, :, i])
@@ -1107,19 +1119,19 @@ class SymmetricModel(BaseModel):
 
             row = np.unravel_index(np.argmax(np.diag(fcr)), fcr.shape)[0]
 
-            max_freq_row = np.argmax(self.meta.weights['pointwise'][:, row, i])
+            max_freq_row = np.argmax(freq_weights(row, i))
             spatial_kernel_row = self.meta.weights['ssum1'][max_freq_row, :, row, i]
             spatial_pattern_row = np.dot(self.cv_patterns['dcov'][:, :, max_freq_row, i], spatial_kernel_row.T)
 
             col = np.unravel_index(np.argmax(fcr), fcr.shape)[1]
 
-            max_freq_col = np.argmax(self.meta.weights['pointwise'][:, col, i])
+            max_freq_col = np.argmax(freq_weights(col, i))
             spatial_kernel_col = self.meta.weights['ssum1'][max_freq_col, :, col, i]
             spatial_pattern_col = np.dot(self.cv_patterns['dcov'][:, :, max_freq_col, i], spatial_kernel_col.T)
 
 
             diag = np.argmax(np.abs(np.diag(fcr)))
-            max_freq_diag = np.argmax(np.abs(self.meta.weights['pointwise'][:, diag, i]))
+            max_freq_diag = np.argmax(np.abs(freq_weights(diag, i)))
             spatial_kernel_diag = self.meta.weights['ssum1'][max_freq_diag, :, diag, i]
             spatial_pattern_diag = np.dot(self.cv_patterns['dcov'][:, :, max_freq_diag, i], spatial_kernel_diag.T)
 

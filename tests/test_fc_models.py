@@ -213,18 +213,25 @@ def test_symmetric_patterns_and_roi_labels(tfr_path):
         assert 0 <= stability[key]['abs_r'] <= 1
 
 
-@pytest.mark.xfail(
-    raises=IndexError,
-    strict=True,
-    reason="extract_patterns assumes the trainable pointwise "
-    "layer's weight shape; with "
-    "trainable_pointwise_kernel=False the 1x1 Conv2D "
-    "kernel has one dimension fewer",
-)
 def test_symmetric_patterns_without_trainable_pointwise(tfr_path):
+    """With trainable_pointwise_kernel=False, one frequency weighting is
+    shared by all components (pointwise weights (n_freqs, n_folds))."""
     model = make_model(tfr_path, 'symmetric_fixed_pointwise')
     train_cv(model)
-    _quiet(model.extract_patterns)
+    pointwise = model.meta.weights['pointwise']
+    assert pointwise.shape == (N_FREQS, N_FOLDS)
+    patterns = _quiet(model.extract_patterns)
+    for key in ('row', 'col', 'diag'):
+        assert patterns['spatial_patterns'][key].shape == (N_NODES, N_FOLDS)
+    # The strongest frequency in each fold is that of the shared weights
+    np.testing.assert_array_equal(
+        patterns['freq_inds']['row'], np.argmax(pointwise, 0)
+    )
+    np.testing.assert_array_equal(
+        patterns['freq_inds']['diag'], np.argmax(np.abs(pointwise), 0)
+    )
+    roi = _quiet(model.get_roi_labels, patterns=patterns)
+    assert set(roi) == {'row', 'col', 'diag', 'row-col'}
 
 
 def test_fold_stability_measures():
