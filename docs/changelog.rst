@@ -41,6 +41,9 @@ Evaluation:
   predictions for the test set in ``cv_test_predictions`` (e.g. to average
   the fold models' predictions per sample), also with ``mode='loso'`` and
   subjects of different sizes.
+* ``train`` passes ``shapley_order`` to ``collect_patterns`` only for models
+  whose ``collect_patterns`` takes it (e.g. LFCNN), so the connectivity models
+  can collect patterns.
 
 Logging:
 

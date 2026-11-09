@@ -27,6 +27,7 @@ from keras import regularizers as k_reg, constraints, layers
 
 from .layers import LSTM
 import csv
+import inspect
 import os
 from .data import Dataset
 from .utils import regression_metrics, _onehot, r2_score
@@ -475,8 +476,14 @@ class BaseModel():
                 self.cm += self._confusion_matrix(y_true, y_pred)
                 rms = None
 
-            if collect_patterns and hasattr(self, 'collect_patterns'):
-                self.collect_patterns(fold=self.current_fold, n_folds=n_folds)
+            collect = getattr(self, 'collect_patterns', None)
+            if collect_patterns and collect is not None:
+                pattern_kwargs = dict(fold=self.current_fold, n_folds=n_folds)
+                # e.g. LFCNN takes shapley_order, the connectivity models
+                # do not
+                if 'shapley_order' in inspect.signature(collect).parameters:
+                    pattern_kwargs['shapley_order'] = shapley_order
+                collect(**pattern_kwargs)
             if store_fold_predictions:
                 self.cv_predictions.append({'y_true':y_true,
                                             'y_pred':y_pred,

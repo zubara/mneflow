@@ -342,3 +342,26 @@ def test_loso_test_predictions_cover_each_subject(tmp_path):
             np.sort(np.ravel(fold['y_true'])), np.sort(y_subj), rtol=1e-5
         )
 
+
+def test_train_passes_shapley_order_to_collect_patterns(tfr_path):
+    """Models whose collect_patterns takes shapley_order (e.g. LFCNN) get
+    it from train; the connectivity models' collect_patterns does not
+    take it (covered by the symmetric model tests)."""
+    model = make_model(tfr_path, 'conv3d', model_id='shapley')
+    calls = []
+
+    def collect_patterns(fold=0, n_folds=1, shapley_order=0):
+        calls.append(shapley_order)
+
+    model.collect_patterns = collect_patterns
+    _quiet(
+        model.train,
+        n_epochs=1,
+        eval_step=2,
+        early_stopping=1,
+        mode='cv',
+        collect_patterns=True,
+        shapley_order=2,
+    )
+    assert calls == [2] * N_FOLDS
+
