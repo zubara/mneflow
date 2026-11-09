@@ -35,7 +35,8 @@ Functional connectivity models:
 Evaluation:
 
 * Test sets are no longer shuffled, so test predictions are in the order of
-  ``MetaData.data['test_fold']``.
+  ``MetaData.data['test_fold']``. With several inputs, ``test_fold`` holds
+  the holdout samples of all inputs (before, only those of the last input).
 * ``train(..., store_test_predictions=True)`` keeps each fold model's
   predictions for the test set in ``cv_test_predictions`` (e.g. to average
   the fold models' predictions per sample).

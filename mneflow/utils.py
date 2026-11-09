@@ -595,6 +595,7 @@ def produce_tfrecords(inputs,
         # pointing at the right samples after the holdout set is removed
         sample_offset = 0
         test_size = 0
+        test_folds = []
         val_size = 0
         folds = []
         indices = []
@@ -705,6 +706,7 @@ def produce_tfrecords(inputs,
                     if np.any(cur_t_index):
                         T, t_test = _split_sets(cur_t_index, test_fold)
                     test_fold = test_fold + sample_offset
+                    test_folds.append(test_fold)
                     test_size += x_test.shape[0]
                 else:
                     test_fold = None
@@ -778,7 +780,10 @@ def produce_tfrecords(inputs,
                              folds=folds,
                              indices=indices,
                              n_folds=n_folds,
-                             test_fold=test_fold,
+                             # Holdout sample indices of all inputs, in
+                             # the order of the test files
+                             test_fold=(np.concatenate(test_folds)
+                                        if test_folds else None),
                              train_size=train_size,
                              test_size=test_size,
                              val_size=val_size,

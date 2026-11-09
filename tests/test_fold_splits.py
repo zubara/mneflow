@@ -183,6 +183,18 @@ def test_multiple_inputs_get_unique_indices(tmp_path):
     assert second.min() >= 60 and second.max() < 120
 
 
+def test_multiple_inputs_holdout_test_fold_covers_all_test_files(tmp_path):
+    """With several inputs, test_fold lists the holdout samples of all
+    inputs, in the order of the test files."""
+    inputs = [make_fconn(60, start=0), make_fconn(60, start=60)]
+    meta = produce(tmp_path, inputs)
+    test = read_records(meta, meta.data['test_paths'])
+    np.testing.assert_array_equal(test[:, 0], meta.data['test_fold'])
+    assert len(meta.data['test_fold']) == meta.data['test_size']
+    # Both inputs contribute holdout samples
+    assert np.any(test[:, 0] < 60) and np.any(test[:, 0] >= 60)
+
+
 def test_loso_writes_whole_inputs_as_test_sets(tmp_path):
     inputs = [make_fconn(60, start=0), make_fconn(60, start=60)]
     meta = produce(tmp_path, inputs, test_set='loso')
